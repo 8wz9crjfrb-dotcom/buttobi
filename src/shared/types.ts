@@ -114,6 +114,7 @@ export type GameEvent =
   | { k: 'shield'; x: number; y: number }
   | { k: 'ko'; x: number; y: number; s: number }
   | { k: 'jump'; s: number }
+  | { k: 'land'; x: number; y: number; s: number; p: number }
   | { k: 'shot'; s: number };
 
 /** 描画用の選手の状態（ローカル対戦でもオンライン対戦でも同じ形） */

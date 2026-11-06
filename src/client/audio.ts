@@ -2,7 +2,7 @@
 // ブラウザは操作前の音の再生を制限しているため、最初のタップで unlock() を呼ぶ。
 
 export class Sfx {
-  private ctx: AudioContext | null = null;
+  ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   volume = 0.7;
@@ -80,4 +80,222 @@ export class Sfx {
   click(): void {
     this.tone(660, 0.05, 'triangle', 0.12);
   }
+}
+
+// ---------------------------------------------------------------------------
+// BGM（Web Audio でその場で組み立てるオリジナル曲。音声ファイルは使わない）
+
+export type TrackId = 'menu' | 'plain' | 'tiers' | 'drift';
+
+interface Track {
+  bpm: number;
+  /** 主音（MIDIノート番号） */
+  root: number;
+  /** 4小節分のコード（主音からの半音数で表した和音） */
+  chords: number[][];
+  /** メロディに使う音階（主音からの半音数） */
+  scale: number[];
+  drums: 'soft' | 'drive' | 'half';
+  seed: number;
+  lead: OscillatorType;
+}
+
+const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const MINOR = [0, 2, 3, 5, 7, 8, 10];
+const DORIAN = [0, 2, 3, 5, 7, 9, 10];
+
+const TRACKS: Record<TrackId, Track> = {
+  // メニュー：ゆったり（F長調 I-vi-IV-V）
+  menu: { bpm: 100, root: 53, chords: [[0, 4, 7], [9, 12, 16], [5, 9, 12], [7, 11, 14]], scale: MAJOR, drums: 'soft', seed: 11, lead: 'triangle' },
+  // そらの台地：明るく速い（C長調 I-V-vi-IV）
+  plain: { bpm: 140, root: 48, chords: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], scale: MAJOR, drums: 'drive', seed: 23, lead: 'square' },
+  // みはらし広場：力強い（A短調 i-VI-III-VII）
+  tiers: { bpm: 136, root: 45, chords: [[0, 3, 7], [8, 12, 15], [3, 7, 10], [10, 14, 17]], scale: MINOR, drums: 'drive', seed: 37, lead: 'sawtooth' },
+  // ただよう浮島：ふわっとした（Dドリア i-IV-i-VII）
+  drift: { bpm: 124, root: 50, chords: [[0, 3, 7], [5, 9, 12], [0, 3, 7], [10, 14, 17]], scale: DORIAN, drums: 'half', seed: 41, lead: 'triangle' },
+};
+
+const midiHz = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
+
+export class Music {
+  private ctx: AudioContext | null = null;
+  private out: GainNode | null = null;
+  private noise: AudioBuffer | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private track: Track | null = null;
+  private trackId: TrackId | null = null;
+  private melody: (number | null)[] = [];
+  private step = 0;
+  private nextTime = 0;
+  private _volume = 0.5;
+
+  /** 効果音と同じ AudioContext を使う（最初のタップの後に呼ぶ） */
+  attach(ctx: AudioContext | null): void {
+    if (!ctx || this.ctx) return;
+    this.ctx = ctx;
+    this.out = ctx.createGain();
+    this.out.gain.value = this._volume * 0.35;
+    this.out.connect(ctx.destination);
+    const len = ctx.sampleRate * 0.3;
+    this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = this.noise.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    if (this.trackId) {
+      const id = this.trackId;
+      this.trackId = null;
+      this.play(id);
+    }
+  }
+
+  set volume(v: number) {
+    this._volume = v;
+    if (this.out) this.out.gain.value = v * 0.35;
+  }
+
+  play(id: TrackId): void {
+    if (this.trackId === id) return;
+    this.stop();
+    this.trackId = id;
+    if (!this.ctx) return; // まだ音を出せない（最初のタップ待ち）
+    this.track = TRACKS[id];
+    this.melody = makeMelody(this.track);
+    this.step = 0;
+    this.nextTime = this.ctx.currentTime + 0.1;
+    this.timer = setInterval(() => this.schedule(), 25);
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.trackId = null;
+    this.track = null;
+  }
+
+  private schedule(): void {
+    const ctx = this.ctx;
+    const tr = this.track;
+    if (!ctx || !tr) return;
+    const stepDur = 60 / tr.bpm / 4; // 16分音符
+    while (this.nextTime < ctx.currentTime + 0.15) {
+      this.playStep(this.step, this.nextTime, stepDur, tr);
+      this.step = (this.step + 1) % 64;
+      this.nextTime += stepDur;
+    }
+  }
+
+  private playStep(step: number, t: number, dur: number, tr: Track): void {
+    const bar = Math.floor(step / 16);
+    const s = step % 16;
+    const chord = tr.chords[bar];
+    // ベース：8分音符で主音と5度
+    if (s % 2 === 0) {
+      const n = tr.root - 12 + chord[0] + (s % 8 === 4 ? 7 : 0);
+      this.note(n, t, dur * 1.8, 'triangle', 0.5);
+    }
+    // 伴奏：和音を分散して鳴らす
+    if (tr.drums !== 'soft' || s % 2 === 0) {
+      const n = tr.root + 12 + chord[s % 3] + (s % 6 >= 3 ? 12 : 0);
+      this.note(n, t, dur * 0.9, 'square', 0.07);
+    }
+    // メロディ
+    const m = this.melody[step];
+    if (m !== null && m !== undefined) this.note(tr.root + 24 + m, t, dur * 1.7, tr.lead, tr.lead === 'sawtooth' ? 0.09 : 0.13);
+    // ドラム
+    if (tr.drums === 'soft') {
+      if (s === 0 || s === 8) this.kick(t, 0.5);
+      if (s % 4 === 2) this.hat(t, 0.08);
+    } else if (tr.drums === 'half') {
+      if (s === 0 || s === 10) this.kick(t, 0.7);
+      if (s === 8) this.snare(t, 0.5);
+      if (s % 2 === 0) this.hat(t, 0.1);
+    } else {
+      if (s % 4 === 0) this.kick(t, 0.8);
+      if (s === 4 || s === 12) this.snare(t, 0.6);
+      this.hat(t, s % 2 === 0 ? 0.12 : 0.06);
+    }
+  }
+
+  private note(n: number, t: number, dur: number, type: OscillatorType, vol: number): void {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(midiHz(n), t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.out!);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  private kick(t: number, vol: number): void {
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g).connect(this.out!);
+    o.start(t);
+    o.stop(t + 0.2);
+  }
+
+  private noiseHit(t: number, vol: number, dur: number, type: BiquadFilterType, freq: number): void {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(this.out!);
+    src.start(t);
+    src.stop(t + dur + 0.02);
+  }
+
+  private snare(t: number, vol: number): void {
+    this.noiseHit(t, vol, 0.14, 'bandpass', 1800);
+  }
+
+  private hat(t: number, vol: number): void {
+    this.noiseHit(t, vol, 0.04, 'highpass', 7000);
+  }
+}
+
+/** 各小節のコードの音を中心に、決まった手順でメロディを作る（2小節のリズムを繰り返す） */
+function makeMelody(tr: Track): (number | null)[] {
+  let s = tr.seed >>> 0;
+  const rnd = () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  // 2小節分のリズム（拍の頭ほど音が入りやすい）
+  const mask = Array.from({ length: 32 }, (_, i) => rnd() < (i % 4 === 0 ? 0.9 : i % 2 === 0 ? 0.45 : 0.15));
+  const out: (number | null)[] = [];
+  let deg = 0;
+  for (let i = 0; i < 64; i++) {
+    if (i === 60) {
+      out.push(0); // 最後は主音で落ち着かせる
+      continue;
+    }
+    if (!mask[i % 32] || i > 60) {
+      out.push(null);
+      continue;
+    }
+    const chord = tr.chords[Math.floor(i / 16)];
+    if (i % 4 === 0) {
+      // 拍の頭はコードの音
+      const target = chord[Math.floor(rnd() * 3)] % 12;
+      deg = tr.scale.reduce((best, v, idx) => (Math.abs(v - target) < Math.abs(tr.scale[best] - target) ? idx : best), 0);
+    } else {
+      // それ以外は音階を1つ上か下へ
+      deg = Math.max(0, Math.min(tr.scale.length + 2, deg + (rnd() < 0.5 ? -1 : 1)));
+    }
+    out.push(tr.scale[deg % tr.scale.length] + (deg >= tr.scale.length ? 12 : 0));
+  }
+  return out;
 }

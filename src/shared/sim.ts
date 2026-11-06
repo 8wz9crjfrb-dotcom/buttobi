@@ -755,6 +755,7 @@ export class Sim {
       f.vy = -f.vy * 0.4;
       return;
     }
+    if (f.vy < -6) this.events.push({ k: 'land', x: f.x, y, s: f.slot, p: Math.min(1, -f.vy / 20) });
     f.y = y;
     f.vy = 0;
     f.grounded = true;

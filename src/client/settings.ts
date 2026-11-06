@@ -16,6 +16,8 @@ export interface Settings {
   /** 画面左上にフレームレート（fps）を表示する */
   showFps: boolean;
   volume: number;
+  /** BGMの音量 */
+  bgmVolume: number;
   serverUrl: string;
   cpuCount: number;
   cpuLevel: number;
@@ -49,6 +51,7 @@ export function loadSettings(): Settings {
     vibration: true,
     showFps: false,
     volume: 0.7,
+    bgmVolume: 0.5,
     serverUrl: defaultServerUrl(),
     cpuCount: 3,
     cpuLevel: 3,

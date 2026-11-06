@@ -7,7 +7,8 @@ import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
 import { Sim } from '../shared/sim';
 import { STAGES, getStage } from '../shared/stages';
 import type { GameEvent, InputState, MatchRules, MatchSetup, ResultEntry, ViewState } from '../shared/types';
-import { Sfx } from './audio';
+import { loadRobot } from './assets';
+import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { InputManager } from './input';
 import { NetClient } from './net';
@@ -44,6 +45,14 @@ const hud = new Hud();
 const input = new InputManager();
 const sfx = new Sfx();
 sfx.volume = settings.volume;
+const music = new Music();
+music.volume = settings.bgmVolume;
+/** 最初のタップで音を出せるようにする（ブラウザの制限） */
+function unlockAudio(): void {
+  sfx.unlock();
+  music.attach(sfx.ctx);
+}
+document.addEventListener('pointerdown', unlockAudio, { capture: true });
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -180,6 +189,7 @@ function startSession(s: Session): void {
   renderer.setMatch(s.setup, getStage(s.setup.stageId));
   input.reset();
   input.takePressed();
+  music.play(s.kind === 'demo' ? 'menu' : (s.setup.stageId as TrackId));
   if (s.kind === 'demo') {
     hud.show(false);
     touchEl.classList.add('hidden');
@@ -391,7 +401,7 @@ function showTitle(): void {
     'overlay title-screen',
     (root) => {
       root.querySelector('#go')!.addEventListener('click', () => {
-        sfx.unlock();
+        unlockAudio();
         settings.name = (root.querySelector('#name') as HTMLInputElement).value.trim().slice(0, 10);
         saveSettings(settings);
         showMenu();
@@ -480,6 +490,8 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
     .join('');
   const win = results.find((r) => r.rank === 1);
   const winner = win ? setup.players.find((p) => p.slot === win.slot) : null;
+  renderer.celebrate(win ? win.slot : null);
+  music.play('menu');
   showScreen(
     `<h2 style="text-align:center">${winner ? esc(winner.name) + ' の勝ち！' : '結果'}</h2>
      <div class="results">${rows}</div>
@@ -487,7 +499,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
        <button class="btn" id="menu">メニューへ</button>
        <button class="btn primary" id="again">${online ? 'ルームへ戻る' : 'もう一度'}</button>
      </div>`,
-    'overlay',
+    'overlay results-screen',
     (root) => {
       root.querySelector('#menu')!.addEventListener('click', endToMenu);
       root.querySelector('#again')!.addEventListener('click', () => {
@@ -543,6 +555,7 @@ function showHowTo(): void {
        <p><b>B（必殺技）：</b>そのまま＝飛び道具、横＝突進、上＝復帰技（使った後は着地まで無防備）、下＝叩きつけ。</p>
        <p><b>ガード：</b>押している間ガード。ガード中にスティックをはじくと回避、ガード中にAでつかみ投げ（ガードを崩せます）。空中で押すと空中回避。</p>
        <p><b>崖：</b>ステージの端に近づくと自動でつかまります。スティック上かジャンプで上がります。</p>
+       <p><b>クレジット：</b>3Dモデル「RobotExpressive」作者 Tomás Laulhé（Quaternius）、改変 Don McCurdy、ライセンス CC0 1.0（three.js のサンプルより）。BGM・効果音はこのゲームのプログラムで作っています。</p>
        <p><b>キーボード：</b>矢印/WASD＝移動、J＝A、K＝B、スペース＝ジャンプ、L＝ガード、Esc＝メニュー。<b>ゲームパッド：</b>左＝A、右＝B、下・上＝ジャンプ、肩＝ガード。</p>
      </div>
      <div class="footer"><button class="btn" id="back">もどる</button></div>`,
@@ -561,7 +574,8 @@ function showSettings(): void {
        <div class="opt">スティック上でジャンプ ${seg('tj', [['on', 'する'], ['off', 'しない']], settings.tapJump ? 'on' : 'off')}</div>
        <div class="opt">振動（Androidのみ） ${seg('vib', [['on', 'する'], ['off', 'しない']], settings.vibration ? 'on' : 'off')}</div>
        <div class="opt">フレームレート表示 ${seg('fps', [['on', 'する'], ['off', 'しない']], settings.showFps ? 'on' : 'off')}</div>
-       <div class="opt">音量 ${seg('vol', [[0, 'なし'], [0.4, '小'], [0.7, '中'], [1, '大']], settings.volume)}</div>
+       <div class="opt">効果音 ${seg('vol', [[0, 'なし'], [0.4, '小'], [0.7, '中'], [1, '大']], settings.volume)}</div>
+       <div class="opt">BGM ${seg('bgm', [[0, 'なし'], [0.3, '小'], [0.5, '中'], [0.8, '大']], settings.bgmVolume)}</div>
        <label class="field" style="grid-column:1/-1">対戦サーバーのURL（wss://〜）<input type="url" id="server" value="${esc(settings.serverUrl)}" placeholder="wss://buttobi-server.あなたのアカウント.workers.dev"/></label>
      </div>
      <div class="footer"><button class="btn primary" id="back">保存してもどる</button></div>`,
@@ -582,6 +596,10 @@ function showSettings(): void {
       bindSeg(root, 'tj', (v) => (settings.tapJump = v === 'on'));
       bindSeg(root, 'vib', (v) => (settings.vibration = v === 'on'));
       bindSeg(root, 'fps', (v) => (settings.showFps = v === 'on'));
+      bindSeg(root, 'bgm', (v) => {
+        settings.bgmVolume = Number(v);
+        music.volume = settings.bgmVolume;
+      });
       bindSeg(root, 'vol', (v) => {
         settings.volume = Number(v);
         sfx.volume = settings.volume;
@@ -639,7 +657,7 @@ const net = new NetClient({
 
 function createRoom(attempt: number): void {
   if (!settings.serverUrl) return toast('対戦サーバーが設定されていません');
-  sfx.unlock();
+  unlockAudio();
   creating = true;
   createAttempts = attempt;
   const code = String(1000 + Math.floor(Math.random() * 9000));
@@ -661,7 +679,7 @@ function showJoin(): void {
       root.querySelector('#go')!.addEventListener('click', () => {
         const code = inp.value.trim();
         if (!isRoomCode(code)) return toast('4桁の数字を入力してください');
-        sfx.unlock();
+        unlockAudio();
         creating = false;
         showScreen(`<h2>接続中…</h2>`, 'overlay');
         net.connect(settings.serverUrl, code, false, settings.name || 'プレイヤー', settings.charId);
@@ -756,6 +774,7 @@ document.addEventListener('visibilitychange', () => {
 // ---------------------------------------------------------------------------
 startDemo();
 showTitle();
+void loadRobot().then(() => renderer.upgradeModels());
 requestAnimationFrame(loop);
 
 // 開発・自動テスト用（ブラウザのコンソールから状態を確認できる）
@@ -766,4 +785,5 @@ requestAnimationFrame(loop);
   get view() {
     return lastView;
   },
+  renderer,
 };
