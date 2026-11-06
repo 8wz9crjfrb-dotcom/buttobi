@@ -25,13 +25,16 @@ export interface Settings {
 
 const KEY = 'buttobi-settings-v1';
 
+/** 公開している対戦サーバー（Cloudflare Workers）。別のサーバーを使うときは VITE_SERVER_URL か設定画面で変更できる */
+const PUBLIC_SERVER_URL = 'wss://buttobi-server.8wz9crjfrb.workers.dev';
+
 function defaultServerUrl(): string {
   const env = import.meta.env.VITE_SERVER_URL as string | undefined;
   if (env) return env;
   const h = location.hostname;
   // 開発中（Mac で起動して同じ Wi-Fi の端末から開く）はローカルのサーバーにつなぐ
   if (h === 'localhost' || h === '127.0.0.1' || /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))/.test(h)) return `ws://${h}:8787`;
-  return '';
+  return PUBLIC_SERVER_URL;
 }
 
 export function loadSettings(): Settings {

@@ -76,7 +76,7 @@ npx wrangler deploy
 
 1. GitHub で**公開（Public）リポジトリ**を作り、このフォルダを push する（無料プランの GitHub Pages は公開リポジトリが条件です）
 2. リポジトリの Settings → Pages → Build and deployment の Source を「GitHub Actions」にする
-3. Settings → Secrets and variables → Actions → Variables タブで、`VITE_SERVER_URL` に 3-1 の `wss://…` を登録する
+3. 3-1 で公開したサーバーの `wss://…` を、`src/client/settings.ts` の `PUBLIC_SERVER_URL` に書く（Settings → Secrets and variables → Actions → Variables タブで `VITE_SERVER_URL` を登録した場合は、そちらが優先されます）
 4. main ブランチに push すると自動でビルド・公開されます（`.github/workflows/deploy-pages.yml`）
 5. `https://（ユーザー名）.github.io/（リポジトリ名）/` を iPhone の Safari / Android の Chrome で開き、「ホーム画面に追加」する
 
