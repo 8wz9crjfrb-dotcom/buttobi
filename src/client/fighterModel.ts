@@ -1,9 +1,11 @@
-// 仮の3Dキャラクター（基本図形の組み合わせ）と、状態に合わせた手続き的なアニメーション。
-// 後で glTF モデルに差し替えるときは、このクラスと同じ update() を持つクラスを作ればよい。
+// 3頭身のキャラクター（基本図形の組み合わせ）と、状態に合わせた手続き的なアニメーション。
+// アニメ調に見えるよう、陰影を段階的にする塗り（トゥーン）と輪郭線を付けている。
+// 色は衣装（costumes.ts）から受け取るので、着せ替えにも対応できる。
 
 import * as THREE from 'three';
 import type { CharacterDef } from '../shared/characters';
-import { MOVES } from '../shared/moves';
+import type { Costume } from '../shared/costumes';
+import { moveOf } from '../shared/moves';
 import type { ViewFighter } from '../shared/types';
 
 const FWD = -Math.PI / 2; // 腕・脚を前に向ける回転（x軸まわり）
@@ -21,109 +23,84 @@ interface Pose {
   spinZ: number;
   squash: number;
   bob: number;
+  headTilt: number;
 }
 
 function basePose(): Pose {
-  return { armL: 0.15, armR: -0.15, armLz: 0.15, armRz: -0.15, legL: 0, legR: 0, lean: 0, spinY: 0, spinZ: 0, squash: 1, bob: 0 };
+  return { armL: 0.12, armR: -0.12, armLz: 0.12, armRz: -0.12, legL: 0, legR: 0, lean: 0, spinY: 0, spinZ: 0, squash: 1, bob: 0, headTilt: 0 };
 }
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+// 陰影を3段階にするための小さなテクスチャ（全キャラで共有）
+let gradient: THREE.DataTexture | null = null;
+function toonGradient(): THREE.DataTexture {
+  if (!gradient) {
+    const data = new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]);
+    gradient = new THREE.DataTexture(data, 3, 1, THREE.RGBAFormat);
+    gradient.minFilter = THREE.NearestFilter;
+    gradient.magFilter = THREE.NearestFilter;
+    gradient.needsUpdate = true;
+  }
+  return gradient;
+}
+
+/** 輪郭線用の材質：裏面だけを、法線方向に少し膨らませて黒く描く */
+function makeOutlineMaterial(thickness: number): THREE.MeshBasicMaterial {
+  const m = new THREE.MeshBasicMaterial({ color: 0x1b1b28, side: THREE.BackSide });
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>\n transformed += normalize(normal) * ${thickness.toFixed(4)};`,
+    );
+  };
+  return m;
+}
+
 export class FighterModel {
   readonly root = new THREE.Group();
-  private body = new THREE.Group();
+  private turnGroup = new THREE.Group();
   /** 画面の奥行き方向の軸まわりに回すための入れ物（ふっとび中の回転用） */
   private spin = new THREE.Group();
+  private body = new THREE.Group();
   private hips = new THREE.Group();
+  private head = new THREE.Group();
   private armL = new THREE.Group();
   private armR = new THREE.Group();
   private legL = new THREE.Group();
   private legR = new THREE.Group();
+  private eyes: THREE.Object3D[] = [];
   private shieldMesh: THREE.Mesh;
   private marker: THREE.Mesh;
   private halo: THREE.Mesh;
-  private mats: THREE.MeshStandardMaterial[] = [];
-  private skin: THREE.MeshStandardMaterial;
+  private mats: THREE.MeshToonMaterial[] = [];
+  private glowMats: THREE.MeshBasicMaterial[] = [];
+  private outlineMat: THREE.MeshBasicMaterial;
   private turn = 0;
-  private visualFacing = 1;
+  private c: Costume['colors'];
+  private blinkSeed: number;
 
-  constructor(def: CharacterDef, slotColor: number) {
+  constructor(
+    private def: CharacterDef,
+    costume: Costume,
+    slotColor: number,
+  ) {
     const s = def.scale;
-    const main = new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.55, metalness: 0.05 });
-    const accent = new THREE.MeshStandardMaterial({ color: def.accent, roughness: 0.6 });
-    this.skin = new THREE.MeshStandardMaterial({ color: 0xffe0c2, roughness: 0.7 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x1b1b2a, roughness: 0.4 });
-    this.mats.push(main, accent, this.skin, dark);
+    this.c = costume.colors;
+    this.blinkSeed = Math.random() * 10;
+    this.outlineMat = makeOutlineMaterial(0.012);
 
-    this.root.add(this.spin);
+    this.root.add(this.turnGroup);
+    this.turnGroup.add(this.spin);
     this.spin.position.y = 0.9 * s;
     this.spin.add(this.body);
     this.body.rotation.order = 'YXZ';
     this.body.scale.setScalar(s);
 
-    // 腰（脚の付け根）
-    this.hips.position.y = 0.72;
-    this.body.add(this.hips);
-    for (const [g, x] of [
-      [this.legL, 0.15],
-      [this.legR, -0.15],
-    ] as const) {
-      g.position.set(x, 0, 0);
-      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.42, 4, 10), accent);
-      leg.position.y = -0.33;
-      leg.castShadow = true;
-      g.add(leg);
-      const shoe = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), dark);
-      shoe.scale.set(1, 0.7, 1.4);
-      shoe.position.set(0, -0.62, 0.05);
-      shoe.castShadow = true;
-      g.add(shoe);
-      this.hips.add(g);
-    }
-
-    // 胴体
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.42, 6, 14), main);
-    torso.position.y = 1.08;
-    torso.castShadow = true;
-    this.body.add(torso);
-    const belt = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.05, 8, 20), accent);
-    belt.rotation.x = Math.PI / 2;
-    belt.position.y = 0.86;
-    this.body.add(belt);
-
-    // 腕
-    for (const [g, x] of [
-      [this.armL, 0.38],
-      [this.armR, -0.38],
-    ] as const) {
-      g.position.set(x, 1.34, 0);
-      const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.36, 4, 10), main);
-      arm.position.y = -0.26;
-      arm.castShadow = true;
-      g.add(arm);
-      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), this.skin);
-      hand.position.y = -0.52;
-      hand.castShadow = true;
-      g.add(hand);
-      this.body.add(g);
-    }
-
-    // 頭
-    const head = new THREE.Group();
-    head.position.y = 1.62;
-    this.body.add(head);
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 16), this.skin);
-    skull.castShadow = true;
-    head.add(skull);
-    for (const x of [0.1, -0.1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), dark);
-      eye.scale.set(1, 1.5, 0.6);
-      eye.position.set(x, 0.03, 0.27);
-      head.add(eye);
-    }
-    this.decorate(def.id, head, main, accent);
+    this.buildBase();
+    this.buildCharacter(def.id);
 
     // ガード（シールド）
     this.shieldMesh = new THREE.Mesh(
@@ -136,7 +113,7 @@ export class FighterModel {
     // 頭上の目印（プレイヤー番号の色）
     this.marker = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 4), new THREE.MeshBasicMaterial({ color: slotColor }));
     this.marker.rotation.x = Math.PI;
-    this.marker.position.y = 2.35 * s;
+    this.marker.position.y = 2.25 * s;
     this.root.add(this.marker);
 
     // 復活時の台
@@ -148,47 +125,210 @@ export class FighterModel {
     this.root.add(this.halo);
   }
 
-  private decorate(id: string, head: THREE.Group, main: THREE.Material, accent: THREE.Material): void {
-    if (id === 'mira') {
-      const band = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.045, 8, 24), accent);
-      band.rotation.x = Math.PI / 2 - 0.25;
-      band.position.y = 0.1;
-      head.add(band);
-      const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.3, 4, 8), main);
-      tail.position.set(0, 0.12, -0.38);
-      tail.rotation.x = 0.9;
-      head.add(tail);
-    } else if (id === 'bolt') {
-      for (let i = 0; i < 5; i++) {
-        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 6), main);
-        const a = -0.9 + i * 0.45;
-        spike.position.set(Math.sin(a) * 0.2, 0.26, -0.05 - Math.cos(a) * 0.05);
-        spike.rotation.set(-0.5, 0, -a * 0.6);
-        head.add(spike);
-      }
-    } else if (id === 'gran') {
-      for (const x of [0.2, -0.2]) {
-        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.3, 8), accent);
-        horn.position.set(x, 0.28, 0);
-        horn.rotation.z = x > 0 ? -0.5 : 0.5;
-        head.add(horn);
-      }
-      const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.1, 0.12), main);
-      jaw.position.set(0, -0.18, 0.22);
-      head.add(jaw);
-    } else if (id === 'pico') {
-      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 6), accent);
-      stem.position.set(0, 0.42, 0);
-      head.add(stem);
-      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), main);
-      ball.position.set(0, 0.6, 0);
-      head.add(ball);
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.31, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2.2), main);
-      cap.position.y = 0.02;
-      head.add(cap);
+  // ---------------------------------------------------------------- 部品づくり
+  private toon(color: number): THREE.MeshToonMaterial {
+    const m = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
+    this.mats.push(m);
+    return m;
+  }
+
+  private glow(color: number): THREE.MeshBasicMaterial {
+    const m = new THREE.MeshBasicMaterial({ color });
+    this.glowMats.push(m);
+    return m;
+  }
+
+  /** 部品を作って親に付ける（輪郭線つき） */
+  private part(
+    parent: THREE.Object3D,
+    geo: THREE.BufferGeometry,
+    mat: THREE.Material,
+    pos: [number, number, number],
+    opt: { rot?: [number, number, number]; scale?: [number, number, number]; outline?: boolean } = {},
+  ): THREE.Mesh {
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(...pos);
+    if (opt.rot) mesh.rotation.set(...opt.rot);
+    if (opt.scale) mesh.scale.set(...opt.scale);
+    mesh.castShadow = true;
+    parent.add(mesh);
+    if (opt.outline !== false) {
+      const ol = new THREE.Mesh(geo, this.outlineMat);
+      mesh.add(ol);
+    }
+    return mesh;
+  }
+
+  /** 4体共通の体（3頭身：頭が身長の約1/3） */
+  private buildBase(): void {
+    const c = this.c;
+    const wide = this.def.id === 'guard' ? 1.22 : this.def.id === 'thief' ? 0.95 : 1;
+    // 脚
+    this.hips.position.y = 0.62;
+    this.body.add(this.hips);
+    for (const [g, x] of [
+      [this.legL, 0.1 * wide],
+      [this.legR, -0.1 * wide],
+    ] as const) {
+      g.position.set(x, 0, 0);
+      this.part(g, new THREE.CapsuleGeometry(0.085, 0.3, 4, 10), this.toon(c.pants), [0, -0.25, 0]);
+      this.part(g, new THREE.SphereGeometry(0.1, 14, 10), this.toon(c.shoes), [0, -0.55, 0.04], { scale: [1, 0.68, 1.45] });
+      this.hips.add(g);
+    }
+    // 胴体
+    this.part(this.body, new THREE.CapsuleGeometry(0.2, 0.26, 6, 16), this.toon(c.main), [0, 0.9, 0], { scale: [1.12 * wide, 1, 0.82] });
+    // 腕
+    for (const [g, x] of [
+      [this.armL, 0.29 * wide],
+      [this.armR, -0.29 * wide],
+    ] as const) {
+      g.position.set(x, 1.12, 0);
+      this.part(g, new THREE.CapsuleGeometry(0.068, 0.26, 4, 10), this.toon(c.main), [0, -0.19, 0]);
+      this.part(g, new THREE.SphereGeometry(0.08, 12, 10), this.toon(c.skin), [0, -0.4, 0]);
+      this.body.add(g);
+    }
+    // 頭（首の付け根を中心に回す）
+    this.head.position.y = 1.2;
+    this.body.add(this.head);
+    this.part(this.head, new THREE.SphereGeometry(0.31, 26, 20), this.toon(c.skin), [0, 0.29, 0], { scale: [1, 0.95, 0.95] });
+    // 目（大きめの縦長＋ハイライト）
+    const eyeMat = this.toon(0x1d1d2b);
+    const white = this.glow(0xffffff);
+    for (const x of [0.11, -0.11]) {
+      const eye = new THREE.Group();
+      eye.position.set(x, 0.27, 0.27);
+      this.part(eye, new THREE.SphereGeometry(0.05, 12, 10), eyeMat, [0, 0, 0], { scale: [0.85, 1.3, 0.35], outline: false });
+      this.part(eye, new THREE.SphereGeometry(0.017, 8, 6), white, [0.016, 0.03, 0.02], { outline: false });
+      this.head.add(eye);
+      this.eyes.push(eye);
     }
   }
 
+  private mouth(): void {
+    this.part(this.head, new THREE.CapsuleGeometry(0.011, 0.045, 3, 6), this.toon(0x7a3a3a), [0, 0.17, 0.285], { rot: [0, 0, Math.PI / 2], outline: false });
+  }
+
+  private brows(angle: number, color: number): void {
+    for (const x of [0.11, -0.11]) {
+      this.part(this.head, new THREE.BoxGeometry(0.1, 0.022, 0.02), this.toon(color), [x, 0.37, 0.28], { rot: [0, 0, x > 0 ? -angle : angle], outline: false });
+    }
+  }
+
+  /** 手に持たせる（腕の先に付ける） */
+  private hand(arm: THREE.Group): THREE.Group {
+    const g = new THREE.Group();
+    g.position.set(0, -0.42, 0);
+    arm.add(g);
+    return g;
+  }
+
+  // ---------------------------------------------------------------- キャラ別
+  private buildCharacter(id: string): void {
+    const c = this.c;
+    const h = this.head;
+    if (id === 'guard') {
+      // データセンター警備員：制帽・反射ベスト・無線機
+      this.brows(0.15, c.hair);
+      this.mouth();
+      for (const x of [0.285, -0.285]) this.part(h, new THREE.BoxGeometry(0.03, 0.07, 0.06), this.toon(c.hair), [x, 0.33, 0.02], { outline: false });
+      const cap = this.toon(c.main);
+      this.part(h, new THREE.CylinderGeometry(0.31, 0.32, 0.16, 24), cap, [0, 0.5, 0]);
+      this.part(h, new THREE.CylinderGeometry(0.35, 0.31, 0.07, 24), cap, [0, 0.6, 0]);
+      this.part(h, new THREE.BoxGeometry(0.34, 0.03, 0.17), this.toon(0x15151c), [0, 0.43, 0.3], { rot: [0.25, 0, 0] });
+      this.part(h, new THREE.BoxGeometry(0.07, 0.06, 0.02), this.glow(0xffd23f), [0, 0.53, 0.32], { outline: false });
+      // ベスト（反射材のラインつき）
+      this.part(this.body, new THREE.CapsuleGeometry(0.205, 0.2, 6, 16), this.toon(c.sub), [0, 0.92, 0], { scale: [1.12 * 1.22 + 0.04, 0.95, 0.88] });
+      for (const y of [0.85, 0.98]) {
+        this.part(this.body, new THREE.BoxGeometry(0.58, 0.035, 0.37), this.toon(c.accent), [0, y, 0], { outline: false });
+      }
+      this.part(this.body, new THREE.BoxGeometry(0.58, 0.06, 0.36), this.toon(0x15151c), [0, 0.66, 0], { outline: false });
+      // 無線機
+      this.part(this.body, new THREE.BoxGeometry(0.08, 0.12, 0.05), this.toon(0x15151c), [0.2, 1.1, 0.15]);
+      this.part(this.body, new THREE.CylinderGeometry(0.008, 0.008, 0.12, 6), this.toon(0x15151c), [0.22, 1.21, 0.15], { outline: false });
+    } else if (id === 'hacker') {
+      // ハッカー：フード・光るメガネ・ノートPC
+      this.mouth();
+      const hood = this.toon(c.main);
+      this.part(h, new THREE.SphereGeometry(0.37, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.62), hood, [0, 0.31, -0.03], { rot: [-0.45, 0, 0], scale: [1, 1, 1.05] });
+      this.part(h, new THREE.TorusGeometry(0.28, 0.04, 8, 24), hood, [0, 0.29, 0.17]);
+      for (const [x, r] of [
+        [0.08, 0.3],
+        [-0.02, -0.1],
+        [-0.12, -0.4],
+      ]) {
+        this.part(h, new THREE.ConeGeometry(0.06, 0.16, 6), this.toon(c.hair), [x, 0.43, 0.24], { rot: [1.9, 0, r], outline: false });
+      }
+      const glass = this.glow(c.accent);
+      for (const x of [0.11, -0.11]) this.part(h, new THREE.BoxGeometry(0.13, 0.08, 0.02), glass, [x, 0.27, 0.31], { outline: false });
+      this.part(h, new THREE.BoxGeometry(0.06, 0.015, 0.015), glass, [0, 0.29, 0.31], { outline: false });
+      // パーカーのひも・ポケット・ファスナー
+      for (const x of [0.06, -0.06]) this.part(this.body, new THREE.CylinderGeometry(0.008, 0.008, 0.18, 6), this.toon(0xeeeeee), [x, 1.05, 0.17], { outline: false });
+      this.part(this.body, new THREE.BoxGeometry(0.26, 0.1, 0.03), this.toon(c.sub), [0, 0.76, 0.16], { outline: false });
+      this.part(this.body, new THREE.BoxGeometry(0.015, 0.36, 0.01), glass, [0, 0.95, 0.17], { outline: false });
+      // ノートPC（左手）
+      const laptop = this.hand(this.armL);
+      this.part(laptop, new THREE.BoxGeometry(0.3, 0.02, 0.21), this.toon(0x9aa0aa), [0, 0, 0.08], { rot: [0.3, 0, 0] });
+      this.part(laptop, new THREE.BoxGeometry(0.28, 0.17, 0.012), glass, [0, 0.09, -0.03], { rot: [-0.9, 0, 0], outline: false });
+    } else if (id === 'thief') {
+      // データ泥棒：ニット帽・マスク・USBメモリ
+      this.brows(-0.3, c.hair);
+      const beanie = this.toon(c.sub);
+      this.part(h, new THREE.SphereGeometry(0.33, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), beanie, [0, 0.33, 0], { scale: [1, 1.05, 1] });
+      this.part(h, new THREE.TorusGeometry(0.31, 0.045, 8, 26), this.toon(c.main), [0, 0.35, 0], { rot: [Math.PI / 2, 0, 0] });
+      for (const [x, z, r] of [
+        [0.26, -0.1, -1.0],
+        [-0.26, -0.1, 1.0],
+        [0.1, -0.27, -0.4],
+      ]) {
+        this.part(h, new THREE.ConeGeometry(0.05, 0.18, 6), this.toon(c.hair), [x, 0.3, z], { rot: [-0.5, 0, r], outline: false });
+      }
+      // マスク（顔の下半分）
+      this.part(h, new THREE.SphereGeometry(0.318, 22, 10, Math.PI / 2 - 1.0, 2.0, Math.PI * 0.55, Math.PI * 0.27), this.toon(0x3a3150), [0, 0.29, 0], { scale: [1.01, 0.96, 0.96], outline: false });
+      // ジャケットの襟
+      this.part(this.body, new THREE.TorusGeometry(0.15, 0.04, 8, 20), this.toon(c.accent), [0, 1.18, 0], { rot: [Math.PI / 2, 0, 0] });
+      this.part(this.body, new THREE.BoxGeometry(0.02, 0.4, 0.01), this.toon(c.accent), [0, 0.92, 0.17], { outline: false });
+      // USBメモリ（右手）
+      const usb = this.hand(this.armR);
+      this.part(usb, new THREE.BoxGeometry(0.05, 0.12, 0.03), this.glow(c.accent), [0, -0.06, 0.05], { outline: false });
+      this.part(usb, new THREE.BoxGeometry(0.035, 0.05, 0.02), this.toon(0xcccccc), [0, -0.14, 0.05], { outline: false });
+    } else if (id === 'streamer') {
+      // 配信者：ボブヘア・ねこ耳ヘッドホン・自撮り棒
+      this.mouth();
+      const hair = this.toon(c.hair);
+      // 髪は後ろに傾けてかぶせ、顔（目）にかからないようにする
+      this.part(h, new THREE.SphereGeometry(0.34, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.58), hair, [0, 0.31, -0.03], { rot: [-0.55, 0, 0] });
+      for (const [x, col] of [
+        [0.26, c.hair],
+        [-0.26, c.accent],
+      ] as const) {
+        this.part(h, new THREE.CapsuleGeometry(0.075, 0.2, 4, 8), this.toon(col), [x, 0.17, 0.05]);
+      }
+      for (let i = 0; i < 4; i++) {
+        this.part(h, new THREE.CapsuleGeometry(0.045, 0.07, 4, 6), hair, [-0.15 + i * 0.1, 0.5, 0.22], { rot: [0.9, 0, 0], outline: false });
+      }
+      // ほっぺ
+      for (const x of [0.17, -0.17]) this.part(h, new THREE.SphereGeometry(0.04, 10, 8), this.glow(0xff9bb5), [x, 0.2, 0.25], { scale: [1, 0.6, 0.3], outline: false });
+      // ねこ耳ヘッドホン
+      const hp = this.toon(c.main);
+      this.part(h, new THREE.TorusGeometry(0.35, 0.03, 8, 24, Math.PI), hp, [0, 0.3, 0]);
+      for (const x of [0.35, -0.35]) {
+        this.part(h, new THREE.CylinderGeometry(0.1, 0.1, 0.08, 18), hp, [x, 0.27, 0], { rot: [0, 0, Math.PI / 2] });
+        this.part(h, new THREE.CylinderGeometry(0.065, 0.065, 0.085, 14), this.glow(c.accent), [x * 1.02, 0.27, 0], { rot: [0, 0, Math.PI / 2], outline: false });
+        this.part(h, new THREE.ConeGeometry(0.07, 0.13, 4), hp, [x * 0.55, 0.6, 0], { rot: [0, Math.PI / 4, x > 0 ? -0.35 : 0.35] });
+      }
+      // パーカー（フードを下ろしている）
+      this.part(this.body, new THREE.TorusGeometry(0.17, 0.06, 8, 20), this.toon(c.sub), [0, 1.17, -0.03], { rot: [Math.PI / 2 - 0.3, 0, 0] });
+      for (const x of [0.05, -0.05]) this.part(this.body, new THREE.CylinderGeometry(0.008, 0.008, 0.16, 6), this.toon(c.accent), [x, 1.04, 0.17], { outline: false });
+      // 自撮り棒とスマホ（右手）
+      const stick = this.hand(this.armR);
+      // 手から上へ伸ばし、先のスマホを自分に向ける
+      this.part(stick, new THREE.CylinderGeometry(0.012, 0.012, 0.6, 6), this.toon(0x444455), [0, 0.27, 0.1], { rot: [-0.35, 0, 0], outline: false });
+      this.part(stick, new THREE.BoxGeometry(0.11, 0.19, 0.02), this.toon(0x222233), [0, 0.58, 0.21], { rot: [-0.35, 0, 0] });
+      this.part(stick, new THREE.BoxGeometry(0.095, 0.17, 0.005), this.glow(c.accent), [0, 0.58, 0.195], { rot: [-0.35, 0, 0], outline: false });
+    }
+  }
+
+  // ---------------------------------------------------------------- 毎フレームの更新
   update(v: ViewFighter, def: CharacterDef, time: number, dt: number): void {
     const visible = v.state !== 'dead';
     this.root.visible = visible;
@@ -196,39 +336,75 @@ export class FighterModel {
     this.root.position.set(v.x, v.y, 0);
 
     // 向き：少しカメラ側を向かせる
-    if (v.facing !== this.visualFacing) this.visualFacing = v.facing;
-    const targetTurn = this.visualFacing * (Math.PI / 2 - 0.45);
-    this.turn += (targetTurn - this.turn) * Math.min(1, dt * 18);
+    const target = this.victory ? 0 : v.facing * (Math.PI / 2 - 0.45);
+    this.turn += (target - this.turn) * Math.min(1, dt * 18);
 
-    const p = this.pose(v, def, time);
-    this.body.rotation.set(p.lean, this.turn + p.spinY, 0);
+    const p = this.victory ? this.victoryPose(time) : this.pose(v, def, time);
+    this.turnGroup.rotation.y = this.turn + p.spinY;
     this.spin.rotation.z = p.spinZ;
+    this.body.rotation.set(p.lean, 0, 0);
     this.body.position.y = -0.9 * def.scale + p.bob;
-    this.body.scale.set(def.scale * (2 - p.squash) ** 0.5, def.scale * p.squash, def.scale * (2 - p.squash) ** 0.5);
+    const sq = p.squash;
+    this.body.scale.set(def.scale * Math.sqrt(2 - sq), def.scale * sq, def.scale * Math.sqrt(2 - sq));
     this.armL.rotation.set(p.armL, 0, p.armLz);
     this.armR.rotation.set(p.armR, 0, p.armRz);
     this.legL.rotation.x = p.legL;
     this.legR.rotation.x = p.legR;
+    this.head.rotation.set(p.headTilt, 0, 0);
+
+    // まばたき（眠っている間は目を閉じる）
+    const blinking = v.state === 'sleep' || (time + this.blinkSeed) % 3.7 < 0.12;
+    for (const e of this.eyes) e.scale.y = blinking ? 0.12 : 1;
 
     // ガード
     const shielding = v.state === 'shield';
     this.shieldMesh.visible = shielding;
     if (shielding) this.shieldMesh.scale.setScalar((0.55 + 0.6 * v.shield) * def.scale);
 
-    // 無敵中の点滅・溜めの発光・回避の半透明
-    const flash = v.invuln && Math.floor(time * 20) % 2 === 0;
+    // 無敵の点滅・溜めの発光・回避や透明化・毒
+    const md = v.state === 'attack' && v.move ? moveOf(def.id, v.move) : null;
+    const invisible = md?.special === 'invis' && v.moveFrame >= Math.round(md.startup * def.frameMul) && v.moveFrame < Math.round(md.startup * def.frameMul) + md.active;
+    const flash = v.invuln && !invisible && Math.floor(time * 20) % 2 === 0;
     const charging = v.charge > 0;
-    const ghost = v.state === 'dodge' || v.state === 'airdodge';
+    const ghost = v.state === 'dodge' || v.state === 'airdodge' || invisible;
     const helpless = v.state === 'helpless';
+    const poisoned = v.poison && Math.floor(time * 6) % 2 === 0;
+    const opacity = invisible ? 0.12 : ghost ? 0.45 : 1;
     for (const m of this.mats) {
-      m.emissive.setHex(flash ? 0x666666 : charging ? 0xffaa00 : 0x000000);
+      m.emissive.setHex(flash ? 0x555555 : charging ? 0xffaa00 : poisoned ? 0x5a1a7a : helpless ? 0x220022 : 0x000000);
       m.emissiveIntensity = charging ? 0.3 + 0.3 * Math.sin(time * 30) : 1;
-      m.transparent = ghost;
-      m.opacity = ghost ? 0.45 : 1;
-      if (helpless) m.emissive.setHex(0x220022);
+      m.transparent = opacity < 1;
+      m.opacity = opacity;
     }
+    for (const m of this.glowMats) {
+      m.transparent = opacity < 1;
+      m.opacity = opacity;
+    }
+    this.outlineMat.transparent = opacity < 1;
+    this.outlineMat.opacity = opacity;
+    this.outlineMat.visible = opacity > 0.3;
     this.halo.visible = v.state === 'respawn';
-    this.marker.position.y = 2.35 * def.scale + Math.sin(time * 4) * 0.05;
+    this.marker.visible = !invisible;
+    this.marker.position.y = 2.25 * def.scale + Math.sin(time * 4) * 0.05;
+  }
+
+  private victory = false;
+  /** 結果画面で勝ったときのポーズ */
+  setVictory(on: boolean): void {
+    this.victory = on;
+  }
+
+  private victoryPose(time: number): Pose {
+    const p = basePose();
+    const b = Math.sin(time * 8);
+    p.bob = Math.abs(b) * 0.12;
+    p.armR = UP * 0.9 + b * 0.2;
+    p.armL = 0.3 - b * 0.3;
+    p.armLz = 0.6;
+    p.legL = b * 0.3;
+    p.legR = -b * 0.3;
+    p.headTilt = -0.1;
+    return p;
   }
 
   private pose(v: ViewFighter, def: CharacterDef, time: number): Pose {
@@ -238,29 +414,28 @@ export class FighterModel {
       case 'idle':
       case 'respawn': {
         const b = Math.sin(time * 3 + v.slot);
-        p.bob = b * 0.02;
+        p.bob = b * 0.015;
         p.armL = 0.1 + b * 0.05;
         p.armR = -0.1 - b * 0.05;
         break;
       }
       case 'run': {
-        const c = Math.sin(t * 0.38);
-        p.legL = c * 0.9;
-        p.legR = -c * 0.9;
-        p.armL = -c * 0.8;
-        p.armR = c * 0.8;
-        p.lean = 0.25;
-        p.bob = Math.abs(Math.cos(t * 0.38)) * 0.06;
+        const c = Math.sin(t * 0.42);
+        p.legL = c * 1.0;
+        p.legR = -c * 1.0;
+        p.armL = -c * 0.9;
+        p.armR = c * 0.9;
+        p.lean = 0.28;
+        p.bob = Math.abs(Math.cos(t * 0.42)) * 0.06;
         break;
       }
       case 'air':
-        p.legL = -0.7;
+        p.legL = -0.8;
         p.legR = 0.35;
         p.armL = -0.6;
         p.armR = -1.2;
         p.armLz = 0.5;
         p.armRz = -0.5;
-        if (t < 18) p.spinZ = 0;
         break;
       case 'land':
         p.squash = t < 4 ? 0.8 : 0.9 + Math.min(0.1, t * 0.01);
@@ -278,13 +453,17 @@ export class FighterModel {
         p.legL = 0.6;
         p.legR = -0.3;
         p.lean = -0.5;
+        p.headTilt = -0.3;
         if (t > 4 && v.damage > 40) p.spinZ = t * 0.35 * -v.facing;
         break;
       case 'shieldbreak':
-        p.lean = -0.3 + Math.sin(time * 5) * 0.2;
-        p.armL = 0.4;
-        p.armR = -0.4;
-        p.spinY = Math.sin(time * 4) * 0.4;
+      case 'sleep':
+        p.lean = -0.15 + Math.sin(time * 2) * 0.05;
+        p.headTilt = 0.35;
+        p.armL = 0.15;
+        p.armR = -0.15;
+        p.squash = 0.95;
+        if (v.state === 'shieldbreak') p.spinY = Math.sin(time * 4) * 0.4;
         break;
       case 'dodge':
         p.squash = 0.85;
@@ -319,7 +498,7 @@ export class FighterModel {
 
   private attackPose(v: ViewFighter, def: CharacterDef, p: Pose): void {
     if (!v.move) return;
-    const md = MOVES[v.move];
+    const md = moveOf(def.id, v.move);
     const s = Math.max(1, Math.round(md.startup * def.frameMul));
     const a = md.active;
     const e = Math.max(1, Math.round(md.end * def.frameMul));
@@ -327,6 +506,67 @@ export class FighterModel {
     // 0→1: 振りかぶり、1: 攻撃の瞬間、1→0: 戻り
     const k = f < s ? f / s : f < s + a ? 1 : Math.max(0, 1 - (f - s - a) / e);
     const wind = f < s ? Math.sin((f / s) * Math.PI) : 0;
+    // 必殺技は種類ごとのポーズ
+    switch (md.special) {
+      case 'shot':
+        if (v.move === 'nspecial' && def.id === 'streamer') {
+          p.armR = lerp(UP * 0.9, FWD * 0.8, k);
+        } else if (v.move === 'nspecial' && def.id === 'guard') {
+          p.armL = FWD * 0.7;
+          p.armR = FWD * 0.7;
+          p.headTilt = 0.15;
+        } else {
+          p.armR = lerp(0.3, FWD, k);
+          p.armL = lerp(0.2, FWD * 0.6, k);
+          p.lean = 0.1 * k;
+        }
+        return;
+      case 'wall':
+        p.armL = FWD * k;
+        p.armR = FWD * k;
+        p.lean = 0.2 * k;
+        return;
+      case 'counter':
+        p.armL = FWD * 0.75;
+        p.armR = FWD * 0.75;
+        p.armLz = -0.7;
+        p.armRz = 0.7;
+        p.squash = 0.92;
+        return;
+      case 'trap':
+        p.squash = 0.8;
+        p.armR = FWD * 0.5 * k;
+        p.lean = 0.25;
+        return;
+      case 'invis':
+        p.squash = 0.85;
+        p.lean = 0.3;
+        p.armL = 0.6;
+        p.armR = -0.6;
+        return;
+      case 'teleport':
+        p.armR = lerp(UP * 0.8, FWD * 1.1, k);
+        p.lean = 0.3 * k;
+        return;
+      case 'sleep':
+        p.armR = UP;
+        p.armL = 0.3;
+        p.headTilt = -0.2;
+        return;
+      case 'dash':
+        p.armR = FWD;
+        p.lean = 0.7 * k;
+        p.legL = 0.6 * k;
+        p.legR = -0.6 * k;
+        return;
+      case 'recovery':
+      case 'platform':
+        p.armR = UP;
+        p.armL = UP * 0.4;
+        if (def.id === 'thief') p.spinY = f * 0.6;
+        if (md.riseVx) p.lean = 0.5;
+        return;
+    }
     switch (v.move) {
       case 'jab':
         p.armR = lerp(-0.1, FWD * 1.05, k);
@@ -388,28 +628,6 @@ export class FighterModel {
         p.armR = UP * 0.6;
         p.squash = lerp(0.9, 1.1, k);
         break;
-      case 'nspecial':
-        p.armR = lerp(0.3, FWD, k);
-        p.armL = lerp(0.3, FWD, k);
-        break;
-      case 'sspecial':
-        p.armR = FWD;
-        p.lean = 0.7 * k;
-        p.legL = 0.6 * k;
-        p.legR = -0.6 * k;
-        break;
-      case 'uspecial':
-        p.armR = UP;
-        p.armL = UP * 0.4;
-        p.spinY = f * 0.6;
-        break;
-      case 'dspecial':
-        p.squash = f < s ? 0.75 : 1.05;
-        p.armL = f < s ? UP : 0.8;
-        p.armR = f < s ? UP : -0.8;
-        p.armLz = 1;
-        p.armRz = -1;
-        break;
       case 'grab':
         p.armR = lerp(0, FWD, k);
         p.armL = lerp(0, FWD, k);
@@ -422,9 +640,9 @@ export class FighterModel {
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
-      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-      else mat?.dispose();
     });
+    for (const m of this.mats) m.dispose();
+    for (const m of this.glowMats) m.dispose();
+    this.outlineMat.dispose();
   }
 }

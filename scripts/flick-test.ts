@@ -3,7 +3,7 @@ import { Sim, COUNTDOWN_FRAMES } from '../src/shared/sim';
 import { BTN_A, type InputState } from '../src/shared/types';
 
 function run(seq: InputState[]): Sim {
-  const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'mira', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: 'mira', cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'stock', stocks: 3, timeLimit: 300 }, seed: 1 });
+  const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'streamer', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: 'streamer', cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'stock', stocks: 3, timeLimit: 300 }, seed: 1 });
   const idle = new Map<number, InputState>();
   while (sim.frame <= COUNTDOWN_FRAMES) sim.step(idle);
   for (const inp of seq) sim.step(new Map([[0, inp]]));
@@ -30,4 +30,10 @@ check('3フレームで横にはじいてAでスマッシュ', s.fighters[0].mov
 // ゆっくり横へ倒してから A → 横攻撃（スマッシュにならない）
 s = run([...Array.from({ length: 15 }, (_, i) => ({ mx: (i + 1) / 15, my: 0, buttons: 0 })), { mx: 1, my: 0, buttons: BTN_A }]);
 check('ゆっくり横に倒してAは横攻撃', s.fighters[0].move === 'side');
+// 上にはじきながらB → ジャンプではなく上必殺技
+s = run([{ mx: 0, my: 0, buttons: 0 }, { mx: 0, my: 0.5, buttons: 0 }, { mx: 0, my: 1, buttons: 2 }, { mx: 0, my: 1, buttons: 2 }]);
+check('上にはじきながらBで上必殺技', s.fighters[0].move === 'uspecial');
+// 上にはじきながらA → 上攻撃
+s = run([{ mx: 0, my: 0, buttons: 0 }, { mx: 0, my: 0.5, buttons: 0 }, { mx: 0, my: 1, buttons: BTN_A }, { mx: 0, my: 1, buttons: BTN_A }]);
+check('上にはじきながらAで上攻撃', s.fighters[0].move === 'up');
 process.exit(fail ? 1 : 0);

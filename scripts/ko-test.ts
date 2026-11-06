@@ -1,10 +1,10 @@
 // 中央付近でスマッシュ攻撃を当てたとき、何%で撃墜できるかを調べる
 import { Sim } from '../src/shared/sim';
 import { BTN_A, type InputState } from '../src/shared/types';
-for (const victimChar of ['bolt', 'mira', 'gran']) {
+for (const victimChar of ['thief', 'streamer', 'guard']) {
   let koAt = -1;
   for (let pct = 0; pct <= 300; pct += 5) {
-    const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'mira', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: victimChar, cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'stock', stocks: 3, timeLimit: 300 }, seed: 1 });
+    const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'streamer', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: victimChar, cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'stock', stocks: 3, timeLimit: 300 }, seed: 1 });
     const [a, b] = sim.fighters;
     a.x = 2; a.facing = 1; b.x = 3.2; b.facing = -1; b.damage = pct;
     const none = new Map<number, InputState>();

@@ -28,7 +28,8 @@ export type FighterStateName =
   | 'ledge'
   | 'helpless'
   | 'dead'
-  | 'respawn';
+  | 'respawn'
+  | 'sleep';
 
 export const STATE_NAMES: FighterStateName[] = [
   'idle',
@@ -45,6 +46,7 @@ export const STATE_NAMES: FighterStateName[] = [
   'helpless',
   'dead',
   'respawn',
+  'sleep',
 ];
 
 export type MoveId =
@@ -99,6 +101,8 @@ export interface PlayerSetup {
   charId: string;
   cpu: boolean;
   cpuLevel: number;
+  /** 衣装の id（未指定ならいつもの服） */
+  costume?: string;
 }
 
 export interface MatchSetup {
@@ -115,6 +119,11 @@ export type GameEvent =
   | { k: 'ko'; x: number; y: number; s: number }
   | { k: 'jump'; s: number }
   | { k: 'land'; x: number; y: number; s: number; p: number }
+  | { k: 'counter'; x: number; y: number; s: number }
+  | { k: 'flash'; x: number; y: number; s: number }
+  | { k: 'boom'; x: number; y: number }
+  | { k: 'teleport'; x: number; y: number; s: number }
+  | { k: 'sleep'; x: number; y: number; s: number }
   | { k: 'shot'; s: number };
 
 /** 描画用の選手の状態（ローカル対戦でもオンライン対戦でも同じ形） */
@@ -135,12 +144,24 @@ export interface ViewFighter {
   kos: number;
   falls: number;
   out: boolean;
+  /** 毒（マルウェア）でじわじわダメージを受けている */
+  poison: boolean;
 }
 
 export interface ViewProjectile {
   x: number;
   y: number;
   owner: number;
+  kind: string;
+}
+
+/** ステージに置かれる物（壁・罠・一時的な足場） */
+export interface ViewEntity {
+  kind: 'wall' | 'trap' | 'popup';
+  x: number;
+  y: number;
+  owner: number;
+  life: number;
 }
 
 export interface ViewState {
@@ -149,6 +170,7 @@ export interface ViewState {
   countdown: number;
   fighters: ViewFighter[];
   projectiles: ViewProjectile[];
+  entities: ViewEntity[];
   events: GameEvent[];
   ended: boolean;
 }

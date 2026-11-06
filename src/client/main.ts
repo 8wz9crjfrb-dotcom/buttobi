@@ -7,7 +7,6 @@ import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
 import { Sim } from '../shared/sim';
 import { STAGES, getStage } from '../shared/stages';
 import type { GameEvent, InputState, MatchRules, MatchSetup, ResultEntry, ViewState } from '../shared/types';
-import { loadRobot } from './assets';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { InputManager } from './input';
@@ -290,6 +289,11 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     } else if (e.k === 'jump' && e.s === mySlot) sfx.jump();
     else if (e.k === 'shield') sfx.shield();
     else if (e.k === 'shot') sfx.shot();
+    else if (e.k === 'counter') sfx.counter();
+    else if (e.k === 'boom') sfx.boom();
+    else if (e.k === 'flash') sfx.shutter();
+    else if (e.k === 'teleport') sfx.warp();
+    else if (e.k === 'sleep') sfx.sleep();
   }
   const c = view.countdown > 100 ? 3 : view.countdown > 50 ? 2 : view.countdown > 0 ? 1 : 0;
   if (c !== lastCountdownBeep) {
@@ -342,18 +346,26 @@ function bindSeg(root: HTMLElement, name: string, onChange: (v: string) => void)
   });
 }
 
+function charInfo(id: string): string {
+  const c = getCharacter(id);
+  const n = c.specialNames;
+  return `<b>${c.name}</b>（${c.role}）${c.desc}<br/>必殺技：B「${n.n}」／横B「${n.s}」／下B「${n.d}」／上B「${n.u}」`;
+}
+
 function charCards(selected: string): string {
   return `<div class="chars">${CHARACTERS.map(
     (c) => `<div class="char-card ${c.id === selected ? 'on' : ''}" data-char="${c.id}">
       <div class="swatch" style="background:${hex(c.color)}"></div>
       <div class="nm">${c.name}</div><div class="rl">${c.role}</div></div>`,
-  ).join('')}</div>`;
+  ).join('')}</div><div class="char-info">${charInfo(selected)}</div>`;
 }
 
 function bindChars(root: HTMLElement, onPick: (id: string) => void): void {
   root.querySelectorAll<HTMLElement>('.char-card').forEach((el) =>
     el.addEventListener('click', () => {
       root.querySelectorAll('.char-card').forEach((x) => x.classList.toggle('on', x === el));
+      const info = root.querySelector('.char-info');
+      if (info) info.innerHTML = charInfo(el.dataset.char!);
       sfx.click();
       onPick(el.dataset.char!);
     }),
@@ -552,10 +564,14 @@ function showHowTo(): void {
        <p><b>ルール：</b>攻撃を当てると相手のダメージ%が増え、%が高いほど遠くへ飛びます。画面の外まで飛ばすと撃墜です。</p>
        <p><b>移動：</b>画面の左半分をなぞるとスティックが出ます。大きく倒すとダッシュ。上にはじくとジャンプ（設定で切替）、下にはじくと足場をすり抜けます。</p>
        <p><b>A（攻撃）：</b>スティックの向き＋Aで技が変わります。横に素早くはじきながらAで強力なスマッシュ攻撃（Aを押し続けると溜め）。空中では空中攻撃。</p>
-       <p><b>B（必殺技）：</b>そのまま＝飛び道具、横＝突進、上＝復帰技（使った後は着地まで無防備）、下＝叩きつけ。</p>
+       <p><b>B（必殺技）：</b>キャラごとに4種類（そのまま・横・下・上）。上の必殺技は復帰に使え、使った後は着地まで無防備になります。</p>
+       <p><b>データセンター警備員：</b>B 利用規約を読み上げる（ゆっくり進む文字で長くひるませる）／横B 物理ファイアウォール（壁で飛び道具を防ぎ、相手を押し返す）／下B クレーム対応（構え中に攻撃されると1.3倍で返す）／上B 非常口ダッシュ（斜め上へ突進）</p>
+       <p><b>ハッカー：</b>B DDoS（3連射）／横B 全体メール誤送信（3方向に飛ぶ封筒）／下B キャッシュ（触れると爆発する罠、1個まで）／上B ポップアップ広告（窓を足場にして上昇）</p>
+       <p><b>データ泥棒：</b>B マルウェア（約3秒間じわじわダメージ）／横B スクショ（高速で突き抜ける）／下B オフライン表示（一瞬透明になり攻撃が当たらない）／上B 炎上させる（炎をまとって上昇）</p>
+       <p><b>配信者：</b>B 投げ銭（山なりのコイン）／横B 切り抜き（瞬間移動して斬る）／下B 強制アップデート（近くの相手をしばらく動けなくする）／上B スパチャ読み（上昇しながらハートを飛ばす）</p>
        <p><b>ガード：</b>押している間ガード。ガード中にスティックをはじくと回避、ガード中にAでつかみ投げ（ガードを崩せます）。空中で押すと空中回避。</p>
        <p><b>崖：</b>ステージの端に近づくと自動でつかまります。スティック上かジャンプで上がります。</p>
-       <p><b>クレジット：</b>3Dモデル「RobotExpressive」作者 Tomás Laulhé（Quaternius）、改変 Don McCurdy、ライセンス CC0 1.0（three.js のサンプルより）。BGM・効果音はこのゲームのプログラムで作っています。</p>
+       <p><b>クレジット：</b>キャラクター・BGM・効果音はすべてこのゲームのプログラムで作っています。</p>
        <p><b>キーボード：</b>矢印/WASD＝移動、J＝A、K＝B、スペース＝ジャンプ、L＝ガード、Esc＝メニュー。<b>ゲームパッド：</b>左＝A、右＝B、下・上＝ジャンプ、肩＝ガード。</p>
      </div>
      <div class="footer"><button class="btn" id="back">もどる</button></div>`,
@@ -774,7 +790,6 @@ document.addEventListener('visibilitychange', () => {
 // ---------------------------------------------------------------------------
 startDemo();
 showTitle();
-void loadRobot().then(() => renderer.upgradeModels());
 requestAnimationFrame(loop);
 
 // 開発・自動テスト用（ブラウザのコンソールから状態を確認できる）

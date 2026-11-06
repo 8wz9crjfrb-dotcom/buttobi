@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, type CharacterDef } from './characters';
-import { MOVES, SHOT, type MoveDef } from './moves';
+import { moveOf, POPUP, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
   BTN_A,
@@ -33,23 +33,45 @@ export const HITSTUN_DRAG = 0.98;
 
 export interface Projectile {
   owner: number;
+  kind: ShotKind;
   x: number;
   y: number;
   vx: number;
+  vy: number;
+  gravity: number;
   life: number;
   dmg: number;
   base: number;
   growth: number;
   angle: number;
   r: number;
+  hitstunMul: number;
+  poison: number;
 }
+
+/** ステージに置かれる物（壁・罠・一時的な足場） */
+export interface Entity {
+  id: number;
+  kind: 'wall' | 'trap' | 'popup';
+  owner: number;
+  x: number;
+  y: number;
+  vy: number;
+  life: number;
+  age: number;
+}
+
+/** 毒のダメージ間隔（フレーム） */
+const POISON_TICK = 30;
+/** 一時的な足場の上に立っているときの groundRef（1000 + 足場の id） */
+const ENTITY_GROUND = 1000;
 
 const SNAPSHOT_KEYS = [
   'x', 'y', 'vx', 'vy', 'facing', 'grounded', 'groundRef', 'state', 'stateTime', 'jumpsLeft', 'sideBUsed',
   'airDodgeUsed', 'fastFall', 'shortHopArmed', 'damage', 'stocks', 'kos', 'falls', 'out', 'outFrame', 'move',
   'moveFrame', 'charge', 'hitstun', 'tumble', 'invuln', 'hitlag', 'shield', 'stun', 'lastHitBy', 'lastHitFrame',
   'ledgeSide', 'ledgeCooldown', 'dropThrough', 'respawnTimer', 'dodgeDir', 'prevButtons', 'prevMx', 'prevMy',
-  'flickX', 'flickY', 'neutralXAge', 'neutralYAge',
+  'flickX', 'flickY', 'neutralXAge', 'neutralYAge', 'poison', 'poisonFrom',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -105,6 +127,9 @@ export class Fighter {
   /** スティックが中央付近（0.3未満）にあってからのフレーム数 */
   neutralXAge = 0;
   neutralYAge = 0;
+  /** 毒の残りフレーム数と、毒を与えた人 */
+  poison = 0;
+  poisonFrom = -1;
 
   constructor(slot: number, charId: string) {
     this.slot = slot;
@@ -152,6 +177,8 @@ export class Sim {
   readonly stage: StageDef;
   fighters: Fighter[] = [];
   projectiles: Projectile[] = [];
+  entities: Entity[] = [];
+  private nextEntityId = 1;
   frame = 0;
   events: GameEvent[] = [];
   ended = false;
@@ -219,6 +246,7 @@ export class Sim {
       }
       this.updateFighter(f);
     }
+    this.updateEntities();
     this.updateProjectiles();
     this.detectHits();
     for (const f of this.fighters) this.checkBlast(f);
@@ -264,6 +292,10 @@ export class Sim {
     if (f.ledgeCooldown > 0) f.ledgeCooldown--;
     if (f.dropThrough > 0) f.dropThrough--;
     if (f.state !== 'shield' && f.shield < SHIELD_MAX) f.shield = Math.min(SHIELD_MAX, f.shield + 0.08);
+    if (f.poison > 0) {
+      f.poison--;
+      if (f.alive && f.poison % POISON_TICK === 0) f.damage = Math.min(999, f.damage + 1);
+    }
 
     if (f.state === 'dead') {
       if (f.out) return;
@@ -325,6 +357,12 @@ export class Sim {
         f.stun--;
         if (f.stun <= 0 && f.grounded) this.setState(f, 'idle');
         break;
+      case 'sleep':
+        // 強制アップデート中：動けない
+        f.vx *= 0.8;
+        f.stun--;
+        if (f.stun <= 0) this.setState(f, f.grounded ? 'idle' : 'air');
+        break;
       case 'dodge': {
         const total = 22;
         if (f.dodgeDir !== 0 && f.stateTime < 16) f.vx = f.dodgeDir * 8;
@@ -353,7 +391,7 @@ export class Sim {
       }
       if (f.vy <= 0) f.shortHopArmed = false;
     }
-    if (f.grounded && f.groundRef >= 0) {
+    if (f.grounded && f.groundRef >= 0 && f.groundRef < ENTITY_GROUND) {
       const p = platformAt(this.stage.platforms[f.groundRef], this.frame);
       f.x += p.dx;
     }
@@ -373,12 +411,13 @@ export class Sim {
       this.setState(f, 'shield');
       return;
     }
+    // ボタンを先に判定する（スティックを上にはじきながらBを押したときは、ジャンプではなく上必殺技）
+    if (this.pressed(f, BTN_A)) return this.groundAttack(f);
+    if (this.pressed(f, BTN_B)) return this.special(f);
     if (this.pressed(f, BTN_JUMP) || (f.flickY === 0 && inp.my > 0.7)) {
       this.jump(f);
       return;
     }
-    if (this.pressed(f, BTN_A)) return this.groundAttack(f);
-    if (this.pressed(f, BTN_B)) return this.special(f);
     if (f.groundRef >= 0 && f.flickY <= 2 && inp.my < -0.7) {
       f.dropThrough = 14;
       f.grounded = false;
@@ -451,6 +490,9 @@ export class Sim {
     const d = f.def;
     const helpless = f.state === 'helpless';
     if (!helpless) {
+      // ボタンを先に判定する（上にはじきながらB → 上必殺技、上にはじきながらA → 上空中攻撃）
+      if (this.pressed(f, BTN_A)) return this.airAttack(f);
+      if (this.pressed(f, BTN_B)) return this.special(f);
       const wantJump = this.pressed(f, BTN_JUMP) || (f.flickY === 0 && inp.my > 0.7);
       if (wantJump && f.jumpsLeft > 0) {
         f.jumpsLeft--;
@@ -461,8 +503,6 @@ export class Sim {
         this.events.push({ k: 'jump', s: f.slot });
         return;
       }
-      if (this.pressed(f, BTN_A)) return this.airAttack(f);
-      if (this.pressed(f, BTN_B)) return this.special(f);
       if (this.pressed(f, BTN_SHIELD) && !f.airDodgeUsed) {
         f.airDodgeUsed = true;
         const len = Math.hypot(inp.mx, inp.my);
@@ -514,7 +554,11 @@ export class Sim {
     const inp = f.input;
     const ax = Math.abs(inp.mx);
     const ay = Math.abs(inp.my);
-    if (ay > 0.5 && ay >= ax) return this.startMove(f, inp.my > 0 ? 'uspecial' : 'dspecial');
+    if (ay > 0.5 && ay >= ax) {
+      // 上必殺技は、スティックを傾けた方向へ向き直る（斜めに飛ぶ技のため）
+      if (inp.my > 0 && Math.abs(inp.mx) > 0.3) f.facing = inp.mx > 0 ? 1 : -1;
+      return this.startMove(f, inp.my > 0 ? 'uspecial' : 'dspecial');
+    }
     if (ax > 0.5) {
       if (!f.grounded && f.sideBUsed) return;
       f.facing = inp.mx > 0 ? 1 : -1;
@@ -532,9 +576,13 @@ export class Sim {
     this.setState(f, 'attack');
   }
 
+  /** その選手が今出している技のデータ */
+  private moveDef(f: Fighter): MoveDef {
+    return moveOf(f.def.id, f.move!);
+  }
+
   private updateMove(f: Fighter): void {
-    const id = f.move!;
-    const md = MOVES[id];
+    const md = this.moveDef(f);
     const t = moveTiming(md, f);
     const inp = f.input;
 
@@ -545,58 +593,164 @@ export class Sim {
       f.moveFrame++;
     }
     const mf = f.moveFrame;
+    const sc = f.def.scale;
+
+    // 飛び道具（技ごとに決まったフレームで出す）
+    if (md.shots) for (const spec of md.shots) if (mf === t.s + spec.at) this.spawnShot(f, spec);
 
     if (mf === t.s) {
-      if (md.special === 'shot') this.spawnShot(f);
-      if (md.special === 'recovery') {
-        f.vy = f.def.recoveryV;
-        f.vx = inp.mx * 3;
-        f.grounded = false;
-        f.groundRef = -1;
-        f.fastFall = false;
+      switch (md.special) {
+        case 'recovery':
+          f.vy = md.riseV ?? 15;
+          f.vx = md.riseVx ? f.facing * md.riseVx + inp.mx * 1.5 : inp.mx * 3;
+          f.grounded = false;
+          f.groundRef = -1;
+          f.fastFall = false;
+          break;
+        case 'platform':
+          // ポップアップ広告：足元に窓（一時的な足場）を出して上昇
+          this.removeEntities(f.slot, 'popup');
+          this.addEntity('popup', f.slot, f.x, f.y - 0.05, POPUP.life);
+          f.vy = md.riseV ?? 15;
+          f.vx = inp.mx * 3;
+          f.grounded = false;
+          f.groundRef = -1;
+          f.fastFall = false;
+          break;
+        case 'wall':
+          this.removeEntities(f.slot, 'wall');
+          this.addEntity('wall', f.slot, f.x + f.facing * WALL.offset * sc, f.y, WALL.life);
+          break;
+        case 'trap':
+          this.removeEntities(f.slot, 'trap');
+          this.addEntity('trap', f.slot, f.x + f.facing * 0.5 * sc, f.y, TRAP.life);
+          break;
+        case 'teleport': {
+          this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot });
+          f.x += f.facing * 3;
+          if (!f.grounded) f.vy = 0;
+          break;
+        }
+        case 'invis':
+          f.invuln = Math.max(f.invuln, md.active);
+          break;
+        case 'dash':
+          if (!f.grounded) f.vy = Math.max(f.vy, 1.5);
+          this.events.push({ k: 'flash', x: f.x, y: f.y + 0.9 * sc, s: f.slot });
+          break;
       }
-      if (md.special === 'pound' && !f.grounded) f.vy = -22;
-      if (md.special === 'dash' && !f.grounded) f.vy = Math.max(f.vy, 1.5);
     }
     const active = mf >= t.s && mf < t.s + t.a;
     if (md.special === 'dash' && active) {
-      f.vx = f.facing * (13 - (mf - t.s) * 0.4);
+      f.vx = f.facing * ((md.dashSpeed ?? 13) - (mf - t.s) * 0.4);
       if (!f.grounded) f.vy = Math.max(f.vy, -1);
-    } else if (md.special === 'recovery' && active) {
-      f.vx += inp.mx * 0.4;
-      f.vx = Math.max(-4, Math.min(4, f.vx));
+    } else if ((md.special === 'recovery' || md.special === 'platform') && active) {
+      if (!md.riseVx) {
+        f.vx += inp.mx * 0.4;
+        f.vx = Math.max(-4, Math.min(4, f.vx));
+      }
     } else if (f.grounded) {
       f.vx *= 0.8;
     } else if (Math.abs(inp.mx) > 0.15) {
       f.vx += inp.mx * f.def.airAccel * 0.6 * DT;
       if (Math.abs(f.vx) > f.def.airSpeed) f.vx = Math.sign(f.vx) * f.def.airSpeed;
     }
-    if (!f.grounded && f.flickY <= 2 && inp.my < -0.7 && f.vy < 3 && md.air) f.fastFall = true;
+    if (!f.grounded && f.flickY <= 2 && inp.my < -0.7 && f.vy < 3 && md.air && !md.helpless) f.fastFall = true;
 
     if (mf >= t.s + t.a + t.e) {
       f.move = null;
-      if (md.special === 'recovery' && !f.grounded) this.setState(f, 'helpless');
+      if (md.helpless && !f.grounded) this.setState(f, 'helpless');
       else this.setState(f, f.grounded ? 'idle' : 'air');
     }
     if (!f.grounded && f.state === 'helpless') this.tryLedgeGrab(f);
   }
 
-  private spawnShot(f: Fighter): void {
+  private spawnShot(f: Fighter, spec: ShotSpec): void {
     const s = f.def.scale;
-    const mul = f.def.shotMul;
     this.projectiles.push({
       owner: f.slot,
-      x: f.x + f.facing * 0.9 * s,
-      y: f.y + 0.95 * s,
-      vx: f.facing * SHOT.speed * Math.sqrt(mul),
-      life: SHOT.life,
-      dmg: MOVES.nspecial.dmg * mul * f.def.dmgMul,
-      base: MOVES.nspecial.base * mul,
-      growth: MOVES.nspecial.growth * mul,
-      angle: MOVES.nspecial.angle,
-      r: SHOT.r * Math.sqrt(mul),
+      kind: spec.kind,
+      x: f.x + f.facing * spec.x * s,
+      y: f.y + spec.y * s,
+      vx: f.facing * spec.vx,
+      vy: spec.vy,
+      gravity: spec.gravity ?? 0,
+      life: spec.life,
+      dmg: spec.dmg * f.def.dmgMul,
+      base: spec.base,
+      growth: spec.growth,
+      angle: spec.angle,
+      r: spec.r,
+      hitstunMul: spec.hitstunMul ?? 1,
+      poison: spec.poison ?? 0,
     });
     this.events.push({ k: 'shot', s: f.slot });
+  }
+
+  private addEntity(kind: Entity['kind'], owner: number, x: number, y: number, life: number): void {
+    this.entities.push({ id: this.nextEntityId++, kind, owner, x, y, vy: 0, life, age: 0 });
+  }
+
+  private removeEntities(owner: number, kind: Entity['kind']): void {
+    this.entities = this.entities.filter((e) => !(e.owner === owner && e.kind === kind));
+  }
+
+  /** 壁・罠・一時的な足場を進める */
+  private updateEntities(): void {
+    const m = this.stage.main;
+    const keep: Entity[] = [];
+    for (const e of this.entities) {
+      e.life--;
+      e.age++;
+      if (e.life <= 0) continue;
+      if (e.kind === 'trap') {
+        // 罠：地面まで落ちる
+        const onMain = e.x >= m.x1 && e.x <= m.x2 && Math.abs(e.y - m.top) < 0.01;
+        if (!onMain) {
+          const prevY = e.y;
+          e.vy -= 30 * DT;
+          e.y += e.vy * DT;
+          if (e.x >= m.x1 && e.x <= m.x2 && prevY >= m.top && e.y <= m.top) {
+            e.y = m.top;
+            e.vy = 0;
+          }
+          for (const sp of this.stage.platforms) {
+            const p = platformAt(sp, this.frame);
+            if (e.x >= p.x1 && e.x <= p.x2 && prevY >= p.y && e.y <= p.y) {
+              e.y = p.y;
+              e.vy = 0;
+            }
+          }
+          if (e.y < this.stage.blast.bottom) continue;
+        }
+        if (e.age >= TRAP.armDelay) {
+          const hit = this.fighters.find((v) => v.slot !== e.owner && v.alive && v.invuln <= 0 && circleHitsBox(e.x, e.y + 0.3, TRAP.r, v));
+          if (hit) {
+            const owner = this.fighter(e.owner);
+            const md = moveOf('hacker', 'dspecial');
+            const dir = hit.x >= e.x ? 1 : -1;
+            this.knock(hit, dir, md.dmg * (owner?.def.dmgMul ?? 1), md.base, md.growth, md.angle, owner?.def.kbMul ?? 1, e.owner);
+            hit.hitlag = 5;
+            this.events.push({ k: 'boom', x: e.x, y: e.y + 0.3 });
+            this.events.push({ k: 'hit', x: e.x, y: e.y + 0.3, p: md.dmg, s: hit.slot });
+            continue;
+          }
+        }
+      } else if (e.kind === 'wall') {
+        // 壁：持ち主以外の選手を押し返す
+        for (const v of this.fighters) {
+          if (v.slot === e.owner || !v.alive) continue;
+          const half = WALL.w / 2 + v.hw;
+          if (Math.abs(v.x - e.x) < half && v.y < e.y + WALL.h && v.y + v.h > e.y) {
+            const side = v.x >= e.x ? 1 : -1;
+            v.x = e.x + side * half;
+            if (v.vx * side < 0) v.vx = 0;
+          }
+        }
+      }
+      keep.push(e);
+    }
+    this.entities = keep;
   }
 
   private respawn(f: Fighter): void {
@@ -617,6 +771,7 @@ export class Sim {
     f.shield = SHIELD_MAX;
     f.ledgeSide = 0;
     f.lastHitBy = -1;
+    f.poison = 0;
     this.setState(f, 'respawn');
   }
 
@@ -700,6 +855,15 @@ export class Sim {
           f.y = m.top;
           f.vy = 0;
         }
+      } else if (f.groundRef >= ENTITY_GROUND) {
+        const e = this.entities.find((x) => x.id === f.groundRef - ENTITY_GROUND);
+        if (!e || Math.abs(f.x - e.x) > POPUP.w / 2) {
+          f.grounded = false;
+          f.groundRef = -1;
+        } else {
+          f.y = e.y;
+          f.vy = 0;
+        }
       } else {
         const p = platformAt(this.stage.platforms[f.groundRef], this.frame);
         if (f.x < p.x1 || f.x > p.x2) {
@@ -746,6 +910,13 @@ export class Sim {
           return;
         }
       }
+      for (const e of this.entities) {
+        if (e.kind !== 'popup') continue;
+        if (prevY >= e.y - 0.001 && f.y <= e.y && Math.abs(f.x - e.x) <= POPUP.w / 2) {
+          this.land(f, ENTITY_GROUND + e.id, e.y);
+          return;
+        }
+      }
     }
   }
 
@@ -767,8 +938,8 @@ export class Sim {
     f.ledgeSide = 0;
     switch (f.state) {
       case 'attack': {
-        const md = MOVES[f.move!];
-        if (md.air && md.special !== 'shot') {
+        const md = this.moveDef(f);
+        if (md.air && md.special !== 'shot' && md.special !== 'counter' && md.special !== 'invis') {
           f.move = null;
           f.stun = md.landLag ?? 4;
           this.setState(f, 'land');
@@ -802,10 +973,12 @@ export class Sim {
   private detectHits(): void {
     for (const a of this.fighters) {
       if (a.state !== 'attack' || !a.move || a.hitlag > 0) continue;
-      const md = MOVES[a.move];
+      const md = this.moveDef(a);
       if (md.hitboxes.length === 0) continue;
       const t = moveTiming(md, a);
       if (a.moveFrame < t.s || a.moveFrame >= t.s + t.a) continue;
+      // 連続ヒットする技：一定フレームごとに、同じ相手にもう一度当たる
+      if (md.rehit && (a.moveFrame - t.s) % md.rehit === 0) a.moveHit.clear();
       const s = a.def.scale;
       for (const hb of md.hitboxes) {
         const cx = a.x + hb.x * a.facing * s;
@@ -840,6 +1013,7 @@ export class Sim {
     }
     const chargeMul = 1 + (a.charge / 60) * 0.4;
     const dmg = md.dmg * a.def.dmgMul * chargeMul;
+    if (this.tryCounter(v, a, dmg)) return;
     if (v.state === 'shield') {
       v.shield -= dmg * 1.3;
       v.vx = a.facing * 3;
@@ -849,11 +1023,48 @@ export class Sim {
       if (v.shield <= 0) this.breakShield(v);
       return;
     }
+    if (md.special === 'sleep') {
+      // 強制アップデート：地上の相手をしばらく動けなくする（ダメージ%が高いほど長い）
+      v.damage = Math.min(999, v.damage + dmg);
+      v.lastHitBy = a.slot;
+      v.lastHitFrame = this.frame;
+      if (v.grounded) {
+        v.move = null;
+        v.vx = 0;
+        v.stun = Math.min(150, Math.round(40 + v.damage * 0.6));
+        this.setState(v, 'sleep');
+        this.events.push({ k: 'sleep', x: v.x, y: v.y + v.h, s: v.slot });
+      } else {
+        this.knock(v, v.x >= a.x ? 1 : -1, 0, 4, 2, 60, 1, a.slot);
+      }
+      a.hitlag = v.hitlag = 3;
+      return;
+    }
     this.knock(v, a.facing, dmg, md.base, md.growth, md.angle, a.def.kbMul * chargeMul, a.slot);
     const lag = Math.floor(3 + dmg / 3);
     a.hitlag = lag;
     v.hitlag = lag;
     this.events.push({ k: 'hit', x: hx, y: hy, p: dmg, s: v.slot });
+  }
+
+  /** クレーム対応（カウンター）の構え中なら、受けた攻撃を返す */
+  private tryCounter(v: Fighter, a: Fighter | null, dmg: number): boolean {
+    if (v.state !== 'attack' || !v.move) return false;
+    const md = this.moveDef(v);
+    if (md.special !== 'counter') return false;
+    const t = moveTiming(md, v);
+    if (v.moveFrame < t.s || v.moveFrame >= t.s + t.a) return false;
+    this.events.push({ k: 'counter', x: v.x, y: v.y + v.h * 0.6, s: v.slot });
+    v.moveFrame = t.s + t.a; // 構えを終えて後隙へ
+    v.invuln = Math.max(v.invuln, 12);
+    if (a) {
+      v.facing = a.x >= v.x ? 1 : -1;
+      const back = Math.max(8, dmg * 1.3) * v.def.dmgMul;
+      this.knock(a, v.facing, back, md.base, md.growth, md.angle, v.def.kbMul, v.slot);
+      a.hitlag = v.hitlag = 8;
+      this.events.push({ k: 'hit', x: a.x, y: a.y + a.h * 0.5, p: back, s: a.slot });
+    }
+    return true;
   }
 
   private knock(v: Fighter, dir: number, dmg: number, base: number, growth: number, angle: number, kbMul: number, from: number): void {
@@ -887,22 +1098,42 @@ export class Sim {
     const bl = this.stage.blast;
     const keep: Projectile[] = [];
     for (const p of this.projectiles) {
+      p.vy -= p.gravity * DT;
       p.x += p.vx * DT;
+      p.y += p.vy * DT;
       p.life--;
-      let gone = p.life <= 0 || p.x < bl.left || p.x > bl.right;
+      let gone = p.life <= 0 || p.x < bl.left || p.x > bl.right || p.y < bl.bottom || p.y > bl.top;
       if (p.x > m.x1 && p.x < m.x2 && p.y < m.top && p.y > m.bottom) gone = true;
+      // 物理ファイアウォール（持ち主以外の飛び道具を消す）
+      if (!gone) {
+        for (const e of this.entities) {
+          if (e.kind !== 'wall' || e.owner === p.owner) continue;
+          if (Math.abs(p.x - e.x) < WALL.w / 2 + p.r && p.y > e.y && p.y < e.y + WALL.h) {
+            this.events.push({ k: 'shield', x: p.x, y: p.y });
+            gone = true;
+            break;
+          }
+        }
+      }
       if (!gone) {
         for (const v of this.fighters) {
           if (v.slot === p.owner || !v.alive || v.invuln > 0) continue;
           if (!circleHitsBox(p.x, p.y, p.r, v)) continue;
           const dir = Math.sign(p.vx) || 1;
-          if (v.state === 'shield') {
+          if (this.tryCounter(v, null, p.dmg)) {
+            // カウンターで飛び道具を打ち消した
+          } else if (v.state === 'shield') {
             v.shield -= p.dmg * 1.3;
             this.events.push({ k: 'shield', x: p.x, y: p.y });
             if (v.shield <= 0) this.breakShield(v);
           } else {
             const owner = this.fighter(p.owner);
             this.knock(v, dir, p.dmg, p.base, p.growth, p.angle, owner?.def.kbMul ?? 1, p.owner);
+            v.hitstun = Math.round(v.hitstun * p.hitstunMul);
+            if (p.poison > 0) {
+              v.poison = Math.max(v.poison, p.poison);
+              v.poisonFrom = p.owner;
+            }
             v.hitlag = 3;
             this.events.push({ k: 'hit', x: p.x, y: p.y, p: p.dmg, s: v.slot });
           }
@@ -995,8 +1226,10 @@ export class Sim {
         kos: f.kos,
         falls: f.falls,
         out: f.out,
+        poison: f.poison > 0,
       })),
-      projectiles: this.projectiles.map((p) => ({ x: p.x, y: p.y, owner: p.owner })),
+      projectiles: this.projectiles.map((p) => ({ x: p.x, y: p.y, owner: p.owner, kind: p.kind })),
+      entities: this.entities.map((e) => ({ kind: e.kind, x: e.x, y: e.y, owner: e.owner, life: e.life })),
       events: this.events,
       ended: this.ended,
     };

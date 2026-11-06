@@ -4,11 +4,9 @@ import * as THREE from 'three';
 import { getCharacter, SLOT_COLORS } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import type { GameEvent, MatchSetup, ViewState } from '../shared/types';
-import { getRobot } from './assets';
+import { getCostume } from '../shared/costumes';
 import { FighterModel } from './fighterModel';
-import { RobotModel } from './robotModel';
-
-type AnyModel = FighterModel | RobotModel;
+import { PropRenderer } from './props';
 
 export type Quality = 'low' | 'high';
 
@@ -27,10 +25,9 @@ export class GameRenderer {
   private camera: THREE.PerspectiveCamera;
   private stageGroup = new THREE.Group();
   private platformMeshes: THREE.Mesh[] = [];
-  private models = new Map<number, { model: AnyModel; charId: string }>();
+  private models = new Map<number, { model: FighterModel; charId: string }>();
   private setup: MatchSetup | null = null;
-  private shots: THREE.Mesh[] = [];
-  private shotGeo = new THREE.SphereGeometry(1, 12, 10);
+  private props: PropRenderer;
   private particles: Particle[] = [];
   private sparkGeo = new THREE.SphereGeometry(1, 6, 5);
   private ringGeo = new THREE.RingGeometry(0.7, 1, 24);
@@ -64,6 +61,7 @@ export class GameRenderer {
     this.scene.add(this.sun);
     this.scene.add(this.sun.target);
     this.scene.add(this.stageGroup);
+    this.props = new PropRenderer(this.scene);
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -104,25 +102,18 @@ export class GameRenderer {
     }
     this.models.clear();
     if (!this.setup) return;
-    const robot = getRobot();
     for (const p of this.setup.players) {
       const def = getCharacter(p.charId);
       const color = SLOT_COLORS[p.slot % SLOT_COLORS.length];
-      const model = robot ? new RobotModel(robot, def, color) : new FighterModel(def, color);
+      const model = new FighterModel(def, getCostume(p.costume, p.charId), color);
       this.scene.add(model.root);
       this.models.set(p.slot, { model, charId: p.charId });
     }
   }
 
-  /** 3Dモデルの読み込みが終わったら、仮モデルから差し替える */
-  upgradeModels(): void {
-    const first = this.models.values().next().value;
-    if (first && !(first.model instanceof RobotModel) && getRobot()) this.buildModels();
-  }
-
   /** 結果画面で勝った人を踊らせ、カメラを寄せる */
   celebrate(slot: number | null): void {
-    for (const [s, { model }] of this.models) if (model instanceof RobotModel) model.setVictory(s === slot);
+    for (const [s, { model }] of this.models) model.setVictory(s === slot);
     this.focusSlot = slot;
   }
   private focusSlot: number | null = null;
@@ -133,8 +124,7 @@ export class GameRenderer {
       model.dispose();
     }
     this.models.clear();
-    for (const s of this.shots) this.scene.remove(s);
-    this.shots = [];
+    this.props.clear();
     for (const p of this.particles) this.scene.remove(p.mesh);
     this.particles = [];
     for (const b of this.beams) this.scene.remove(b.mesh);
@@ -229,21 +219,8 @@ export class GameRenderer {
         if (!m) continue;
         m.model.update(f, getCharacter(m.charId), this.time, dt);
       }
-      // 飛び道具
-      while (this.shots.length < view.projectiles.length) {
-        const mesh = new THREE.Mesh(this.shotGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
-        this.scene.add(mesh);
-        this.shots.push(mesh);
-      }
-      this.shots.forEach((mesh, i) => {
-        const p = view.projectiles[i];
-        mesh.visible = !!p;
-        if (!p) return;
-        mesh.position.set(p.x, p.y, 0);
-        const r = 0.32 + Math.sin(this.time * 30) * 0.04;
-        mesh.scale.setScalar(r);
-        (mesh.material as THREE.MeshBasicMaterial).color.setHex(SLOT_COLORS[p.owner % SLOT_COLORS.length]).lerp(new THREE.Color(0xffffff), 0.4);
-      });
+      // 飛び道具・壁・罠・広告ウィンドウ・Zzz
+      this.props.update(view, this.time, dt);
       for (const e of newEvents) this.effect(e, view);
       this.trails(view);
       this.updateCamera(view, dt);
@@ -278,6 +255,38 @@ export class GameRenderer {
     }
     if (e.k === 'land') {
       this.dust(e.x, e.y, 4 + Math.round(e.p * 6), 2 + e.p * 4);
+      return;
+    }
+    if (e.k === 'counter') {
+      // クレーム対応：金色の輪
+      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.4, 18, 0.35);
+      this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.2, 12, 0.25);
+      this.shake = Math.max(this.shake, 0.5);
+      return;
+    }
+    if (e.k === 'boom') {
+      for (let i = 0; i < 18; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 3 + Math.random() * 7;
+        this.spawn(this.sparkGeo, i % 2 ? 0xff7a1a : 0x39ff88, e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.25, 22, -0.005);
+      }
+      this.spawn(this.ringGeo, 0xff7a1a, e.x, e.y, 0, 0, 0.5, 18, 0.5);
+      this.shake = Math.max(this.shake, 0.6);
+      return;
+    }
+    if (e.k === 'flash') {
+      // スクショ：白いフラッシュ
+      this.spawn(this.sparkGeo, 0xffffff, e.x, e.y, 0, 0, 0.6, 8, 0.25);
+      return;
+    }
+    if (e.k === 'teleport') {
+      for (let i = 0; i < 10; i++) {
+        this.spawn(this.sparkGeo, 0xff9ec8, e.x + (Math.random() - 0.5) * 0.8, e.y + Math.random() * 1.8, (Math.random() - 0.5) * 3, Math.random() * 2, 0.12, 20, -0.004);
+      }
+      return;
+    }
+    if (e.k === 'sleep') {
+      this.spawn(this.ringGeo, 0x7ef0d0, e.x, e.y, 0, 0, 0.3, 16, 0.2);
       return;
     }
     if (e.k === 'hit') {

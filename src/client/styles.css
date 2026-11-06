@@ -786,3 +786,22 @@ input[inputmode='numeric'] {
 .screen.results-screen .footer {
   background: none;
 }
+
+/* 職業名が長いので、キャラ名は小さめにして折り返す */
+.char-card .nm {
+  font-size: 13px;
+  line-height: 1.25;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.char-info {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.char-info b {
+  color: #fff;
+}

@@ -63,6 +63,8 @@ export function loadSettings(): Settings {
     if (raw) {
       const s = { ...def, ...JSON.parse(raw) } as Settings;
       if (!s.serverUrl) s.serverUrl = def.serverUrl;
+      // 前の版のキャラ（ミラなど）が保存されていたら、今のキャラに戻す
+      if (!CHARACTERS.some((c) => c.id === s.charId)) s.charId = def.charId;
       return s;
     }
   } catch {

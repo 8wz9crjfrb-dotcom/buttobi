@@ -3,7 +3,6 @@
 import { Rng } from './rng';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type InputState } from './types';
 import type { Fighter, Sim } from './sim';
-import { MOVES, } from './moves';
 
 interface Brain {
   hold: InputState;
@@ -154,10 +153,4 @@ export class CpuController {
     }
     return best;
   }
-}
-
-/** 技の到達距離（参考値） */
-export function moveReach(id: keyof typeof MOVES): number {
-  const hb = MOVES[id].hitboxes[0];
-  return hb ? Math.abs(hb.x) + hb.r : 0;
 }

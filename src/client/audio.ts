@@ -74,6 +74,24 @@ export class Sfx {
   shot(): void {
     this.tone(700, 0.15, 'square', 0.08, 1400);
   }
+  counter(): void {
+    this.tone(660, 0.08, 'square', 0.18);
+    this.tone(990, 0.25, 'square', 0.15);
+  }
+  boom(): void {
+    this.burst(0.45, 0.9, 300);
+    this.tone(120, 0.35, 'sawtooth', 0.2, 40);
+  }
+  shutter(): void {
+    this.burst(0.05, 0.6, 5000);
+    this.burst(0.07, 0.5, 2500);
+  }
+  warp(): void {
+    this.tone(400, 0.18, 'sine', 0.18, 1600);
+  }
+  sleep(): void {
+    this.tone(700, 0.4, 'triangle', 0.15, 250);
+  }
   beep(high = false): void {
     this.tone(high ? 880 : 440, high ? 0.4 : 0.15, 'square', 0.15);
   }
