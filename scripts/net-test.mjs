@@ -5,7 +5,7 @@ function client(name, create) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`${URL_BASE}/room/${code}`);
     const c = { ws, name, msgs: [], snaps: 0, lastSnap: null, results: null, slot: -1, lobby: null, errors: [] };
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 1, name, charId: create ? 'gran' : 'bolt', create }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 2, name, charId: create ? 'gran' : 'bolt', create }));
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
       if (m.t === 'welcome') { c.slot = m.slot; resolve(c); }
@@ -34,7 +34,8 @@ const t0 = Date.now();
 host.ws.send(JSON.stringify({ t: 'start' }));
 // ゲストは右へ歩きながらAを連打、ホストは途中で切断（CPUが代わりに操作するはず）
 let n = 0;
-const timer = setInterval(() => { n++; guest.ws.send(JSON.stringify({ t: 'in', mx: n % 40 < 20 ? 1 : -1, my: 0, b: n % 6 === 0 ? 1 : 0 })); }, 33);
+let seq = 0;
+const timer = setInterval(() => { n++; const i = [0, 1].map(k => [(n * 2 + k) % 80 < 40 ? 1 : -1, 0, (n % 6 === 0 && k === 0) ? 1 : 0]); guest.ws.send(JSON.stringify({ t: 'in', s: seq, i })); seq += 2; }, 33);
 await sleep(4000);
 const snapsAt4s = guest.snaps;
 host.ws.close();
@@ -48,6 +49,6 @@ console.log('試合時間', ((Date.now() - t0) / 1000).toFixed(1), '秒 結果',
 const lobbyAfter = guest.lobby;
 console.log('試合後のロビー: ホスト=', lobbyAfter.hostSlot, '人間', lobbyAfter.players.filter(p => !p.cpu).map(p => p.name));
 guest.ws.close();
-const nf = await (async () => { const c2 = await new Promise((res) => { const ws = new WebSocket(`${URL_BASE}/room/0001`); ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 1, name: 'x', charId: 'mira', create: false })); ws.onmessage = (e) => res(JSON.parse(e.data)); }); return c2; })();
+const nf = await (async () => { const c2 = await new Promise((res) => { const ws = new WebSocket(`${URL_BASE}/room/0001`); ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 2, name: 'x', charId: 'mira', create: false })); ws.onmessage = (e) => res(JSON.parse(e.data)); }); return c2; })();
 console.log('存在しないルームに参加 →', nf.code);
 process.exit(0);

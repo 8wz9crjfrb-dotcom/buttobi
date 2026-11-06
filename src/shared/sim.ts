@@ -42,6 +42,16 @@ export interface Projectile {
   r: number;
 }
 
+const SNAPSHOT_KEYS = [
+  'x', 'y', 'vx', 'vy', 'facing', 'grounded', 'groundRef', 'state', 'stateTime', 'jumpsLeft', 'sideBUsed',
+  'airDodgeUsed', 'fastFall', 'shortHopArmed', 'damage', 'stocks', 'kos', 'falls', 'out', 'outFrame', 'move',
+  'moveFrame', 'charge', 'hitstun', 'tumble', 'invuln', 'hitlag', 'shield', 'stun', 'lastHitBy', 'lastHitFrame',
+  'ledgeSide', 'ledgeCooldown', 'dropThrough', 'respawnTimer', 'dodgeDir', 'prevButtons', 'prevMx', 'prevMy',
+  'flickX', 'flickY',
+] as const;
+
+export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
+
 export class Fighter {
   slot: number;
   def: CharacterDef;
@@ -97,6 +107,21 @@ export class Fighter {
     this.jumpsLeft = this.def.airJumps;
   }
 
+  /** 状態をまるごと書き出す（サーバー → 端末の照合用） */
+  serialize(): FighterSnapshot {
+    const o: Record<string, unknown> = {};
+    for (const k of SNAPSHOT_KEYS) o[k] = (this as unknown as Record<string, unknown>)[k];
+    o.moveHit = [...this.moveHit];
+    return o as unknown as FighterSnapshot;
+  }
+
+  /** serialize() で書き出した状態に戻す */
+  restore(s: FighterSnapshot): void {
+    const self = this as unknown as Record<string, unknown>;
+    for (const k of SNAPSHOT_KEYS) if (k in s) self[k] = (s as unknown as Record<string, unknown>)[k];
+    this.moveHit = new Set(s.moveHit ?? []);
+  }
+
   get hw(): number {
     return 0.42 * this.def.scale;
   }
@@ -128,10 +153,15 @@ export class Sim {
   endFrame = 0;
   finished = false;
 
-  constructor(setup: MatchSetup) {
+  /**
+   * onlySlot を指定すると、その選手だけを動かす（オンライン対戦の先行表示用）。
+   * 出現位置・復活位置は全員がいる場合と同じになるよう、setup の並び順で決める。
+   */
+  constructor(setup: MatchSetup, onlySlot?: number) {
     this.setup = setup;
     this.stage = getStage(setup.stageId);
     setup.players.forEach((p, i) => {
+      if (onlySlot !== undefined && p.slot !== onlySlot) return;
       const f = new Fighter(p.slot, p.charId);
       const sp = this.stage.spawns[i % this.stage.spawns.length];
       f.x = sp.x;
@@ -559,8 +589,8 @@ export class Sim {
   }
 
   private respawn(f: Fighter): void {
-    const idx = this.fighters.indexOf(f);
-    const n = this.fighters.length;
+    const idx = Math.max(0, this.setup.players.findIndex((p) => p.slot === f.slot));
+    const n = this.setup.players.length;
     const span = (this.stage.main.x2 - this.stage.main.x1) * 0.6;
     f.x = n > 1 ? -span / 2 + (span * idx) / (n - 1) : 0;
     f.y = this.stage.respawnY;

@@ -1,5 +1,6 @@
 // 端末とサーバーの間でやり取りするメッセージ（JSON）
 
+import type { FighterSnapshot } from './sim';
 import {
   MOVE_IDS,
   STATE_NAMES,
@@ -10,7 +11,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -37,7 +38,8 @@ export type ClientMsg =
   | { t: 'char'; charId: string }
   | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number }
   | { t: 'start' }
-  | { t: 'in'; mx: number; my: number; b: number }
+  /** 入力。s = 最初の入力の通し番号、i = 1フレームごとの [mx, my, ボタン] */
+  | { t: 'in'; s: number; i: [number, number, number][] }
   | { t: 'ping'; c: number }
   | { t: 'leave' };
 
@@ -46,7 +48,8 @@ export type ServerMsg =
   | { t: 'welcome'; slot: number }
   | { t: 'lobby'; lobby: LobbyInfo }
   | { t: 'start'; setup: MatchSetup }
-  | { t: 'snap'; s: EncodedState }
+  /** me = 受け取った人の選手について、処理済みの入力番号(a)と完全な状態(st) */
+  | { t: 'snap'; s: EncodedState; me?: { a: number; st: FighterSnapshot } }
   | { t: 'end'; results: ResultEntry[] }
   | { t: 'pong'; c: number }
   | { t: 'error'; code: 'full' | 'taken' | 'notfound' | 'inmatch' | 'version' | 'bad'; msg: string };
@@ -119,6 +122,9 @@ export function decodeState(s: EncodedState): ViewState {
     events: s.ev,
   };
 }
+
+/** 1通のメッセージに入れる入力の最大数 */
+export const MAX_INPUTS_PER_MSG = 12;
 
 export function sanitizeName(name: unknown): string {
   const s = typeof name === 'string' ? name : '';

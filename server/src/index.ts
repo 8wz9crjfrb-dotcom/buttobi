@@ -5,6 +5,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { CpuController } from '../../src/shared/ai';
 import { CHARACTERS } from '../../src/shared/characters';
 import {
+  MAX_INPUTS_PER_MSG,
   MAX_PLAYERS,
   PROTOCOL_VERSION,
   encodeState,
@@ -53,7 +54,19 @@ interface StoredLobby {
   cpuLevel: number;
 }
 
+interface InputQueue {
+  items: { seq: number; inp: InputState }[];
+  lastQueued: number;
+  last: InputState;
+  /** 最後に使った入力の番号（端末に「ここまで処理した」と伝える） */
+  ack: number;
+}
+
 const TICK_MS = 1000 / 60;
+/** 待ち行列がこれより長い間は、1フレームにつき入力を1つだけ間引いて少しずつ追いつく */
+const QUEUE_SOFT = 6;
+/** これより長くなったら（通信が長く止まった等）、一気に QUEUE_SOFT まで捨てる */
+const QUEUE_HARD = 40;
 const SNAP_EVERY = 2; // 60fps のうち 2 フレームに 1 回送る = 30回/秒
 
 export class Room extends DurableObject<Env> {
@@ -61,8 +74,8 @@ export class Room extends DurableObject<Env> {
   private sim: Sim | null = null;
   private cpu: CpuController | null = null;
   private cpuSlots = new Map<number, number>(); // slot -> level
-  private inputs = new Map<number, InputState>();
-  private pendingPress = new Map<number, number>();
+  /** 選手ごとの入力の待ち行列（1フレームに1つずつ使う） */
+  private queues = new Map<number, InputQueue>();
   private loop: ReturnType<typeof setInterval> | null = null;
   private lastTick = 0;
   private eventBuf: GameEvent[] = [];
@@ -218,9 +231,16 @@ export class Room extends DurableObject<Env> {
 
     switch (msg.t) {
       case 'in': {
-        const b = msg.b | 0;
-        this.inputs.set(slot, { mx: clamp(Number(msg.mx) || 0), my: clamp(Number(msg.my) || 0), buttons: b & 15 });
-        this.pendingPress.set(slot, (this.pendingPress.get(slot) ?? 0) | (b & 15));
+        if (!this.sim || !Array.isArray(msg.i)) return;
+        const q = this.queue(slot);
+        const first = Number(msg.s) | 0;
+        msg.i.slice(0, MAX_INPUTS_PER_MSG).forEach((a, j) => {
+          const seq = first + j;
+          if (seq <= q.lastQueued || !Array.isArray(a)) return;
+          q.items.push({ seq, inp: { mx: clamp(Number(a[0]) || 0), my: clamp(Number(a[1]) || 0), buttons: (a[2] | 0) & 15 } });
+          q.lastQueued = seq;
+        });
+        if (q.items.length > 60) q.items.splice(0, q.items.length - 60);
         return;
       }
       case 'char': {
@@ -286,7 +306,7 @@ export class Room extends DurableObject<Env> {
       // 対戦中に抜けた人は CPU が代わりに操作する
       const lv = Math.max(3, l.cpuLevel);
       this.cpuSlots.set(slot, lv);
-      this.inputs.delete(slot);
+      this.queues.delete(slot);
     } else {
       l.humans = l.humans.filter((h) => h.slot !== slot);
     }
@@ -309,12 +329,61 @@ export class Room extends DurableObject<Env> {
     this.cpu = new CpuController(setup.seed);
     this.cpuSlots.clear();
     for (const p of setup.players) if (p.cpu) this.cpuSlots.set(p.slot, p.cpuLevel);
-    this.inputs.clear();
-    this.pendingPress.clear();
+    this.queues.clear();
     this.eventBuf = [];
     this.broadcast({ t: 'start', setup });
     this.lastTick = Date.now();
     this.loop = setInterval(() => this.tick(), TICK_MS);
+  }
+
+  private queue(slot: number): InputQueue {
+    let q = this.queues.get(slot);
+    if (!q) {
+      q = { items: [], lastQueued: -1, last: { mx: 0, my: 0, buttons: 0 }, ack: -1 };
+      this.queues.set(slot, q);
+    }
+    return q;
+  }
+
+  /** その選手の次のフレームの入力。届いていなければ直前の入力を続ける */
+  private nextInput(slot: number): InputState {
+    const q = this.queue(slot);
+    const skip = (keep: number) => {
+      // 間引いた入力で押されたボタンは、次の入力に引き継ぐ（押したのに出ない、を防ぐ）
+      let carried = 0;
+      while (q.items.length > keep) {
+        const old = q.items.shift()!;
+        carried |= old.inp.buttons & ~q.last.buttons;
+        q.last = old.inp;
+        q.ack = old.seq;
+      }
+      if (carried && q.items[0]) q.items[0].inp = { ...q.items[0].inp, buttons: q.items[0].inp.buttons | carried };
+    };
+    if (q.items.length > QUEUE_HARD) skip(QUEUE_SOFT);
+    else if (q.items.length > QUEUE_SOFT) skip(q.items.length - 1);
+    const next = q.items.shift();
+    if (next) {
+      q.last = next.inp;
+      q.ack = next.seq;
+    }
+    return q.last;
+  }
+
+  /** 状態を全員に送る。受け取る人ごとに、本人の選手の完全な状態と処理済みの入力番号を付ける */
+  private sendSnapshots(sim: Sim): void {
+    const base = JSON.stringify(encodeState(sim.toView(), this.eventBuf));
+    for (const ws of this.ctx.getWebSockets()) {
+      const a = ws.deserializeAttachment() as Attachment | null;
+      if (!a || a.slot < 0) continue;
+      const f = this.cpuSlots.has(a.slot) ? undefined : sim.fighter(a.slot);
+      const q = this.queues.get(a.slot);
+      const me = f && q ? `,"me":${JSON.stringify({ a: q.ack, st: f.serialize() })}` : '';
+      try {
+        ws.send(`{"t":"snap","s":${base}${me}}`);
+      } catch {
+        /* 切断済み */
+      }
+    }
   }
 
   private stopMatch(): void {
@@ -346,16 +415,12 @@ export class Room extends DurableObject<Env> {
           inputs.set(f.slot, this.cpu!.think(sim, f, lv));
           continue;
         }
-        const inp = this.inputs.get(f.slot);
-        if (!inp) continue;
-        const pend = this.pendingPress.get(f.slot) ?? 0;
-        inputs.set(f.slot, { mx: inp.mx, my: inp.my, buttons: inp.buttons | pend });
-        this.pendingPress.set(f.slot, 0);
+        inputs.set(f.slot, this.nextInput(f.slot));
       }
       sim.step(inputs);
       if (sim.events.length) this.eventBuf.push(...sim.events);
       if (sim.frame % SNAP_EVERY === 0) {
-        this.broadcast({ t: 'snap', s: encodeState(sim.toView(), this.eventBuf) });
+        this.sendSnapshots(sim);
         this.eventBuf = [];
       }
       if (sim.finished) {

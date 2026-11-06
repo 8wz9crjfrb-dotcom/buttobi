@@ -1,6 +1,8 @@
 // オンライン対戦の通信（WebSocket）と、受け取った状態の補間表示
 
+import type { FighterSnapshot } from '../shared/sim';
 import {
+  MAX_INPUTS_PER_MSG,
   PROTOCOL_VERSION,
   decodeState,
   type ClientMsg,
@@ -18,6 +20,13 @@ export interface NetHandlers {
   onClose(): void;
 }
 
+/** サーバーが本人の選手について返した、照合用の情報 */
+export interface Authority {
+  frame: number;
+  ack: number;
+  state: FighterSnapshot;
+}
+
 interface Snap {
   at: number; // 受信時刻（ms）
   view: ViewState;
@@ -30,10 +39,15 @@ export class NetClient {
   private ws: WebSocket | null = null;
   private snaps: Snap[] = [];
   private pendingEvents: GameEvent[] = [];
-  private lastSent = { mx: 0, my: 0, b: 0 };
   private lastSendAt = 0;
-  /** まだ送っていない「押された」ボタン（短い押しを取りこぼさないため） */
-  private pressAcc = 0;
+  private seq = 0;
+  /** まだ送っていない入力 */
+  private unsent: [number, number, number][] = [];
+  private unsentFirst = 0;
+  private lastButtons = 0;
+  /** 最新の照合情報（まだ使っていなければ authorityFresh が true） */
+  authority: Authority | null = null;
+  authorityFresh = false;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   rtt = 0;
   slot = -1;
@@ -83,11 +97,20 @@ export class NetClient {
       case 'start':
         this.snaps = [];
         this.pendingEvents = [];
+        this.authority = null;
+        this.authorityFresh = false;
+        this.unsent = [];
+        this.seq = 0;
+        this.lastButtons = 0;
         this.handlers.onStart(m.setup);
         break;
       case 'snap': {
         const view = decodeState(m.s);
         this.snaps.push({ at: performance.now(), view });
+        if (m.me) {
+          this.authority = { frame: m.s.f, ack: m.me.a, state: m.me.st };
+          this.authorityFresh = true;
+        }
         if (this.snaps.length > 30) this.snaps.shift();
         if (view.events.length) this.pendingEvents.push(...view.events);
         break;
@@ -108,20 +131,38 @@ export class NetClient {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
 
-  /** 入力を送る。変化したとき（最大30回/秒）と、変化がなくても200msごとに送る */
-  sendInput(inp: InputState, pressed: number): void {
+  /**
+   * 1フレーム分の入力を登録し、その通し番号を返す。
+   * 送信は約50msごとにまとめて行う（20回/秒）。ボタンを新しく押したときは33ms以上空いていればすぐ送る。
+   */
+  queueInput(inp: InputState): number {
+    const seq = this.seq++;
+    const mx = Math.round(inp.mx * 100) / 100;
+    const my = Math.round(inp.my * 100) / 100;
+    if (this.unsent.length === 0) this.unsentFirst = seq;
+    this.unsent.push([mx, my, inp.buttons]);
+    const newPress = (inp.buttons & ~this.lastButtons) !== 0;
+    this.lastButtons = inp.buttons;
     const now = performance.now();
-    const mx = Math.round(inp.mx * 20) / 20;
-    const my = Math.round(inp.my * 20) / 20;
-    this.pressAcc |= pressed;
-    const b = inp.buttons | this.pressAcc;
-    const changed = mx !== this.lastSent.mx || my !== this.lastSent.my || b !== this.lastSent.b;
-    if ((changed && now - this.lastSendAt >= 33) || now - this.lastSendAt >= 200) {
-      this.send({ t: 'in', mx, my, b });
-      this.lastSent = { mx, my, b };
-      this.lastSendAt = now;
-      this.pressAcc = 0;
-    }
+    const since = now - this.lastSendAt;
+    if (since >= 50 || (newPress && since >= 33) || this.unsent.length >= MAX_INPUTS_PER_MSG) this.flush(now);
+    return seq;
+  }
+
+  /** 画面が裏に回ったときなど：手を離した入力をすぐ送る */
+  sendNeutral(): void {
+    if (this.unsent.length === 0) this.unsentFirst = this.seq;
+    this.seq++;
+    this.unsent.push([0, 0, 0]);
+    this.lastButtons = 0;
+    this.flush(performance.now());
+  }
+
+  private flush(now: number): void {
+    if (this.unsent.length === 0) return;
+    this.send({ t: 'in', s: this.unsentFirst, i: this.unsent });
+    this.unsent = [];
+    this.lastSendAt = now;
   }
 
   /** 補間した表示用の状態を返す */

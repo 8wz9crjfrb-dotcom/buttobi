@@ -11,6 +11,7 @@ import { Sfx } from './audio';
 import { Hud } from './hud';
 import { InputManager } from './input';
 import { NetClient } from './net';
+import { Predictor } from './predictor';
 import {
   canInstall,
   enterFullscreenLandscape,
@@ -74,6 +75,7 @@ class LocalSession implements Session {
     if (!this.paused) {
       this.acc += Math.min(dt, 0.1);
       const human = this.mySlot !== null ? readInput() : null;
+      if (human) human.buttons |= input.takePressed();
       while (this.acc >= 1 / 60) {
         this.acc -= 1 / 60;
         const inputs = new Map<number, InputState>();
@@ -91,14 +93,70 @@ class LocalSession implements Session {
   }
 }
 
+/**
+ * オンライン対戦。
+ * - 他の人のキャラ：サーバーから届いた状態を少し遅らせて補間表示する
+ * - 自分のキャラ：端末の中で同じシミュレーションを動かして、操作をすぐ反映する（先行表示）。
+ *   サーバーの状態が届いたら、その時点に戻して「まだサーバーが処理していない入力」をやり直し、ずれを直す。
+ */
 class NetSession implements Session {
   kind = 'net' as const;
   paused = false;
-  constructor(public setup: MatchSetup, public mySlot: number, private net: NetClient) {}
-  frame() {
-    const inp = readInput();
-    this.net.sendInput(inp, input.takePressed());
-    return { view: this.net.view(), events: this.net.takeEvents() };
+  private pred: Predictor | null = null;
+  private acc = 0;
+  private offX = 0;
+  private offY = 0;
+  /** 直近の補正量 */
+  correction = 0;
+  constructor(public setup: MatchSetup, public mySlot: number, private net: NetClient) {
+    if (setup.players.some((p) => p.slot === mySlot && !p.cpu)) this.pred = new Predictor(setup, mySlot);
+  }
+
+  frame(dt: number) {
+    const pred = this.pred;
+    const events: GameEvent[] = [];
+    if (pred) {
+      const au = this.net.authority;
+      if (au && this.net.authorityFresh) {
+        this.net.authorityFresh = false;
+        const { dx, dy } = pred.reconcile(au);
+        this.correction = Math.hypot(dx, dy);
+        if (this.correction < 2.5) {
+          // 小さなずれは、すぐ飛ばさずに少しずつ寄せる
+          this.offX += dx;
+          this.offY += dy;
+        } else {
+          this.offX = 0;
+          this.offY = 0;
+        }
+      }
+      this.acc += Math.min(dt, 0.1);
+      while (this.acc >= 1 / 60) {
+        this.acc -= 1 / 60;
+        const inp = readInput();
+        inp.buttons |= input.takePressed();
+        const seq = this.net.queueInput(inp);
+        // 自分のジャンプ・飛び道具の音は先行表示に合わせて鳴らす
+        for (const e of pred.step(seq, inp)) if (e.k === 'jump' || e.k === 'shot') events.push(e);
+      }
+      const k = Math.exp(-dt * 12);
+      this.offX *= k;
+      this.offY *= k;
+    }
+    for (const e of this.net.takeEvents()) {
+      if (pred && (e.k === 'jump' || e.k === 'shot') && e.s === this.mySlot) continue;
+      events.push(e);
+    }
+    const view = this.net.view();
+    if (!view || !pred) return { view, events };
+    const me = pred.view();
+    const merged: ViewState = {
+      ...view,
+      fighters: view.fighters.map((f) =>
+        f.slot === this.mySlot ? { ...me, x: me.x + this.offX, y: me.y + this.offY, kos: f.kos, falls: f.falls, out: f.out } : f,
+      ),
+    };
+    return { view: merged, events };
   }
 }
 
@@ -656,6 +714,13 @@ function showLobby(): void {
     },
   );
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && session?.kind === 'net') {
+    input.reset();
+    net.sendNeutral();
+  }
+});
 
 // ---------------------------------------------------------------------------
 startDemo();
