@@ -1,0 +1,28 @@
+{
+  "name": "buttobi-arena",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host",
+    "test": "tsx scripts/sim-test.ts",
+    "server:dev": "cd server && npx wrangler dev --ip 0.0.0.0",
+    "server:deploy": "cd server && npx wrangler deploy",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/three": "^0.187.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.6"
+  },
+  "private": true,
+  "type": "module"
+}

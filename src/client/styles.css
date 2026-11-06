@@ -1,0 +1,749 @@
+:root {
+  --bg: #1b1f3b;
+  --panel: rgba(20, 24, 52, 0.92);
+  --panel-2: rgba(255, 255, 255, 0.08);
+  --text: #ffffff;
+  --muted: #b9bfe0;
+  --accent: #ffcf3f;
+  --accent-ink: #2a2000;
+  --danger: #ff5a5a;
+  --btn-size: 76px;
+  --btn-opacity: 0.55;
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', 'Segoe UI', sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+}
+
+#game-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------- 画面（メニュー類） ---------- */
+#screens {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  padding: calc(12px + var(--safe-t)) calc(16px + var(--safe-r)) calc(12px + var(--safe-b)) calc(16px + var(--safe-l));
+  background: radial-gradient(circle at 30% 20%, #3a2f7a 0%, #1b1f3b 60%, #10122a 100%);
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+.screen.overlay {
+  background: rgba(10, 12, 30, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.screen h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.grow {
+  flex: 1;
+}
+
+.btn {
+  appearance: none;
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 18px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+
+.btn.small {
+  padding: 8px 12px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+}
+
+.seg {
+  display: inline-flex;
+  background: var(--panel-2);
+  border-radius: 12px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.seg button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 7px 11px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.seg button.on {
+  background: #fff;
+  color: #1b1f3b;
+}
+
+label.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+input[type='text'],
+input[type='url'],
+input[inputmode='numeric'] {
+  font: inherit;
+  font-size: 18px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1b1f3b;
+  -webkit-user-select: text;
+  user-select: text;
+  min-width: 0;
+}
+
+/* タイトル */
+.title-screen {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 14px;
+}
+
+.logo {
+  font-size: clamp(36px, 9vh, 72px);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  background: linear-gradient(180deg, #fff6c9, #ffcf3f 55%, #ff8a3d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 0 #6b2c00);
+}
+
+.logo-sub {
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.3em;
+}
+
+.tap-hint {
+  animation: blink 1.4s infinite;
+  color: var(--muted);
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: auto;
+  width: min(560px, 100%);
+}
+
+.menu-grid .btn {
+  padding: 18px 12px;
+  font-size: 18px;
+}
+
+.menu-grid .btn small {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+/* キャラ選択 */
+.chars {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.char-card {
+  border-radius: 12px;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 2px solid transparent;
+  text-align: center;
+  cursor: pointer;
+}
+
+.char-card.on {
+  border-color: var(--accent);
+  background: rgba(255, 207, 63, 0.15);
+}
+
+.char-card .swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  margin: 2px auto 4px;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.25);
+}
+
+.char-card .nm {
+  font-weight: 800;
+}
+
+.char-card .rl {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.setup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 18px;
+  margin-top: 10px;
+}
+
+.setup-grid .opt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.footer {
+  margin-top: auto;
+  padding-top: 10px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+/* ロビー */
+.code-big {
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+}
+
+.players {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pslot {
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  font-size: 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.pslot .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.pslot.empty {
+  opacity: 0.35;
+}
+
+/* リザルト */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(520px, 100%);
+  margin: 8px auto;
+}
+
+.res-row {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.res-row .rank {
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.res-row.first {
+  background: rgba(255, 207, 63, 0.2);
+}
+
+/* ---------- 対戦中のHUD ---------- */
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hud-players {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(4px + var(--safe-b));
+  display: flex;
+  gap: 6px;
+}
+
+.hud-p {
+  min-width: 70px;
+  padding: 2px 8px 4px;
+  border-radius: 10px;
+  background: rgba(10, 12, 30, 0.55);
+  text-align: center;
+  border-bottom: 4px solid currentColor;
+}
+
+.hud-p .nm {
+  font-size: 10px;
+  color: #fff;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+.hud-p .dmg {
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.hud-p .dmg small {
+  font-size: 13px;
+}
+
+.hud-p .stk {
+  font-size: 9px;
+  letter-spacing: 1px;
+  line-height: 1;
+  min-height: 9px;
+}
+
+.hud-p.out {
+  opacity: 0.35;
+}
+
+.hud-p.shake {
+  animation: shake 0.25s;
+}
+
+@keyframes shake {
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+.hud-timer {
+  position: absolute;
+  top: calc(6px + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 20px;
+  font-weight: 800;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.hud-net {
+  position: absolute;
+  top: calc(8px + var(--safe-t));
+  left: calc(10px + var(--safe-l));
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.hud-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(48px, 16vh, 120px);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 6px 0 #6b2c00, 0 0 30px rgba(255, 180, 0, 0.6);
+}
+
+.hud-center.pop {
+  animation: pop 0.5s ease-out;
+}
+
+@keyframes pop {
+  from {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+#pause-btn {
+  position: absolute;
+  top: calc(6px + var(--safe-t));
+  right: calc(10px + var(--safe-r));
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(10, 12, 30, 0.5);
+  color: #fff;
+  font-weight: 900;
+  font-size: 14px;
+}
+
+/* ---------- タッチ操作 ---------- */
+#touch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#stick-zone {
+  position: absolute;
+  left: 0;
+  top: 15%;
+  bottom: 0;
+  width: 50%;
+  pointer-events: auto;
+}
+
+#stick-base {
+  position: absolute;
+  width: 130px;
+  height: 130px;
+  margin: -65px 0 0 -65px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
+  opacity: var(--btn-opacity);
+  left: calc(110px + var(--safe-l));
+  top: calc(100% - 110px - var(--safe-b));
+  transition: opacity 0.15s;
+}
+
+#stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+#stick-base.active {
+  opacity: 0.9;
+}
+
+#buttons {
+  position: absolute;
+  right: calc(18px + var(--safe-r));
+  bottom: calc(14px + var(--safe-b));
+  width: calc(var(--btn-size) * 2.6);
+  height: calc(var(--btn-size) * 2.4);
+  pointer-events: none;
+}
+
+.pad-btn {
+  position: absolute;
+  width: var(--btn-size);
+  height: var(--btn-size);
+  border-radius: 50%;
+  border: 0;
+  color: #fff;
+  font-weight: 900;
+  font-size: calc(var(--btn-size) * 0.34);
+  line-height: 1;
+  opacity: var(--btn-opacity);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  touch-action: none;
+}
+
+.pad-btn small {
+  font-size: 9px;
+  font-weight: 600;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+.pad-btn.down {
+  opacity: 0.95;
+  transform: scale(0.92);
+}
+
+#btn-a {
+  right: 0;
+  bottom: calc(var(--btn-size) * 0.55);
+  background: #e5484d;
+}
+
+#btn-b {
+  right: calc(var(--btn-size) * 1.05);
+  bottom: 0;
+  background: #4f8cff;
+}
+
+#btn-jump {
+  right: calc(var(--btn-size) * 0.55);
+  bottom: calc(var(--btn-size) * 1.5);
+  background: #46c47e;
+  width: calc(var(--btn-size) * 0.85);
+  height: calc(var(--btn-size) * 0.85);
+}
+
+#btn-shield {
+  right: calc(var(--btn-size) * 1.62);
+  bottom: calc(var(--btn-size) * 0.95);
+  background: #8a63d2;
+  width: calc(var(--btn-size) * 0.8);
+  height: calc(var(--btn-size) * 0.8);
+}
+
+/* ---------- その他 ---------- */
+#toast {
+  position: absolute;
+  top: calc(12px + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10, 12, 30, 0.9);
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  z-index: 50;
+  max-width: 90%;
+  text-align: center;
+  pointer-events: none;
+}
+
+#rotate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
+  color: #fff;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+}
+
+#rotate .rotate-icon {
+  font-size: 64px;
+  animation: tilt 1.6s infinite;
+}
+
+#rotate p {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+#rotate .sub {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+@keyframes tilt {
+  50% {
+    transform: rotate(-90deg);
+  }
+}
+
+@media (orientation: portrait) {
+  #rotate {
+    display: flex;
+  }
+}
+
+.help {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--muted);
+  max-width: 720px;
+}
+
+.help b {
+  color: #fff;
+}
+
+.install-tip {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 420px;
+}
+
+/* 下のボタン列は常に見えるようにする */
+.footer {
+  position: sticky;
+  bottom: calc(-12px - var(--safe-b));
+  margin-bottom: calc(-12px - var(--safe-b));
+  padding-bottom: calc(12px + var(--safe-b));
+  background: linear-gradient(transparent, rgba(10, 12, 30, 0.9) 35%);
+}
+
+.setup-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* 横持ちのスマホ（高さが低い画面）向けに詰める */
+@media (max-height: 480px) {
+  .screen {
+    padding-top: calc(8px + var(--safe-t));
+  }
+  .screen h2 {
+    font-size: 18px;
+    margin-bottom: 4px;
+  }
+  .char-card {
+    padding: 4px 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-align: left;
+  }
+  .char-card .swatch {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    flex: none;
+  }
+  .char-card .nm {
+    font-size: 14px;
+  }
+  .char-card .rl {
+    font-size: 10px;
+  }
+  .setup-grid {
+    gap: 6px 12px;
+    margin-top: 6px;
+  }
+  .seg button {
+    padding: 5px 9px;
+    font-size: 13px;
+  }
+  .btn {
+    padding: 10px 16px;
+    font-size: 16px;
+  }
+  .menu-grid .btn {
+    padding: 12px 10px;
+    font-size: 16px;
+  }
+  .code-big {
+    font-size: 30px;
+  }
+  .pslot {
+    min-height: 36px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .res-row {
+    padding: 4px 10px;
+  }
+  .res-row .rank {
+    font-size: 18px;
+  }
+}
