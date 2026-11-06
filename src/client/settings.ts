@@ -13,6 +13,8 @@ export interface Settings {
   quality: Quality;
   tapJump: boolean;
   vibration: boolean;
+  /** 画面左上にフレームレート（fps）を表示する */
+  showFps: boolean;
   volume: number;
   serverUrl: string;
   cpuCount: number;
@@ -42,6 +44,7 @@ export function loadSettings(): Settings {
     quality: lowEnd ? 'low' : 'high',
     tapJump: true,
     vibration: true,
+    showFps: false,
     volume: 0.7,
     serverUrl: defaultServerUrl(),
     cpuCount: 3,

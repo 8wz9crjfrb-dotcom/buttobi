@@ -236,7 +236,34 @@ function loop(t: number): void {
     }
   }
   renderer.render(lastView, dt, events);
+  updateFps(t);
   requestAnimationFrame(loop);
+}
+
+// フレームレート表示（設定でオンにしたとき、または URL に ?fps を付けたとき）
+const fpsEl = document.createElement('div');
+fpsEl.id = 'fps';
+document.getElementById('app')!.appendChild(fpsEl);
+const fpsFromUrl = new URLSearchParams(location.search).has('fps');
+let fpsFrames = 0;
+let fpsStart = performance.now();
+let fpsWorst = 0;
+let fpsPrev = performance.now();
+function updateFps(t: number): void {
+  const on = settings.showFps || fpsFromUrl;
+  fpsEl.classList.toggle('hidden', !on);
+  if (!on) return;
+  fpsFrames++;
+  fpsWorst = Math.max(fpsWorst, t - fpsPrev);
+  fpsPrev = t;
+  if (t - fpsStart >= 1000) {
+    const fps = (fpsFrames * 1000) / (t - fpsStart);
+    fpsEl.textContent = `${fps.toFixed(0)} fps（最も遅いコマ ${fpsWorst.toFixed(0)}ms）`;
+    fpsEl.style.color = fps >= 55 ? '#7dff9a' : fps >= 40 ? '#ffd23f' : '#ff6b6b';
+    fpsFrames = 0;
+    fpsStart = t;
+    fpsWorst = 0;
+  }
 }
 
 let lastCountdownBeep = -1;
@@ -531,6 +558,7 @@ function showSettings(): void {
        <div class="opt">画質 ${seg('q', [['low', '軽さ優先'], ['high', 'きれい']], settings.quality)}</div>
        <div class="opt">スティック上でジャンプ ${seg('tj', [['on', 'する'], ['off', 'しない']], settings.tapJump ? 'on' : 'off')}</div>
        <div class="opt">振動（Androidのみ） ${seg('vib', [['on', 'する'], ['off', 'しない']], settings.vibration ? 'on' : 'off')}</div>
+       <div class="opt">フレームレート表示 ${seg('fps', [['on', 'する'], ['off', 'しない']], settings.showFps ? 'on' : 'off')}</div>
        <div class="opt">音量 ${seg('vol', [[0, 'なし'], [0.4, '小'], [0.7, '中'], [1, '大']], settings.volume)}</div>
        <label class="field" style="grid-column:1/-1">対戦サーバーのURL（wss://〜）<input type="url" id="server" value="${esc(settings.serverUrl)}" placeholder="wss://buttobi-server.あなたのアカウント.workers.dev"/></label>
      </div>
@@ -551,6 +579,7 @@ function showSettings(): void {
       });
       bindSeg(root, 'tj', (v) => (settings.tapJump = v === 'on'));
       bindSeg(root, 'vib', (v) => (settings.vibration = v === 'on'));
+      bindSeg(root, 'fps', (v) => (settings.showFps = v === 'on'));
       bindSeg(root, 'vol', (v) => {
         settings.volume = Number(v);
         sfx.volume = settings.volume;
