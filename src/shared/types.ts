@@ -124,6 +124,11 @@ export type GameEvent =
   | { k: 'boom'; x: number; y: number }
   | { k: 'teleport'; x: number; y: number; s: number }
   | { k: 'sleep'; x: number; y: number; s: number }
+  | { k: 'gacha'; x: number; y: number; s: number; r: number }
+  | { k: 'absorb'; x: number; y: number; s: number }
+  | { k: 'heal'; x: number; y: number; s: number }
+  | { k: 'buff'; s: number }
+  | { k: 'poof'; x: number; y: number }
   | { k: 'shot'; s: number };
 
 /** 描画用の選手の状態（ローカル対戦でもオンライン対戦でも同じ形） */
@@ -146,7 +151,16 @@ export interface ViewFighter {
   out: boolean;
   /** 毒（マルウェア）でじわじわダメージを受けている */
   poison: boolean;
+  /** 状態のビット：1=倍速 2=課金 4=自転車 8=操作反転 16=吸収済み、32〜64=バズり段階（0〜3） */
+  fx: number;
 }
+
+export const FX_SPEED = 1;
+export const FX_POWER = 2;
+export const FX_BIKE = 4;
+export const FX_CONFUSED = 8;
+export const FX_CHARGED = 16;
+export const fxBuzz = (fx: number) => (fx >> 5) & 3;
 
 export interface ViewProjectile {
   x: number;
@@ -157,11 +171,13 @@ export interface ViewProjectile {
 
 /** ステージに置かれる物（壁・罠・一時的な足場） */
 export interface ViewEntity {
-  kind: 'wall' | 'trap' | 'popup';
+  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy';
   x: number;
   y: number;
   owner: number;
   life: number;
+  /** 分身の向き */
+  dir: number;
 }
 
 export interface ViewState {

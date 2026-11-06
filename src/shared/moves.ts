@@ -8,7 +8,7 @@ export interface Hitbox {
 }
 
 /** 飛び道具の見た目の種類 */
-export type ShotKind = 'text' | 'bullet' | 'mail' | 'malware' | 'coin' | 'thanks';
+export type ShotKind = 'text' | 'bullet' | 'mail' | 'malware' | 'coin' | 'thanks' | 'badge' | 'stone' | 'bag' | 'orb' | 'gold';
 
 export interface ShotSpec {
   /** 技が出てから何フレーム後に出すか */
@@ -32,6 +32,12 @@ export interface ShotSpec {
   hitstunMul?: number;
   /** 毒：当たった相手がこのフレーム数の間、少しずつダメージを受ける */
   poison?: number;
+  /** 当たった相手の左右の操作を、このフレーム数の間だけ逆にする */
+  confuse?: number;
+  /** いちばん近い相手を追いかける（曲がる速さ） */
+  homing?: number;
+  /** 一定フレーム後に持ち主のところへ戻ってくる（ブーメラン） */
+  boomerang?: number;
 }
 
 export type SpecialKind =
@@ -46,7 +52,18 @@ export type SpecialKind =
   | 'platform'
   | 'invis'
   | 'teleport'
-  | 'sleep';
+  | 'sleep'
+  | 'speedup'
+  | 'scroll'
+  | 'redirect'
+  | 'gacha10'
+  | 'gacha1'
+  | 'pay'
+  | 'bike'
+  | 'food'
+  | 'absorb'
+  | 'decoy'
+  | 'tether';
 
 export interface MoveDef {
   startup: number;
@@ -284,6 +301,180 @@ const SPECIALS: Record<string, Specials> = {
       ].map(([vx, vy]) => ({ at: 0, kind: 'thanks' as const, x: 0, y: 1.0, vx, vy, life: 28, r: 0.3, dmg: 3, base: 4, growth: 3, angle: 60 })),
     },
   },
+  dopa: {
+    // 倍速再生：しばらく動きと攻撃が速くなる
+    nspecial: { startup: 6, active: 1, end: 12, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'speedup' },
+    // 無限スクロール：横へ滑って攻撃。Bを押し直すと最大3回まで続けられる
+    sspecial: {
+      startup: 5,
+      active: 9,
+      end: 14,
+      hitboxes: [{ x: 0.5, y: 0.8, r: 0.7 }],
+      dmg: 4,
+      base: 4,
+      growth: 4,
+      angle: 30,
+      air: true,
+      special: 'scroll',
+      dashSpeed: 12,
+      landLag: 8,
+    },
+    // 通知爆撃：通知バッジをまき散らし、当たった相手の左右の操作を逆にする
+    dspecial: {
+      startup: 10,
+      active: 1,
+      end: 20,
+      hitboxes: [],
+      dmg: 0,
+      base: 0,
+      growth: 0,
+      angle: 0,
+      air: true,
+      special: 'shot',
+      shots: [0, 60, 120, 180, 240, 300].map((deg) => ({
+        at: 0,
+        kind: 'badge' as const,
+        x: 0,
+        y: 1.0,
+        vx: Math.cos((deg * Math.PI) / 180) * 7,
+        vy: Math.sin((deg * Math.PI) / 180) * 7,
+        life: 22,
+        r: 0.3,
+        dmg: 2,
+        base: 3,
+        growth: 2,
+        angle: 50,
+        confuse: 120,
+      })),
+    },
+    // 次の動画へ：上へ高速で滑り上がる。途中でもう一度Bを押すと方向転換
+    uspecial: {
+      startup: 3,
+      active: 26,
+      end: 6,
+      hitboxes: [{ x: 0, y: 0.9, r: 0.7 }],
+      dmg: 4,
+      base: 5,
+      growth: 4,
+      angle: 80,
+      air: true,
+      special: 'redirect',
+      riseV: 15,
+      helpless: true,
+    },
+  },
+  gacha: {
+    // 10連ガチャ：毎回ランダム（大当たり〜大外れ）
+    nspecial: { startup: 14, active: 1, end: 20, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'gacha10' },
+    // 単発ガチャ：5回に1回、超強力な一撃
+    sspecial: {
+      startup: 9,
+      active: 4,
+      end: 18,
+      hitboxes: [{ x: 0.9, y: 0.9, r: 0.7 }],
+      dmg: 6,
+      base: 5,
+      growth: 6,
+      angle: 38,
+      air: true,
+      special: 'gacha1',
+      landLag: 10,
+    },
+    // 課金：自分のダメージ%が増える代わりに、しばらく攻撃力アップ
+    dspecial: { startup: 8, active: 1, end: 16, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'pay' },
+    // 無償石を配る：上昇しながら、上から石を降らせる
+    uspecial: {
+      startup: 4,
+      active: 20,
+      end: 4,
+      hitboxes: [{ x: 0, y: 1.0, r: 0.75 }],
+      dmg: 5,
+      base: 5,
+      growth: 4,
+      angle: 80,
+      air: true,
+      special: 'recovery',
+      riseV: 15.5,
+      helpless: true,
+      shots: [
+        [0, -1.6],
+        [6, 1.6],
+        [12, -0.6],
+        [18, 0.8],
+      ].map(([at, x]) => ({ at, kind: 'stone' as const, x, y: 3.2, vx: 0, vy: -4, gravity: 22, life: 70, r: 0.32, dmg: 4, base: 4, growth: 4, angle: -60 })),
+    },
+  },
+  courier: {
+    // 配達バッグ投げ：投げると戻ってくる
+    nspecial: {
+      startup: 10,
+      active: 1,
+      end: 18,
+      hitboxes: [],
+      dmg: 0,
+      base: 0,
+      growth: 0,
+      angle: 0,
+      air: true,
+      special: 'shot',
+      shots: [{ at: 0, kind: 'bag', x: 0.8, y: 1.0, vx: 12, vy: 0, life: 110, r: 0.4, dmg: 6, base: 5, growth: 5, angle: 40, boomerang: 22 }],
+    },
+    // 自転車：乗ったまま走り回れる（ぶつかるとダメージ、ジャンプで降りる）
+    sspecial: { startup: 8, active: 1, end: 6, hitboxes: [], dmg: 7, base: 6, growth: 6, angle: 35, air: false, special: 'bike' },
+    // 置き配：拾うと回復する料理を置く（相手も拾える）
+    dspecial: { startup: 12, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: false, special: 'food' },
+    // 立ちこぎジャンプ：自転車ごと大ジャンプ
+    uspecial: {
+      startup: 5,
+      active: 18,
+      end: 6,
+      hitboxes: [{ x: 0, y: 0.2, r: 0.85 }],
+      dmg: 6,
+      base: 6,
+      growth: 5,
+      angle: 80,
+      air: true,
+      special: 'recovery',
+      riseV: 17,
+      riseVx: 3,
+      helpless: true,
+    },
+  },
+  ai: {
+    // 推論：いちばん近い相手を追いかける弾
+    nspecial: {
+      startup: 14,
+      active: 1,
+      end: 18,
+      hitboxes: [],
+      dmg: 0,
+      base: 0,
+      growth: 0,
+      angle: 0,
+      air: true,
+      special: 'shot',
+      shots: [{ at: 0, kind: 'orb', x: 0.8, y: 1.2, vx: 6.5, vy: 1, life: 130, r: 0.35, dmg: 6, base: 4.5, growth: 5, angle: 40, homing: 0.06 }],
+    },
+    // 学習：構えている間に飛んできた飛び道具を吸収し、次の攻撃を強化
+    sspecial: { startup: 4, active: 40, end: 16, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'absorb' },
+    // ハルシネーション：自分そっくりの分身を出す（攻撃した相手は目を回す）
+    dspecial: { startup: 10, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'decoy' },
+    // API呼び出し：ワイヤーで遠くの崖をつかんで復帰
+    uspecial: {
+      startup: 6,
+      active: 22,
+      end: 8,
+      hitboxes: [],
+      dmg: 5,
+      base: 5,
+      growth: 4,
+      angle: 60,
+      air: true,
+      special: 'tether',
+      riseV: 7,
+      helpless: true,
+    },
+  },
 };
 
 /** そのキャラの技のデータ */
@@ -300,3 +491,17 @@ export const TRAP = { life: 600, r: 0.6, armDelay: 30 };
 export const WALL = { life: 80, w: 0.35, h: 2.4, offset: 1.1 };
 /** 一時的な足場（ポップアップ広告）の設定 */
 export const POPUP = { life: 200, w: 2.4 };
+/** 倍速再生の効果時間と、次に使えるまでの時間（フレーム） */
+export const SPEEDUP = { duration: 300, cooldown: 480, speed: 1.35, frame: 0.75 };
+/** 課金：増えるダメージ%、効果時間、攻撃力・ふっとばし力の倍率 */
+export const PAY = { cost: 8, duration: 360, dmg: 1.3, kb: 1.15 };
+/** 自転車：乗っていられる時間、速さ、ぶつかったときに同じ相手へ再び当たるまで */
+export const BIKE = { duration: 300, speed: 12.5, hitCooldown: 30 };
+/** 置き配：回復量、置いていられる時間、置いた本人が拾えるまでの時間 */
+export const FOOD = { heal: 12, life: 600, selfDelay: 60, r: 0.6 };
+/** ハルシネーション：分身の時間、攻撃した相手が目を回す時間 */
+export const DECOY = { life: 240, dizzy: 50 };
+/** API呼び出し：ワイヤーの届く距離と、引き寄せる速さ */
+export const TETHER = { range: 6, speed: 18 };
+/** ガチャの天井（外れがこの回数続くと次は必ず大当たり） */
+export const PITY = 6;

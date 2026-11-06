@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { CharacterDef } from '../shared/characters';
 import type { Costume } from '../shared/costumes';
 import { moveOf } from '../shared/moves';
-import type { ViewFighter } from '../shared/types';
+import { FX_BIKE, FX_CHARGED, FX_POWER, FX_SPEED, type ViewFighter } from '../shared/types';
 
 const FWD = -Math.PI / 2; // 腕・脚を前に向ける回転（x軸まわり）
 const UP = -Math.PI;
@@ -79,6 +79,12 @@ export class FighterModel {
   private glowMats: THREE.MeshBasicMaterial[] = [];
   private outlineMat: THREE.MeshBasicMaterial;
   private turn = 0;
+  /** 自転車（配達員） */
+  private bikeGroup: THREE.Group | null = null;
+  /** 肩に浮かぶAIアシスタント（AIエンジニア） */
+  private buddy: THREE.Group | null = null;
+  /** 分身として半透明で表示するとき（0 = 通常） */
+  ghost = 0;
   private c: Costume['colors'];
   private blinkSeed: number;
 
@@ -101,6 +107,7 @@ export class FighterModel {
 
     this.buildBase();
     this.buildCharacter(def.id);
+    this.buildCharacter2(def.id);
 
     // ガード（シールド）
     this.shieldMesh = new THREE.Mesh(
@@ -328,6 +335,117 @@ export class FighterModel {
     }
   }
 
+  /** 追加の4体 */
+  private buildCharacter2(id: string): void {
+    const c = this.c;
+    const h = this.head;
+    if (id === 'dopa') {
+      // ドパガキ：ぶかぶかの蛍光パーカー・イヤホン・スマホ・エナジードリンク・キラキラの目
+      this.mouth();
+      const hair = this.toon(c.hair);
+      this.part(h, new THREE.SphereGeometry(0.33, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, [0, 0.31, -0.02], { rot: [-0.45, 0, 0] });
+      for (const [x, z, rx, rz] of [
+        [0.15, 0.2, 1.2, -0.4],
+        [0, 0.24, 1.3, 0],
+        [-0.15, 0.2, 1.2, 0.4],
+        [0.2, -0.05, -0.2, -1.1],
+        [-0.2, -0.05, -0.2, 1.1],
+      ]) {
+        this.part(h, new THREE.ConeGeometry(0.06, 0.2, 6), hair, [x, 0.52, z], { rot: [rx, 0, rz], outline: false });
+      }
+      this.part(h, new THREE.ConeGeometry(0.05, 0.12, 6), this.toon(c.accent), [0.05, 0.62, 0.05], { rot: [0.3, 0, -0.3], outline: false });
+      // キラキラの目（ハイライトを1つ増やす）
+      for (const e of this.eyes) this.part(e, new THREE.SphereGeometry(0.01, 6, 5), this.glow(0xfff6a0), [-0.015, -0.025, 0.02], { outline: false });
+      // イヤホン
+      for (const x of [0.3, -0.3]) this.part(h, new THREE.SphereGeometry(0.035, 8, 6), this.glow(0xffffff), [x, 0.26, 0.04], { outline: false });
+      // ぶかぶかのパーカー（フードは下ろしている）
+      this.part(this.body, new THREE.TorusGeometry(0.18, 0.07, 8, 20), this.toon(c.main), [0, 1.16, -0.04], { rot: [Math.PI / 2 - 0.35, 0, 0] });
+      this.part(this.body, new THREE.BoxGeometry(0.3, 0.1, 0.03), this.toon(c.sub), [0, 0.76, 0.17], { outline: false });
+      for (const x of [0.06, -0.06]) this.part(this.body, new THREE.CylinderGeometry(0.008, 0.008, 0.2, 6), this.toon(c.accent), [x, 1.03, 0.17], { outline: false });
+      // エナジードリンク（腰）
+      this.part(this.body, new THREE.CylinderGeometry(0.045, 0.045, 0.14, 12), this.toon(c.accent), [-0.27, 0.72, 0.05]);
+      this.part(this.body, new THREE.CylinderGeometry(0.046, 0.046, 0.03, 12), this.toon(0x222222), [-0.27, 0.74, 0.05], { outline: false });
+      // スマホ（右手）
+      const phone = this.hand(this.armR);
+      this.part(phone, new THREE.BoxGeometry(0.1, 0.18, 0.02), this.toon(0x222233), [0, -0.05, 0.08]);
+      this.part(phone, new THREE.BoxGeometry(0.085, 0.16, 0.005), this.glow(0x8ef0ff), [0, -0.05, 0.092], { outline: false });
+    } else if (id === 'gacha') {
+      // ガチャ廃人：目の下のクマ・ぼさぼさの長い髪・ジャージ・光るスマホ
+      this.part(this.head, new THREE.CapsuleGeometry(0.01, 0.04, 3, 6), this.toon(0x7a3a3a), [0, 0.16, 0.285], { rot: [0, 0, Math.PI / 2 + 0.3], outline: false });
+      for (const x of [0.11, -0.11]) {
+        this.part(h, new THREE.SphereGeometry(0.05, 10, 6), this.glow(0x6a4a8a), [x, 0.2, 0.27], { scale: [1, 0.35, 0.3], outline: false });
+      }
+      const hair = this.toon(c.hair);
+      this.part(h, new THREE.SphereGeometry(0.345, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.6), hair, [0, 0.3, -0.03], { rot: [-0.5, 0, 0] });
+      for (const [x, y] of [
+        [0.25, 0.12],
+        [-0.25, 0.12],
+        [0.15, 0.02],
+        [-0.15, 0.02],
+      ]) {
+        this.part(h, new THREE.CapsuleGeometry(0.06, 0.24, 4, 8), hair, [x, y, -0.08], { rot: [0.2, 0, x > 0 ? 0.15 : -0.15] });
+      }
+      for (let i = 0; i < 3; i++) this.part(h, new THREE.ConeGeometry(0.06, 0.18, 6), hair, [-0.1 + i * 0.1, 0.5, 0.22], { rot: [1.6, 0, (i - 1) * 0.3], outline: false });
+      // ジャージ（腕と胴に線）
+      for (const arm of [this.armL, this.armR]) this.part(arm, new THREE.BoxGeometry(0.02, 0.28, 0.14), this.toon(c.accent), [0, -0.19, 0], { outline: false });
+      this.part(this.body, new THREE.BoxGeometry(0.02, 0.38, 0.01), this.toon(c.accent), [0, 0.94, 0.168], { outline: false });
+      this.part(this.body, new THREE.TorusGeometry(0.15, 0.04, 8, 20), this.toon(c.sub), [0, 1.18, 0], { rot: [Math.PI / 2, 0, 0] });
+      // 光るスマホ（右手）
+      const phone = this.hand(this.armR);
+      this.part(phone, new THREE.BoxGeometry(0.1, 0.18, 0.02), this.toon(0x222233), [0, -0.05, 0.08]);
+      this.part(phone, new THREE.BoxGeometry(0.085, 0.16, 0.005), this.glow(c.accent), [0, -0.05, 0.092], { outline: false });
+    } else if (id === 'courier') {
+      // 配達員：ヘルメット・四角い配達バッグ・自転車
+      this.mouth();
+      this.brows(0.05, c.hair);
+      const helmet = this.toon(c.main);
+      this.part(h, new THREE.SphereGeometry(0.335, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), helmet, [0, 0.33, 0], { scale: [1, 0.95, 1.08] });
+      this.part(h, new THREE.BoxGeometry(0.06, 0.04, 0.5), this.toon(c.accent), [0, 0.62, 0], { outline: false });
+      this.part(h, new THREE.BoxGeometry(0.3, 0.025, 0.12), this.toon(0x15151c), [0, 0.42, 0.32], { rot: [0.25, 0, 0] });
+      // 配達バッグ（背中）
+      this.part(this.body, new THREE.BoxGeometry(0.5, 0.48, 0.32), this.toon(c.main), [0, 1.0, -0.33]);
+      this.part(this.body, new THREE.BoxGeometry(0.51, 0.08, 0.33), this.toon(c.accent), [0, 1.06, -0.33], { outline: false });
+      for (const x of [0.14, -0.14]) this.part(this.body, new THREE.BoxGeometry(0.04, 0.4, 0.05), this.toon(c.sub), [x, 0.98, -0.13], { outline: false });
+      // 自転車（乗っているときだけ表示）
+      const bike = new THREE.Group();
+      const frame = this.toon(c.main);
+      const dark = this.toon(0x222228);
+      for (const z of [0.45, -0.45]) {
+        this.part(bike, new THREE.TorusGeometry(0.28, 0.035, 8, 22), dark, [0, 0.28, z], { rot: [0, Math.PI / 2, 0] });
+      }
+      this.part(bike, new THREE.CylinderGeometry(0.025, 0.025, 0.9, 8), frame, [0, 0.45, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+      this.part(bike, new THREE.CylinderGeometry(0.025, 0.025, 0.5, 8), frame, [0, 0.5, 0.35], { rot: [0.4, 0, 0], outline: false });
+      this.part(bike, new THREE.BoxGeometry(0.4, 0.03, 0.04), dark, [0, 0.74, 0.43], { outline: false });
+      this.part(bike, new THREE.BoxGeometry(0.14, 0.04, 0.22), dark, [0, 0.66, -0.12], { outline: false });
+      bike.visible = false;
+      this.turnGroup.add(bike);
+      this.bikeGroup = bike;
+    } else if (id === 'ai') {
+      // AIエンジニア：きちんとした髪・ヘッドセット・カーディガン・肩に浮かぶAIアシスタント
+      this.mouth();
+      this.brows(0, c.hair);
+      const hair = this.toon(c.hair);
+      this.part(h, new THREE.SphereGeometry(0.335, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0.31, -0.02], { rot: [-0.35, 0, 0] });
+      this.part(h, new THREE.CapsuleGeometry(0.07, 0.22, 4, 8), hair, [0.06, 0.5, 0.2], { rot: [0, 0, Math.PI / 2 - 0.25], outline: false });
+      // ヘッドセット
+      const hs = this.toon(0x2a2f3a);
+      this.part(h, new THREE.TorusGeometry(0.34, 0.022, 8, 24, Math.PI), hs, [0, 0.3, 0]);
+      this.part(h, new THREE.CylinderGeometry(0.08, 0.08, 0.06, 16), hs, [0.34, 0.27, 0], { rot: [0, 0, Math.PI / 2] });
+      this.part(h, new THREE.CylinderGeometry(0.01, 0.01, 0.22, 6), hs, [0.3, 0.17, 0.12], { rot: [1.2, 0, 0.3], outline: false });
+      this.part(h, new THREE.SphereGeometry(0.025, 8, 6), this.glow(c.accent), [0.24, 0.13, 0.22], { outline: false });
+      // カーディガン（前のライン）
+      for (const x of [0.07, -0.07]) this.part(this.body, new THREE.BoxGeometry(0.02, 0.42, 0.01), this.toon(c.sub), [x, 0.92, 0.168], { outline: false });
+      this.part(this.body, new THREE.BoxGeometry(0.1, 0.38, 0.01), this.toon(c.accent), [0, 0.95, 0.165], { outline: false });
+      // AIアシスタント（浮かぶ球）
+      const buddy = new THREE.Group();
+      this.part(buddy, new THREE.SphereGeometry(0.13, 16, 12), this.glow(c.accent), [0, 0, 0]);
+      for (const x of [0.04, -0.04]) this.part(buddy, new THREE.SphereGeometry(0.018, 6, 5), this.glow(0x0b1a2a), [x, 0.02, 0.11], { outline: false });
+      buddy.position.set(0.5, 1.85, 0);
+      this.root.add(buddy);
+      this.buddy = buddy;
+    }
+  }
+
   // ---------------------------------------------------------------- 毎フレームの更新
   update(v: ViewFighter, def: CharacterDef, time: number, dt: number): void {
     const visible = v.state !== 'dead';
@@ -340,6 +458,26 @@ export class FighterModel {
     this.turn += (target - this.turn) * Math.min(1, dt * 18);
 
     const p = this.victory ? this.victoryPose(time) : this.pose(v, def, time);
+    // 自転車（配達員）：乗っている間と、立ちこぎジャンプ中に表示
+    const onBike = (v.fx & FX_BIKE) !== 0 || (def.id === 'courier' && v.state === 'attack' && v.move === 'uspecial');
+    if (this.bikeGroup) {
+      this.bikeGroup.visible = onBike;
+      if (onBike) {
+        const c = Math.sin(time * 18);
+        p.legL = -0.9 + c * 0.6;
+        p.legR = -0.9 - c * 0.6;
+        p.lean = 0.25;
+        p.armL = FWD * 0.75;
+        p.armR = FWD * 0.75;
+        p.bob = 0.34;
+        p.spinY = 0;
+      }
+    }
+    // AIアシスタント：ふわふわ浮かぶ
+    if (this.buddy) {
+      this.buddy.position.set(-v.facing * 0.55, 1.95 * def.scale + Math.sin(time * 3) * 0.08, 0.1);
+      this.buddy.rotation.y = Math.sin(time * 1.5) * 0.4;
+    }
     this.turnGroup.rotation.y = this.turn + p.spinY;
     this.spin.rotation.z = p.spinZ;
     this.body.rotation.set(p.lean, 0, 0);
@@ -369,10 +507,13 @@ export class FighterModel {
     const ghost = v.state === 'dodge' || v.state === 'airdodge' || invisible;
     const helpless = v.state === 'helpless';
     const poisoned = v.poison && Math.floor(time * 6) % 2 === 0;
-    const opacity = invisible ? 0.12 : ghost ? 0.45 : 1;
+    const opacity = this.ghost > 0 ? this.ghost : invisible ? 0.12 : ghost ? 0.45 : 1;
+    // 倍速（青）・課金（赤）・吸収済み（水色）は、体がほんのり光る
+    const pulse = 0.5 + 0.5 * Math.sin(time * 10);
+    const fxGlow = v.fx & FX_POWER ? 0x5a1010 : v.fx & FX_CHARGED ? 0x0a4a5a : v.fx & FX_SPEED ? 0x10305a : 0;
     for (const m of this.mats) {
-      m.emissive.setHex(flash ? 0x555555 : charging ? 0xffaa00 : poisoned ? 0x5a1a7a : helpless ? 0x220022 : 0x000000);
-      m.emissiveIntensity = charging ? 0.3 + 0.3 * Math.sin(time * 30) : 1;
+      m.emissive.setHex(flash ? 0x555555 : charging ? 0xffaa00 : poisoned ? 0x5a1a7a : helpless ? 0x220022 : fxGlow);
+      m.emissiveIntensity = charging ? 0.3 + 0.3 * Math.sin(time * 30) : fxGlow && !flash && !poisoned ? 0.6 + 0.6 * pulse : 1;
       m.transparent = opacity < 1;
       m.opacity = opacity;
     }
@@ -565,6 +706,58 @@ export class FighterModel {
         p.armL = UP * 0.4;
         if (def.id === 'thief') p.spinY = f * 0.6;
         if (md.riseVx) p.lean = 0.5;
+        return;
+      case 'speedup':
+        // スマホを掲げて倍速に
+        p.armR = UP * 0.7 * k;
+        p.headTilt = -0.15;
+        return;
+      case 'scroll':
+        p.armR = lerp(UP * 0.3, FWD * 1.1, k);
+        p.lean = 0.5 * k;
+        p.legL = 0.5 * k;
+        p.legR = -0.5 * k;
+        return;
+      case 'redirect':
+        p.armR = UP;
+        p.armL = UP * 0.8;
+        p.lean = 0.2;
+        return;
+      case 'gacha10':
+      case 'pay':
+        // スマホをのぞきこむ
+        p.armR = FWD * 1.15;
+        p.armL = FWD * 0.6;
+        p.headTilt = 0.25;
+        if (md.special === 'gacha10' && f >= s) p.bob = Math.abs(Math.sin(f * 0.5)) * 0.08;
+        return;
+      case 'gacha1':
+        p.armR = lerp(0.6 * wind, FWD * 1.1, k);
+        p.lean = 0.3 * k;
+        return;
+      case 'bike':
+        p.armR = FWD * 0.7;
+        p.armL = FWD * 0.7;
+        return;
+      case 'food':
+        p.squash = 0.82;
+        p.armR = FWD * 0.6 * k;
+        p.armL = FWD * 0.6 * k;
+        p.lean = 0.3;
+        return;
+      case 'absorb':
+        p.armL = FWD * 0.9;
+        p.armR = FWD * 0.9;
+        p.armLz = 0.5;
+        p.armRz = -0.5;
+        return;
+      case 'decoy':
+        p.armR = UP * 0.6 * k;
+        p.headTilt = -0.1;
+        return;
+      case 'tether':
+        p.armR = UP * 0.75;
+        p.armL = 0.3;
         return;
     }
     switch (v.move) {

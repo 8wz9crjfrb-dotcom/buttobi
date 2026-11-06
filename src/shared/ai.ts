@@ -4,6 +4,15 @@ import { Rng } from './rng';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type InputState } from './types';
 import type { Fighter, Sim } from './sim';
 
+/** CPUが狙う相手（選手、または分身） */
+interface Target {
+  x: number;
+  y: number;
+  state: string;
+  damage: number;
+  grounded: boolean;
+}
+
 interface Brain {
   hold: InputState;
   holdFrames: number;
@@ -140,8 +149,9 @@ export class CpuController {
     return { mx: dir, my: 0, buttons: 0 };
   }
 
-  private target(sim: Sim, f: Fighter): Fighter | null {
-    let best: Fighter | null = null;
+  /** いちばん近い相手。分身（ハルシネーション）にもだまされる */
+  private target(sim: Sim, f: Fighter): Target | null {
+    let best: Target | null = null;
     let bestD = Infinity;
     for (const o of sim.fighters) {
       if (o === f || !o.alive || o.out) continue;
@@ -149,6 +159,14 @@ export class CpuController {
       if (d < bestD) {
         bestD = d;
         best = o;
+      }
+    }
+    for (const e of sim.entities) {
+      if (e.kind !== 'decoy' || e.owner === f.slot) continue;
+      const d = Math.abs(e.x - f.x) + Math.abs(e.y - f.y) * 1.5;
+      if (d < bestD) {
+        bestD = d;
+        best = { x: e.x, y: e.y, state: 'idle', damage: 0, grounded: true };
       }
     }
     return best;

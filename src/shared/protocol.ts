@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -67,8 +67,8 @@ export interface EncodedState {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const SHOT_KINDS = ['text', 'bullet', 'mail', 'malware', 'coin', 'thanks'];
-const ENTITY_KINDS: ViewEntity['kind'][] = ['wall', 'trap', 'popup'];
+const SHOT_KINDS = ['text', 'bullet', 'mail', 'malware', 'coin', 'thanks', 'badge', 'stone', 'bag', 'orb', 'gold'];
+const ENTITY_KINDS: ViewEntity['kind'][] = ['wall', 'trap', 'popup', 'food', 'decoy'];
 
 export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
   return {
@@ -92,9 +92,10 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
       f.charge,
       f.kos,
       f.falls,
+      f.fx,
     ]),
     q: v.projectiles.map((p) => [Math.round(p.x * 100), Math.round(p.y * 100), p.owner, Math.max(0, SHOT_KINDS.indexOf(p.kind))]),
-    n: v.entities.map((e) => [ENTITY_KINDS.indexOf(e.kind), Math.round(e.x * 100), Math.round(e.y * 100), e.owner, e.life]),
+    n: v.entities.map((e) => [ENTITY_KINDS.indexOf(e.kind), Math.round(e.x * 100), Math.round(e.y * 100), e.owner, e.life, e.dir]),
     ev: events.map((e) => ('x' in e ? { ...e, x: r2(e.x), y: r2(e.y) } : e)),
   };
 }
@@ -119,13 +120,14 @@ export function decodeState(s: EncodedState): ViewState {
       invuln: (a[10] & 1) !== 0,
       out: (a[10] & 2) !== 0,
       poison: (a[10] & 4) !== 0,
+      fx: a[15] ?? 0,
       shield: a[11] / 100,
       charge: a[12],
       kos: a[13],
       falls: a[14],
     })),
     projectiles: s.q.map((a) => ({ x: a[0] / 100, y: a[1] / 100, owner: a[2], kind: SHOT_KINDS[a[3]] ?? 'bullet' })),
-    entities: (s.n ?? []).map((a) => ({ kind: ENTITY_KINDS[a[0]] ?? 'wall', x: a[1] / 100, y: a[2] / 100, owner: a[3], life: a[4] })),
+    entities: (s.n ?? []).map((a) => ({ kind: ENTITY_KINDS[a[0]] ?? 'wall', x: a[1] / 100, y: a[2] / 100, owner: a[3], life: a[4], dir: a[5] ?? 1 })),
     events: s.ev,
   };
 }

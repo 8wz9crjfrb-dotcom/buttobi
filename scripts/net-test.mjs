@@ -5,7 +5,7 @@ function client(name, create) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`${URL_BASE}/room/${code}`);
     const c = { ws, name, msgs: [], snaps: 0, lastSnap: null, results: null, slot: -1, lobby: null, errors: [] };
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 3, name, charId: create ? 'guard' : 'thief', create }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 4, name, charId: create ? 'guard' : 'thief', create }));
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
       if (m.t === 'welcome') { c.slot = m.slot; resolve(c); }
@@ -49,6 +49,6 @@ console.log('試合時間', ((Date.now() - t0) / 1000).toFixed(1), '秒 結果',
 const lobbyAfter = guest.lobby;
 console.log('試合後のロビー: ホスト=', lobbyAfter.hostSlot, '人間', lobbyAfter.players.filter(p => !p.cpu).map(p => p.name));
 guest.ws.close();
-const nf = await (async () => { const c2 = await new Promise((res) => { const ws = new WebSocket(`${URL_BASE}/room/0001`); ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 3, name: 'x', charId: 'streamer', create: false })); ws.onmessage = (e) => res(JSON.parse(e.data)); }); return c2; })();
+const nf = await (async () => { const c2 = await new Promise((res) => { const ws = new WebSocket(`${URL_BASE}/room/0001`); ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 4, name: 'x', charId: 'streamer', create: false })); ws.onmessage = (e) => res(JSON.parse(e.data)); }); return c2; })();
 console.log('存在しないルームに参加 →', nf.code);
 process.exit(0);

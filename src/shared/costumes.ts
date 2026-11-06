@@ -52,6 +52,34 @@ export const COSTUMES: Costume[] = [
     rarity: 1,
     colors: { main: 0xff9ec8, sub: 0xffffff, accent: 0x7ef0d0, hair: 0xb79cff, skin: 0xffe0cc, pants: 0x6d6a8a, shoes: 0xffffff },
   },
+  {
+    id: 'dopa-default',
+    charId: 'dopa',
+    name: 'いつもの蛍光パーカー',
+    rarity: 1,
+    colors: { main: 0xb6ff3b, sub: 0x2a2a35, accent: 0xff7a1a, hair: 0x2b2b33, skin: 0xffe0cc, pants: 0x3a4a6a, shoes: 0xff7a1a },
+  },
+  {
+    id: 'gacha-default',
+    charId: 'gacha',
+    name: 'いつものジャージ',
+    rarity: 1,
+    colors: { main: 0x5a5f8f, sub: 0x2a2c44, accent: 0xffd23f, hair: 0x3b3046, skin: 0xead2c0, pants: 0x2a2c44, shoes: 0x9aa0b8 },
+  },
+  {
+    id: 'courier-default',
+    charId: 'courier',
+    name: 'いつもの配達服',
+    rarity: 1,
+    colors: { main: 0x2fbf71, sub: 0x1d2a24, accent: 0xffffff, hair: 0x5a3a24, skin: 0xd9a77e, pants: 0x1d2a24, shoes: 0x2fbf71 },
+  },
+  {
+    id: 'ai-default',
+    charId: 'ai',
+    name: 'いつものカーディガン',
+    rarity: 1,
+    colors: { main: 0xe8ecf4, sub: 0x2d4a7a, accent: 0x4fd8ff, hair: 0x2d3a5a, skin: 0xf3d6bd, pants: 0x3a3f4a, shoes: 0x2d3a5a },
+  },
 ];
 
 export function defaultCostume(charId: string): Costume {

@@ -805,3 +805,10 @@ input[inputmode='numeric'] {
 .char-info b {
   color: #fff;
 }
+
+/* 横持ちのスマホでは、キャラ枠のタイプ名を隠して名前を読みやすくする（説明欄に表示される） */
+@media (max-height: 480px) {
+  .char-card .rl {
+    display: none;
+  }
+}

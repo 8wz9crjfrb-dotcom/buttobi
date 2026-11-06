@@ -294,6 +294,11 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'flash') sfx.shutter();
     else if (e.k === 'teleport') sfx.warp();
     else if (e.k === 'sleep') sfx.sleep();
+    else if (e.k === 'gacha') sfx.gacha(e.r);
+    else if (e.k === 'heal') sfx.heal();
+    else if (e.k === 'poof') sfx.poof();
+    else if (e.k === 'buff') sfx.buff();
+    else if (e.k === 'absorb') sfx.absorb();
   }
   const c = view.countdown > 100 ? 3 : view.countdown > 50 ? 2 : view.countdown > 0 ? 1 : 0;
   if (c !== lastCountdownBeep) {
@@ -349,7 +354,7 @@ function bindSeg(root: HTMLElement, name: string, onChange: (v: string) => void)
 function charInfo(id: string): string {
   const c = getCharacter(id);
   const n = c.specialNames;
-  return `<b>${c.name}</b>（${c.role}）${c.desc}<br/>必殺技：B「${n.n}」／横B「${n.s}」／下B「${n.d}」／上B「${n.u}」`;
+  return `<b>${c.name}</b>（${c.role}）${c.desc}<br/>特性「${c.trait.name}」：${c.trait.desc}<br/>必殺技：B「${n.n}」／横B「${n.s}」／下B「${n.d}」／上B「${n.u}」`;
 }
 
 function charCards(selected: string): string {
@@ -801,4 +806,9 @@ requestAnimationFrame(loop);
     return lastView;
   },
   renderer,
+  /** 確認用：指定した組み合わせでCPU戦を始める */
+  startLocal(setup: MatchSetup) {
+    lastSetup = setup;
+    startSession(new LocalSession(setup));
+  },
 };

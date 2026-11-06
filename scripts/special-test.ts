@@ -1,5 +1,6 @@
 // 各キャラの必殺技が意図どおりに動くかを確かめる
 import { Sim, COUNTDOWN_FRAMES } from '../src/shared/sim';
+import { CHARACTERS } from '../src/shared/characters';
 import { BTN_A, BTN_B, type InputState } from '../src/shared/types';
 
 let fail = 0;
@@ -20,7 +21,7 @@ function run(sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
 const tap = (inp: InputState) => (i: number) => (i === 0 ? inp : N);
 
 // 全キャラ × 全必殺技を地上・空中で出しても異常値が出ない
-for (const c of ['guard', 'hacker', 'thief', 'streamer']) {
+for (const c of CHARACTERS.map((x) => x.id)) {
   for (const [mx, my] of [[0, 0], [1, 0], [0, -1], [0, 1]]) {
     const sim = make(c, 'guard');
     sim.fighters[0].x = -3; sim.fighters[1].x = 4;

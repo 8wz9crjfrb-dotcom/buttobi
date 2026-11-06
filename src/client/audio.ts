@@ -92,6 +92,29 @@ export class Sfx {
   sleep(): void {
     this.tone(700, 0.4, 'triangle', 0.15, 250);
   }
+  gacha(rarity: number): void {
+    if (rarity >= 4) {
+      // 大当たり：上がっていくファンファーレ
+      [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.tone(f, 0.18, 'square', 0.14), i * 90));
+    } else if (rarity === 0) {
+      this.tone(330, 0.5, 'triangle', 0.18, 110);
+    } else {
+      this.tone(700, 0.1, 'square', 0.1, 900);
+    }
+  }
+  heal(): void {
+    this.tone(880, 0.12, 'sine', 0.15, 1320);
+    setTimeout(() => this.tone(1320, 0.18, 'sine', 0.12), 90);
+  }
+  poof(): void {
+    this.burst(0.25, 0.5, 900);
+  }
+  buff(): void {
+    this.tone(440, 0.25, 'square', 0.1, 880);
+  }
+  absorb(): void {
+    this.tone(1200, 0.2, 'sine', 0.15, 300);
+  }
   beep(high = false): void {
     this.tone(high ? 880 : 440, high ? 0.4 : 0.15, 'square', 0.15);
   }

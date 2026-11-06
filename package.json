@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview --host",
-    "test": "tsx scripts/sim-test.ts && tsx scripts/flick-test.ts && tsx scripts/special-test.ts",
+    "test": "tsx scripts/sim-test.ts && tsx scripts/flick-test.ts && tsx scripts/special-test.ts && tsx scripts/special-test-2.ts",
     "server:dev": "cd server && npx wrangler dev --ip 0.0.0.0",
     "server:deploy": "cd server && npx wrangler deploy",
     "icons": "node scripts/make-icons.mjs"

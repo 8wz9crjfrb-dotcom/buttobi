@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { SLOT_COLORS } from '../shared/characters';
 import { POPUP, TRAP, WALL } from '../shared/moves';
-import type { ViewState } from '../shared/types';
+import { FX_CONFUSED, type ViewState } from '../shared/types';
 
 /** 文字や絵を描いたテクスチャ */
 function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
@@ -23,7 +23,10 @@ export class PropRenderer {
   private textures: THREE.Texture[] = [];
   private zzzTex: THREE.CanvasTexture;
   private zzz = new Map<number, THREE.Sprite>();
+  private qTex: THREE.CanvasTexture;
+  private question = new Map<number, THREE.Sprite>();
   private bubbles: { mesh: THREE.Mesh; life: number }[] = [];
+  private texts: { sprite: THREE.Sprite; life: number; max: number }[] = [];
 
   constructor(private scene: THREE.Scene) {
     this.zzzTex = canvasTexture(128, 64, (g) => {
@@ -34,7 +37,37 @@ export class PropRenderer {
       g.strokeText('Zzz', 10, 48);
       g.fillText('Zzz', 10, 48);
     });
-    this.textures.push(this.zzzTex);
+    this.qTex = canvasTexture(64, 64, (g) => {
+      g.font = `bold 54px ${FONT}`;
+      g.fillStyle = '#ffd23f';
+      g.strokeStyle = '#3a2a00';
+      g.lineWidth = 8;
+      g.strokeText('?', 16, 52);
+      g.fillText('?', 16, 52);
+    });
+    this.textures.push(this.zzzTex, this.qTex);
+  }
+
+  /** 浮かんで消える文字（ガチャの結果など） */
+  showText(text: string, color: string, x: number, y: number, big = false): void {
+    const tex = canvasTexture(256, 96, (g) => {
+      g.font = `900 ${big ? 64 : 48}px ${FONT}`;
+      g.textAlign = 'center';
+      g.lineWidth = 10;
+      g.strokeStyle = '#1b1b28';
+      g.strokeText(text, 128, 70);
+      if (color === 'rainbow') {
+        const grad = g.createLinearGradient(20, 0, 236, 0);
+        ['#ff5a5a', '#ffd23f', '#4fd18b', '#4f9dff', '#c77dff'].forEach((c, i) => grad.addColorStop(i / 4, c));
+        g.fillStyle = grad;
+      } else g.fillStyle = color;
+      g.fillText(text, 128, 70);
+    });
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+    sprite.scale.set(big ? 3 : 2.2, big ? 1.12 : 0.82, 1);
+    sprite.position.set(x, y, 1);
+    this.scene.add(sprite);
+    this.texts.push({ sprite, life: 70, max: 70 });
   }
 
   // ---------------------------------------------------------------- 部品の作り方
@@ -91,6 +124,58 @@ export class PropRenderer {
         });
         this.textures.push(tex);
         return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+      }
+      case 'badge': {
+        // 通知バッジ
+        const tex = canvasTexture(64, 64, (g) => {
+          g.fillStyle = '#ff3b3b';
+          g.beginPath();
+          g.arc(32, 32, 28, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = '#fff';
+          g.font = `bold 38px ${FONT}`;
+          g.textAlign = 'center';
+          g.fillText('1', 32, 46);
+        });
+        this.textures.push(tex);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+        sp.scale.setScalar(0.55);
+        return sp;
+      }
+      case 'stone':
+        return new THREE.Mesh(new THREE.OctahedronGeometry(0.3, 0), new THREE.MeshToonMaterial({ color: 0x6fd0ff, emissive: 0x1a4a7a }));
+      case 'gold':
+        return new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), basic(0xffd23f));
+      case 'bag': {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.4), new THREE.MeshToonMaterial({ color: 0x2fbf71 })));
+        const band = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.09, 0.41), basic(0xffffff));
+        band.position.y = 0.06;
+        g.add(band);
+        return g;
+      }
+      case 'orb': {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 10), basic(0x4fd8ff, { transparent: true, opacity: 0.55 })));
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), basic(0xffffff)));
+        return g;
+      }
+      case 'food': {
+        // 置き配：お弁当
+        const g = new THREE.Group();
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.36), new THREE.MeshToonMaterial({ color: 0xc0392b }));
+        box.position.y = 0.08;
+        g.add(box);
+        const rice = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.3), basic(0xffffff));
+        rice.position.set(-0.11, 0.17, 0);
+        g.add(rice);
+        const egg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.1), basic(0xffd23f));
+        egg.position.set(0.1, 0.18, -0.06);
+        g.add(egg);
+        const ume = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), basic(0xe5484d));
+        ume.position.set(-0.11, 0.2, 0);
+        g.add(ume);
+        return g;
       }
       case 'wall': {
         // 物理ファイアウォール：燃えるレンガの壁
@@ -176,6 +261,9 @@ export class PropRenderer {
       else if (p.kind === 'coin') o.rotation.y = time * 10;
       else if (p.kind === 'mail') o.rotation.z = Math.sin(time * 12) * 0.25;
       else if (p.kind === 'thanks') o.scale.setScalar(0.6);
+      else if (p.kind === 'stone' || p.kind === 'gold') o.rotation.set(time * 3, time * 4, 0);
+      else if (p.kind === 'bag') o.rotation.z = time * 14;
+      else if (p.kind === 'orb') o.scale.setScalar(1 + Math.sin(time * 20) * 0.1);
     }
     for (const e of view.entities) {
       const o = this.take(e.kind, e.owner, used);
@@ -183,6 +271,18 @@ export class PropRenderer {
         o.position.set(e.x, e.y + WALL.h / 2, 0);
         const m = (o as THREE.Mesh).material as THREE.MeshBasicMaterial;
         m.opacity = Math.min(0.75, e.life / 20) * (0.85 + Math.sin(time * 20) * 0.15);
+      } else if (e.kind === 'decoy') {
+        o.visible = false; // 分身は描画側でキャラのモデルを使って表示する
+      } else if (e.kind === 'food') {
+        o.position.set(e.x, e.y, 0);
+        o.rotation.y = Math.sin(time * 2) * 0.3;
+        if (Math.random() < dt * 3) {
+          // 湯気
+          const b = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
+          b.position.set(e.x + (Math.random() - 0.5) * 0.3, e.y + 0.25, 0.3);
+          this.scene.add(b);
+          this.bubbles.push({ mesh: b, life: 0.8 });
+        }
       } else if (e.kind === 'trap') {
         o.position.set(e.x, e.y, 0);
         const led = o.getObjectByName('led');
@@ -192,8 +292,19 @@ export class PropRenderer {
         o.scale.setScalar(e.life < 40 && Math.floor(time * 10) % 2 === 0 ? 0.98 : 1);
       }
     }
-    // 眠っている人の頭上に Zzz、毒の人から泡
+    // 眠っている人の頭上に Zzz、操作が逆の人に「？」、毒の人から泡
     for (const f of view.fighters) {
+      let q = this.question.get(f.slot);
+      if (f.fx & FX_CONFUSED && f.state !== 'dead') {
+        if (!q) {
+          q = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.qTex, depthWrite: false }));
+          q.scale.setScalar(0.5);
+          this.scene.add(q);
+          this.question.set(f.slot, q);
+        }
+        q.visible = true;
+        q.position.set(f.x + Math.sin(time * 6) * 0.3, f.y + 2.5, 0.5);
+      } else if (q) q.visible = false;
       let z = this.zzz.get(f.slot);
       if (f.state === 'sleep') {
         if (!z) {
@@ -212,6 +323,18 @@ export class PropRenderer {
         this.bubbles.push({ mesh: b, life: 0.8 });
       }
     }
+    this.texts = this.texts.filter((t) => {
+      t.life -= dt * 60;
+      t.sprite.position.y += dt * 0.8;
+      (t.sprite.material as THREE.SpriteMaterial).opacity = Math.min(1, t.life / 20);
+      if (t.life <= 0) {
+        this.scene.remove(t.sprite);
+        (t.sprite.material as THREE.SpriteMaterial).map?.dispose();
+        t.sprite.material.dispose();
+        return false;
+      }
+      return true;
+    });
     this.bubbles = this.bubbles.filter((b) => {
       b.life -= dt;
       b.mesh.position.y += dt * 1.2;
@@ -231,9 +354,13 @@ export class PropRenderer {
     this.pools.clear();
     for (const z of this.zzz.values()) this.scene.remove(z);
     this.zzz.clear();
+    for (const q of this.question.values()) this.scene.remove(q);
+    this.question.clear();
+    for (const t of this.texts) this.scene.remove(t.sprite);
+    this.texts = [];
     for (const b of this.bubbles) this.scene.remove(b.mesh);
     this.bubbles = [];
-    for (const t of this.textures) if (t !== this.zzzTex) t.dispose();
-    this.textures = [this.zzzTex];
+    for (const t of this.textures) if (t !== this.zzzTex && t !== this.qTex) t.dispose();
+    this.textures = [this.zzzTex, this.qTex];
   }
 }
