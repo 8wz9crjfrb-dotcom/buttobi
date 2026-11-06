@@ -87,3 +87,45 @@ export function registerServiceWorker(): void {
     });
   });
 }
+
+/**
+ * ダブルタップでの拡大・ピンチでの拡大を防ぐ（iOS Safari 対策）。
+ * CSS の touch-action だけでは連打したときに拡大されることがあるため、タッチの既定動作を止める。
+ * - 対戦画面（スティック・ボタン・ゲーム画面）：タッチ開始の既定動作を止める
+ * - それ以外（メニューなど）：350ms 以内に「ほぼ同じ場所」を2回叩いたときだけ既定動作を止める
+ *   （違うボタンを素早く続けて押すのは通常どおり効く）
+ */
+export function preventZoomGestures(): void {
+  const gameArea = '#touch, #game-canvas, #hud';
+  document.addEventListener(
+    'touchstart',
+    (e) => {
+      const t = e.target as Element | null;
+      if (t?.closest?.(gameArea)) e.preventDefault();
+      if (e.touches.length > 1 && !t?.closest?.('input, textarea')) e.preventDefault();
+    },
+    { passive: false },
+  );
+  let lastEnd = 0;
+  let lastX = -999;
+  let lastY = -999;
+  document.addEventListener(
+    'touchend',
+    (e) => {
+      const now = performance.now();
+      const t = e.target as Element | null;
+      const p = e.changedTouches[0];
+      const x = p?.clientX ?? -999;
+      const y = p?.clientY ?? -999;
+      const near = Math.hypot(x - lastX, y - lastY) < 40;
+      if (now - lastEnd < 350 && near && !t?.closest?.('input, textarea')) e.preventDefault();
+      lastEnd = now;
+      lastX = x;
+      lastY = y;
+    },
+    { passive: false },
+  );
+  for (const type of ['gesturestart', 'gesturechange', 'dblclick']) {
+    document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+  }
+}

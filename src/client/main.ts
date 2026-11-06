@@ -18,6 +18,7 @@ import {
   isIOS,
   isStandalone,
   keepAwake,
+  preventZoomGestures,
   promptInstall,
   registerServiceWorker,
   vibrate,
@@ -26,6 +27,7 @@ import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
 
 registerServiceWorker();
+preventZoomGestures();
 
 const settings: Settings = loadSettings();
 applyUiSettings(settings);

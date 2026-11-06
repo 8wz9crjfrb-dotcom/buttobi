@@ -32,12 +32,24 @@ body {
   user-select: none;
   -webkit-touch-callout: none;
   overscroll-behavior: none;
+  /* ダブルタップでの拡大をしない */
+  touch-action: manipulation;
 }
 
 #app {
   position: fixed;
   inset: 0;
   touch-action: none;
+}
+
+#game-canvas,
+#hud,
+#touch,
+#stick-zone,
+.pad-btn {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 #game-canvas {

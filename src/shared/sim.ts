@@ -24,6 +24,8 @@ export const COUNTDOWN_FRAMES = 150;
 const END_DELAY = 120;
 const SHIELD_MAX = 50;
 const KO_CREDIT_FRAMES = 600;
+/** はじき入力とみなす、中央から倒し切るまでの最大フレーム数（5フレーム ≒ 0.08秒） */
+export const FLICK_WINDOW = 5;
 /** ふっとばしの伸び（ダメージ%による増え方）の全体倍率。調整用 */
 export const KB_GROWTH_SCALE = 1.7;
 /** ふっとび中の空気抵抗（1フレームごとに速度へ掛ける） */
@@ -47,7 +49,7 @@ const SNAPSHOT_KEYS = [
   'airDodgeUsed', 'fastFall', 'shortHopArmed', 'damage', 'stocks', 'kos', 'falls', 'out', 'outFrame', 'move',
   'moveFrame', 'charge', 'hitstun', 'tumble', 'invuln', 'hitlag', 'shield', 'stun', 'lastHitBy', 'lastHitFrame',
   'ledgeSide', 'ledgeCooldown', 'dropThrough', 'respawnTimer', 'dodgeDir', 'prevButtons', 'prevMx', 'prevMy',
-  'flickX', 'flickY',
+  'flickX', 'flickY', 'neutralXAge', 'neutralYAge',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -100,6 +102,9 @@ export class Fighter {
   /** スティックを素早く倒してからのフレーム数（はじき入力の判定） */
   flickX = 99;
   flickY = 99;
+  /** スティックが中央付近（0.3未満）にあってからのフレーム数 */
+  neutralXAge = 0;
+  neutralYAge = 0;
 
   constructor(slot: number, charId: string) {
     this.slot = slot;
@@ -227,10 +232,16 @@ export class Sim {
 
   private readInput(f: Fighter, inp: InputState): void {
     f.input = inp;
-    if (Math.abs(inp.mx) > 0.75 && Math.abs(f.prevMx) < 0.3) f.flickX = 0;
+    // 「はじき」の判定：中央付近から FLICK_WINDOW フレーム以内に大きく倒したら、はじいたとみなす。
+    // 指で操作する仮想スティックは倒し切るまで数フレームかかるため、1フレームでの判定にはしない。
+    const ax = Math.abs(inp.mx);
+    const ay = Math.abs(inp.my);
+    if (ax > 0.75 && Math.abs(f.prevMx) <= 0.75 && f.neutralXAge <= FLICK_WINDOW) f.flickX = 0;
     else f.flickX++;
-    if (Math.abs(inp.my) > 0.7 && Math.abs(f.prevMy) < 0.3) f.flickY = 0;
+    if (ay > 0.7 && Math.abs(f.prevMy) <= 0.7 && f.neutralYAge <= FLICK_WINDOW) f.flickY = 0;
     else f.flickY++;
+    f.neutralXAge = ax < 0.3 ? 0 : f.neutralXAge + 1;
+    f.neutralYAge = ay < 0.3 ? 0 : f.neutralYAge + 1;
   }
 
   private pressed(f: Fighter, btn: number): boolean {
