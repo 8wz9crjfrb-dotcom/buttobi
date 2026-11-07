@@ -80,8 +80,8 @@ type EyeKind = 'normal' | 'angry' | 'closed' | 'happy' | 'hurt' | 'panic' | 'smu
 const eyeTextures = new Map<string, THREE.CanvasTexture>();
 
 /** アニメ調の目を描く。side = 1 は画面の右側に見える目（外側の目じりが右） */
-function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean): THREE.CanvasTexture {
-  const key = `${kind}-${iris}-${side}-${sparkle}`;
+function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean, sharp = false): THREE.CanvasTexture {
+  const key = `${kind}-${iris}-${side}-${sparkle}-${sharp}`;
   const hit = eyeTextures.get(key);
   if (hit) return hit;
   const c = document.createElement('canvas');
@@ -177,7 +177,32 @@ function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean)
     g.lineTo(64 + outer * 34, yInner + (yOuter - yInner) * 0.92);
     g.stroke();
   };
+  /** 下まぶたも少し上げて、目を細くする */
+  const narrowBottom = (y: number) => {
+    g.save();
+    g.globalCompositeOperation = 'destination-out';
+    g.fillRect(0, y, 128, 128 - y);
+    g.restore();
+    g.strokeStyle = ink;
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(64 - outer * 14, y);
+    g.lineTo(64 + outer * 26, y - 2);
+    g.stroke();
+  };
   g.strokeStyle = ink;
+  // キリッとした目（警備員）：瞳を少し小さく、上まぶたを内側へ下げ、下まぶたも上げる
+  if (sharp && (kind === 'normal' || kind === 'look' || kind === 'tired' || kind === 'lookTired')) {
+    const look = kind === 'look' || kind === 'lookTired';
+    drawOpenEye(21, 30, 13, look ? 10 : 2);
+    lid(kind === 'tired' || kind === 'lookTired' ? 66 : 58, kind === 'tired' || kind === 'lookTired' ? 58 : 42);
+    narrowBottom(104);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    eyeTextures.set(key, t);
+    return t;
+  }
   switch (kind) {
     case 'normal':
       drawOpenEye(24, 34, 15);
@@ -365,6 +390,8 @@ export class FighterModel {
   private eyeKind: EyeKind | '' = '';
   /** キラキラの目（ドパガキ） */
   private sparkle = false;
+  /** キリッとした目（警備員） */
+  private sharpEyes = false;
   /** 焦ったときの汗 */
   private sweat: THREE.Group | null = null;
   /** 揺れもの（髪・ひも・バッグなど）：体の動きに少し遅れてついてくる */
@@ -590,10 +617,10 @@ export class FighterModel {
     this.mouths = { line, open, smile };
   }
 
-  private brows(angle: number, color: number): void {
+  private brows(angle: number, color: number, thick = 0.022, y = 0.37): void {
     for (const x of [0.11, -0.11]) {
       const side = x > 0 ? -1 : 1;
-      const mesh = this.part(this.head, new THREE.BoxGeometry(0.1, 0.022, 0.02), this.toon(color), [x, 0.37, 0.28], { rot: [0, 0, side * angle], outline: false });
+      const mesh = this.part(this.head, new THREE.BoxGeometry(0.11, thick, 0.02), this.toon(color), [x, y, 0.28], { rot: [0, 0, side * angle], outline: false });
       this.browMeshes.push({ mesh, base: side * angle, side });
     }
   }
@@ -604,7 +631,7 @@ export class FighterModel {
     if (eye !== this.eyeKind) {
       this.eyeKind = eye;
       const iris = EYE_COLORS[this.def.id] ?? 0x3a5aa0;
-      for (const p of this.eyePatches) p.mat.map = eyeTexture(eye, iris, p.side, this.sparkle);
+      for (const p of this.eyePatches) p.mat.map = eyeTexture(eye, iris, p.side, this.sparkle, this.sharpEyes);
     }
     if (this.sweat) this.sweat.visible = kind === 'panic';
     const browAdd = kind === 'angry' ? 0.3 : kind === 'hurt' || kind === 'panic' ? -0.25 : kind === 'smug' ? 0.12 : 0;
@@ -630,7 +657,9 @@ export class FighterModel {
     const h = this.head;
     if (id === 'guard') {
       // データセンター警備員：制帽・反射ベスト・無線機
-      this.brows(0.15, c.hair);
+      // キリッとした太い眉（内側が下がる）と目
+      this.brows(-0.3, c.hair, 0.034, 0.36);
+      this.sharpEyes = true;
       this.mouth();
       for (const x of [0.285, -0.285]) this.part(h, new THREE.BoxGeometry(0.03, 0.07, 0.06), this.toon(c.hair), [x, 0.33, 0.02], { outline: false });
       const cap = this.toon(c.main);
