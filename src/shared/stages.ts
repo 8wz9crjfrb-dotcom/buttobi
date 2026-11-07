@@ -9,6 +9,21 @@ export interface Platform {
   movePeriod?: number;
 }
 
+/** ステージの見た目（サイバーパンク風） */
+export interface StageTheme {
+  /** 見た目の種類 */
+  kind: 'rooftop' | 'arcade' | 'cyber';
+  /** 夜空の上と下の色 */
+  sky: number;
+  skyBottom: number;
+  fog: number;
+  /** ネオンの2色 */
+  neonA: number;
+  neonB: number;
+  /** キャラの縁に当たる光の色 */
+  rim: number;
+}
+
 export interface StageDef {
   id: string;
   name: string;
@@ -18,13 +33,13 @@ export interface StageDef {
   blast: { left: number; right: number; top: number; bottom: number };
   spawns: { x: number; y: number }[];
   respawnY: number;
-  theme: { sky: number; skyBottom: number; ground: number; side: number; plat: number };
+  theme: StageTheme;
 }
 
 export const STAGES: StageDef[] = [
   {
     id: 'plain',
-    name: 'そらの台地',
+    name: 'データセンター屋上',
     main: { x1: -9, x2: 9, top: 0, bottom: -3 },
     platforms: [],
     blast: { left: -21, right: 21, top: 17, bottom: -11 },
@@ -37,11 +52,11 @@ export const STAGES: StageDef[] = [
       { x: 4, y: 0 },
     ],
     respawnY: 8,
-    theme: { sky: 0x7ec8ff, skyBottom: 0xdff3ff, ground: 0x6cc56c, side: 0x8a6a4a, plat: 0xffffff },
+    theme: { kind: 'rooftop', sky: 0x070a1f, skyBottom: 0x2a1850, fog: 0x1a1236, neonA: 0x39d0ff, neonB: 0xff3fa4, rim: 0x6fd6ff },
   },
   {
     id: 'tiers',
-    name: 'みはらし広場',
+    name: 'ネオン商店街',
     main: { x1: -10, x2: 10, top: 0, bottom: -3 },
     platforms: [
       { x1: -7, x2: -2.5, y: 3.2 },
@@ -58,11 +73,11 @@ export const STAGES: StageDef[] = [
       { x: 2, y: 0 },
     ],
     respawnY: 10,
-    theme: { sky: 0xffb47a, skyBottom: 0xffe9c9, ground: 0xc9a66b, side: 0x7a5a3a, plat: 0xfff2d6 },
+    theme: { kind: 'arcade', sky: 0x10051c, skyBottom: 0x4a0f3a, fog: 0x2a0a2a, neonA: 0xff3fa4, neonB: 0xffd23f, rim: 0xff7ac8 },
   },
   {
     id: 'drift',
-    name: 'ただよう浮島',
+    name: '電脳空間',
     main: { x1: -8, x2: 8, top: 0, bottom: -4 },
     platforms: [
       { x1: -2.5, x2: 2.5, y: 3.6, moveAmp: 5, movePeriod: 480 },
@@ -78,7 +93,7 @@ export const STAGES: StageDef[] = [
       { x: 7, y: 0 },
     ],
     respawnY: 10,
-    theme: { sky: 0x2b3a67, skyBottom: 0x7d5ba6, ground: 0x9ad1d4, side: 0x4a4e69, plat: 0xc9f2ff },
+    theme: { kind: 'cyber', sky: 0x000814, skyBottom: 0x002a3a, fog: 0x001a26, neonA: 0x00ffc8, neonB: 0x4f7dff, rim: 0x5fffe0 },
   },
 ];
 

@@ -6,7 +6,12 @@ import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
 import { FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
 import { getCostume } from '../shared/costumes';
-import { FighterModel } from './fighterModel';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { FighterModel, setRimColor } from './fighterModel';
+import { buildStageScene, makeSkyTexture, type BuiltStage } from './stageScene';
 import { PropRenderer } from './props';
 
 export type Quality = 'low' | 'high';
@@ -25,7 +30,11 @@ export class GameRenderer {
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera;
   private stageGroup = new THREE.Group();
-  private platformMeshes: THREE.Mesh[] = [];
+  private platformMeshes: THREE.Object3D[] = [];
+  private built: BuiltStage | null = null;
+  /** 光のにじみ（画質「きれい」のときだけ） */
+  private composer: EffectComposer | null = null;
+  private bloom: UnrealBloomPass | null = null;
   private models = new Map<number, { model: FighterModel; charId: string }>();
   private setup: MatchSetup | null = null;
   private props: PropRenderer;
@@ -43,7 +52,6 @@ export class GameRenderer {
   private sun: THREE.DirectionalLight;
   private quality: Quality = 'high';
   private time = 0;
-  private decor: THREE.Object3D[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -51,8 +59,9 @@ export class GameRenderer {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.5, 200);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
-    this.sun = new THREE.DirectionalLight(0xffffff, 2.2);
+    // 夜の街：空からの青い光と、正面上からの月明かり（ネオンの色の照明はステージ側で足す）
+    this.scene.add(new THREE.HemisphereLight(0xd8dcff, 0x3a2a4a, 1.8));
+    this.sun = new THREE.DirectionalLight(0xfff2e6, 2.3);
     this.sun.position.set(-8, 20, 14);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(1024, 1024);
@@ -72,10 +81,28 @@ export class GameRenderer {
   }
 
   setQuality(q: Quality): void {
+    const changed = this.quality !== q;
     this.quality = q;
     this.renderer.shadowMap.enabled = q === 'high';
     this.sun.castShadow = q === 'high';
+    if (q === 'high' && !this.composer) {
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      // 明るいところ（ネオン・光る物）だけをにじませる
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.85, 0.5, 0.72);
+      this.composer.addPass(this.bloom);
+      this.composer.addPass(new OutputPass());
+    } else if (q !== 'high' && this.composer) {
+      this.composer.dispose();
+      this.composer = null;
+      this.bloom = null;
+    }
     this.resize();
+    // ステージの作り込み（雨・建物の数）も画質で変わるので作り直す
+    if (changed && this.stage && this.setup) {
+      const setup = this.setup;
+      this.setMatch(setup, this.stage);
+    }
   }
 
   resize(): void {
@@ -84,6 +111,12 @@ export class GameRenderer {
     const maxRatio = this.quality === 'high' ? 2 : 1.25;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxRatio));
     this.renderer.setSize(w, h, false);
+    if (this.composer) {
+      this.composer.setPixelRatio(this.renderer.getPixelRatio());
+      this.composer.setSize(w, h);
+      // にじみは半分の解像度で計算して軽くする
+      this.bloom?.resolution.set(w / 2, h / 2);
+    }
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();
   }
@@ -141,81 +174,20 @@ export class GameRenderer {
     this.particles = [];
     for (const b of this.beams) this.scene.remove(b.mesh);
     this.beams = [];
-    this.stageGroup.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      mesh.geometry?.dispose();
-    });
+    this.built?.dispose();
+    this.built = null;
     this.stageGroup.clear();
     this.platformMeshes = [];
-    for (const d of this.decor) this.scene.remove(d);
-    this.decor = [];
   }
 
   private buildStage(stage: StageDef): void {
     const th = stage.theme;
     this.scene.background = makeSkyTexture(th.sky, th.skyBottom);
-    this.scene.fog = new THREE.Fog(th.skyBottom, 40, 90);
-    const m = stage.main;
-    const w = m.x2 - m.x1;
-    const depth = 5;
-    // 本体の台：上面（草など）と側面
-    const top = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, depth), new THREE.MeshStandardMaterial({ color: th.ground, roughness: 0.8 }));
-    top.position.set((m.x1 + m.x2) / 2, m.top - 0.25, 0);
-    top.receiveShadow = true;
-    this.stageGroup.add(top);
-    const bodyH = m.top - 0.5 - m.bottom;
-    const side = new THREE.Mesh(
-      new THREE.CylinderGeometry(w / 2, w / 2.8, bodyH, 6, 1, false),
-      new THREE.MeshStandardMaterial({ color: th.side, roughness: 0.9, flatShading: true }),
-    );
-    side.scale.z = depth / w;
-    side.position.set((m.x1 + m.x2) / 2, m.top - 0.5 - bodyH / 2, 0);
-    side.receiveShadow = true;
-    this.stageGroup.add(side);
-    // 台の下に伸びる岩
-    const rock = new THREE.Mesh(new THREE.ConeGeometry(w / 2.8, 6, 6), new THREE.MeshStandardMaterial({ color: th.side, roughness: 1, flatShading: true }));
-    rock.rotation.x = Math.PI;
-    rock.scale.z = depth / w;
-    rock.position.set((m.x1 + m.x2) / 2, m.bottom - 3, 0);
-    this.stageGroup.add(rock);
-    // 端の目印
-    for (const x of [m.x1, m.x2]) {
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.52, depth + 0.02), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }));
-      edge.position.set(x, m.top - 0.25, 0);
-      this.stageGroup.add(edge);
-    }
-    // すり抜け足場
-    for (const p of stage.platforms) {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(p.x2 - p.x1, 0.22, 2.4),
-        new THREE.MeshStandardMaterial({ color: th.plat, roughness: 0.5, transparent: true, opacity: 0.92 }),
-      );
-      mesh.position.set((p.x1 + p.x2) / 2, p.y - 0.11, 0);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      this.stageGroup.add(mesh);
-      this.platformMeshes.push(mesh);
-    }
-    // 背景の飾り（遠くの島と雲）
-    const rnd = mulberry(stage.id.length * 97 + 13);
-    for (let i = 0; i < 14; i++) {
-      const isCloud = i % 2 === 0;
-      const geo = isCloud ? new THREE.SphereGeometry(1, 10, 8) : new THREE.ConeGeometry(1, 2.2, 6);
-      const mat = new THREE.MeshStandardMaterial({
-        color: isCloud ? 0xffffff : th.side,
-        roughness: 1,
-        flatShading: !isCloud,
-        transparent: isCloud,
-        opacity: isCloud ? 0.85 : 1,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
-      const s = isCloud ? 1.5 + rnd() * 2.5 : 1.5 + rnd() * 3;
-      mesh.scale.set(s * (isCloud ? 2.2 : 1), s * (isCloud ? 0.8 : 1), s);
-      if (!isCloud) mesh.rotation.x = Math.PI;
-      mesh.position.set(-45 + rnd() * 90, -6 + rnd() * 24, -25 - rnd() * 30);
-      this.scene.add(mesh);
-      this.decor.push(mesh);
-    }
+    this.scene.fog = new THREE.Fog(th.fog, 30, 120);
+    this.built = buildStageScene(stage, this.quality);
+    this.stageGroup.add(this.built.group);
+    this.platformMeshes = this.built.platformMeshes;
+    setRimColor(th.rim);
   }
 
   render(view: ViewState | null, dt: number, newEvents: GameEvent[]): void {
@@ -240,7 +212,9 @@ export class GameRenderer {
       this.updateCamera(view, dt);
     }
     this.updateParticles(dt);
-    this.renderer.render(this.scene, this.camera);
+    this.built?.animate(this.time, dt);
+    if (this.composer) this.composer.render(dt);
+    else this.renderer.render(this.scene, this.camera);
   }
 
   /** 分身：持ち主と同じ見た目のキャラを半透明で表示 */
@@ -591,30 +565,4 @@ export class GameRenderer {
     this.sun.target.position.set(this.camLook.x, 0, 0);
     this.sun.position.set(this.camLook.x - 8, 20, 14);
   }
-}
-
-function makeSkyTexture(top: number, bottom: number): THREE.CanvasTexture {
-  const c = document.createElement('canvas');
-  c.width = 4;
-  c.height = 256;
-  const g = c.getContext('2d')!;
-  const grad = g.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, '#' + top.toString(16).padStart(6, '0'));
-  grad.addColorStop(1, '#' + bottom.toString(16).padStart(6, '0'));
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 4, 256);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-function mulberry(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
