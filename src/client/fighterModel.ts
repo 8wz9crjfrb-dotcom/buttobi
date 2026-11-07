@@ -26,6 +26,9 @@ interface Pose {
   headTilt: number;
 }
 
+/** ばねでなめらかに動かす値（回転のスピンは除く） */
+const SPRING_KEYS = ['armL', 'armR', 'armLz', 'armRz', 'legL', 'legR', 'lean', 'squash', 'bob', 'headTilt'] as const;
+
 function basePose(): Pose {
   return { armL: 0.12, armR: -0.12, armLz: 0.12, armRz: -0.12, legL: 0, legR: 0, lean: 0, spinY: 0, spinZ: 0, squash: 1, bob: 0, headTilt: 0 };
 }
@@ -53,15 +56,182 @@ function toonGradient(): THREE.DataTexture {
  */
 const CHAR_MAX = '0.8';
 
-/** 材質の色をキャラの明るさの上限で抑える */
-function capBrightness(m: THREE.Material, key: string): void {
+/**
+ * 材質の色をキャラの明るさの上限で抑える。
+ * band = true のときは、髪のつやの帯（天使の輪）を足す（カメラから見た法線の向きで決めるので、動くと帯も動く）
+ */
+function capBrightness(m: THREE.Material, key: string, band = false): void {
+  const sheen = band
+    ? `{ vec3 nn = normalize(vNormal); float b = smoothstep(0.42, 0.52, nn.y) * (1.0 - smoothstep(0.62, 0.72, nn.y)); gl_FragColor.rgb += b * 0.16; }\n`
+    : '';
   m.onBeforeCompile = (shader) => {
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <opaque_fragment>',
-      `#include <opaque_fragment>\n gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(${CHAR_MAX}));`,
+      `#include <opaque_fragment>\n${sheen} gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(${CHAR_MAX}));`,
     );
   };
   m.customProgramCacheKey = () => key;
+}
+
+// ---------------------------------------------------------------- 目（絵を描いた画像を顔の丸みに沿って貼る）
+type EyeKind = 'normal' | 'angry' | 'closed' | 'happy' | 'hurt' | 'panic' | 'smug' | 'tired';
+const eyeTextures = new Map<string, THREE.CanvasTexture>();
+
+/** アニメ調の目を描く。side = 1 は画面の右側に見える目（外側の目じりが右） */
+function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean): THREE.CanvasTexture {
+  const key = `${kind}-${iris}-${side}-${sparkle}`;
+  const hit = eyeTextures.get(key);
+  if (hit) return hit;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const ink = '#1d1d2b';
+  const col = new THREE.Color(iris);
+  const css = (k: number, mix = 0) => {
+    const r = Math.round((col.r * k + mix) * 255);
+    const gg = Math.round((col.g * k + mix) * 255);
+    const b = Math.round((col.b * k + mix) * 255);
+    return `rgb(${Math.min(255, r)},${Math.min(255, gg)},${Math.min(255, b)})`;
+  };
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  const outer = side === 1 ? 1 : -1; // 外側の目じりの向き（画像の右=+1）
+  const lash = (y1: number, y2: number, w = 9) => {
+    // 上まつげ：内側(y1)から外側(y2)へ、少し反った太い線と、目じりのはね
+    const xi = 64 - outer * 34;
+    const xo = 64 + outer * 34;
+    g.strokeStyle = ink;
+    g.lineWidth = w;
+    g.beginPath();
+    g.moveTo(xi, y1);
+    g.quadraticCurveTo(64, Math.min(y1, y2) - 10, xo, y2);
+    g.lineTo(xo + outer * 8, y2 - 6);
+    g.stroke();
+  };
+  const drawOpenEye = (irisRx: number, irisRy: number, pupil: number) => {
+    // 白目
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    g.ellipse(64, 72, 30, 40, 0, 0, Math.PI * 2);
+    g.fill();
+    g.save();
+    g.beginPath();
+    g.ellipse(64, 72, 30, 40, 0, 0, Math.PI * 2);
+    g.clip();
+    // 瞳：上が濃く、下が明るいグラデーション
+    const grad = g.createLinearGradient(0, 72 - irisRy, 0, 76 + irisRy);
+    grad.addColorStop(0, css(0.35));
+    grad.addColorStop(0.45, css(1));
+    grad.addColorStop(1, css(0.75, 0.3));
+    g.fillStyle = grad;
+    g.beginPath();
+    g.ellipse(64 - outer * 2, 76, irisRx, irisRy, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = ink;
+    g.beginPath();
+    g.ellipse(64 - outer * 2, 78, pupil * 0.7, pupil, 0, 0, Math.PI * 2);
+    g.fill();
+    // ハイライト
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    g.arc(64 - outer * 12, 60, Math.max(4, irisRx * 0.38), 0, Math.PI * 2);
+    g.fill();
+    g.beginPath();
+    g.arc(64 + outer * 9, 96, Math.max(2, irisRx * 0.16), 0, Math.PI * 2);
+    g.fill();
+    if (sparkle) {
+      g.fillStyle = '#fff6a0';
+      g.beginPath();
+      g.arc(64 + outer * 10, 70, 4, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+    // 下まつげ（短く細い）
+    g.strokeStyle = ink;
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(64 + outer * 10, 111);
+    g.quadraticCurveTo(64 + outer * 24, 108, 64 + outer * 30, 98);
+    g.stroke();
+  };
+  /** 上の部分を消して、まぶたの線を引く（怒り・眠そう・ドヤ顔） */
+  const lid = (yInner: number, yOuter: number) => {
+    const xi = 64 - outer * 40;
+    const xo = 64 + outer * 40;
+    g.save();
+    g.globalCompositeOperation = 'destination-out';
+    g.beginPath();
+    g.moveTo(xi, 0);
+    g.lineTo(xo, 0);
+    g.lineTo(xo, yOuter);
+    g.lineTo(xi, yInner);
+    g.closePath();
+    g.fill();
+    g.restore();
+    g.strokeStyle = ink;
+    g.lineWidth = 9;
+    g.beginPath();
+    g.moveTo(64 - outer * 32, yInner + (yOuter - yInner) * 0.1);
+    g.lineTo(64 + outer * 34, yInner + (yOuter - yInner) * 0.92);
+    g.stroke();
+  };
+  g.strokeStyle = ink;
+  switch (kind) {
+    case 'normal':
+      drawOpenEye(24, 34, 15);
+      lash(40, 36);
+      break;
+    case 'angry':
+      drawOpenEye(24, 34, 15);
+      lid(66, 44);
+      break;
+    case 'tired':
+      drawOpenEye(24, 34, 15);
+      lid(64, 62);
+      break;
+    case 'smug':
+      drawOpenEye(24, 34, 15);
+      lid(62, 56);
+      // 下まぶたも少し上げる
+      g.save();
+      g.globalCompositeOperation = 'destination-out';
+      g.fillRect(0, 104, 128, 24);
+      g.restore();
+      break;
+    case 'panic':
+      drawOpenEye(13, 18, 7);
+      lash(38, 36, 7);
+      break;
+    case 'closed':
+      g.lineWidth = 9;
+      g.beginPath();
+      g.arc(64, 54, 32, 0.18 * Math.PI, 0.82 * Math.PI);
+      g.stroke();
+      break;
+    case 'happy':
+      g.lineWidth = 9;
+      g.beginPath();
+      g.arc(64, 100, 32, 1.18 * Math.PI, 1.82 * Math.PI);
+      g.stroke();
+      break;
+    case 'hurt': {
+      // 「><」：とがった先が内側
+      const xi = 64 - outer * 26;
+      const xo = 64 + outer * 26;
+      g.lineWidth = 9;
+      g.beginPath();
+      g.moveTo(xo, 46);
+      g.lineTo(xi, 74);
+      g.lineTo(xo, 102);
+      g.stroke();
+      break;
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  eyeTextures.set(key, t);
+  return t;
 }
 
 /** 瞳の色（キャラごと） */
@@ -100,9 +270,26 @@ export class FighterModel {
   private armR = new THREE.Group();
   private legL = new THREE.Group();
   private legR = new THREE.Group();
-  private eyes: THREE.Object3D[] = [];
-  /** 表情用：閉じた目・笑った目・「><」の目、口の形、眉 */
-  private eyeAlt: { closed: THREE.Object3D; happy: THREE.Object3D; hurt: THREE.Object3D; lid: THREE.Object3D }[] = [];
+  /** 目（顔に貼った絵）。表情に合わせて絵を切り替える */
+  private eyePatches: { mat: THREE.MeshBasicMaterial; side: 1 | -1 }[] = [];
+  private eyeKind: EyeKind | '' = '';
+  /** キラキラの目（ドパガキ） */
+  private sparkle = false;
+  /** 焦ったときの汗 */
+  private sweat: THREE.Group | null = null;
+  /** 揺れもの（髪・ひも・バッグなど）：体の動きに少し遅れてついてくる */
+  private swings: { g: THREE.Group; amt: number; ang: number; vel: number; phase: number }[] = [];
+  private prevX = 0;
+  private prevY = 0;
+  private prevVx = 0;
+  private prevVy = 0;
+  private prevLean = 0;
+  /** なめらかに動かすための、今のポーズと変化の速さ */
+  private cur: Pose | null = null;
+  private vel: Partial<Record<keyof Pose, number>> = {};
+  private prevSpin = { spinY: 0, spinZ: 0 };
+  /** 攻撃のときだけ持つ道具（警棒・ホログラムの剣・ガチャのカプセル） */
+  private attackProps: { obj: THREE.Object3D; moves: string[] }[] = [];
   private mouths: { line: THREE.Object3D; open: THREE.Object3D; smile: THREE.Object3D } | null = null;
   private browMeshes: { mesh: THREE.Object3D; base: number; side: number }[] = [];
   private shieldMesh: THREE.Mesh;
@@ -145,6 +332,7 @@ export class FighterModel {
     this.buildBase();
     this.buildCharacter(def.id);
     this.buildCharacter2(def.id);
+    this.buildAttackProps(def.id);
 
     // ガード（シールド）
     this.shieldMesh = new THREE.Mesh(
@@ -241,37 +429,50 @@ export class FighterModel {
     this.head.position.y = 1.2;
     this.body.add(this.head);
     this.part(this.head, new THREE.SphereGeometry(0.31, 26, 20), this.toon(c.skin), [0, 0.29, 0], { scale: [1, 0.95, 0.95] });
-    // 目：縁・色つきの瞳・瞳孔・ハイライト2つ・まぶた。表情に合わせて切り替える
-    const dark = this.toon(0x1d1d2b);
-    const iris = this.glow(EYE_COLORS[this.def.id] ?? 0x3a5aa0);
-    const white = this.glow(0xffffff);
-    const line = (len: number) => new THREE.CapsuleGeometry(0.011, len, 3, 6);
+    // 目：絵を描いた画像を、顔の丸みに沿った曲面に貼る（表情は絵を切り替える）
+    const iris = EYE_COLORS[this.def.id] ?? 0x3a5aa0;
     for (const x of [0.11, -0.11]) {
-      const holder = new THREE.Group();
-      holder.position.set(x, 0.27, 0.27);
-      this.head.add(holder);
-      const eye = new THREE.Group();
-      holder.add(eye);
-      this.part(eye, new THREE.SphereGeometry(0.055, 14, 10), dark, [0, 0, 0], { scale: [0.85, 1.25, 0.32], outline: false });
-      this.part(eye, new THREE.SphereGeometry(0.042, 14, 10), iris, [0, -0.008, 0.008], { scale: [0.82, 1.15, 0.3], outline: false });
-      this.part(eye, new THREE.SphereGeometry(0.022, 10, 8), dark, [0, -0.01, 0.014], { scale: [0.9, 1.2, 0.3], outline: false });
-      this.part(eye, new THREE.SphereGeometry(0.017, 8, 6), white, [0.016, 0.03, 0.02], { outline: false });
-      this.part(eye, new THREE.SphereGeometry(0.008, 6, 5), white, [-0.012, -0.025, 0.02], { outline: false });
-      this.eyes.push(eye);
-      // まぶた（怒った顔では傾けて下げる）
-      const lid = this.part(holder, line(0.08), dark, [0, 0.068, 0.012], { rot: [0, 0, Math.PI / 2], outline: false });
-      // 閉じた目（‿）・笑った目（^）・「><」の目
-      const closed = this.part(holder, new THREE.TorusGeometry(0.04, 0.011, 5, 12, Math.PI), dark, [0, 0.015, 0.012], { rot: [0, 0, Math.PI], outline: false });
-      const happy = this.part(holder, new THREE.TorusGeometry(0.04, 0.011, 5, 12, Math.PI), dark, [0, -0.015, 0.012], { outline: false });
-      const hurt = new THREE.Group();
-      hurt.position.set(0, 0, 0.012);
-      const dir = x > 0 ? 1 : -1;
-      this.part(hurt, line(0.055), dark, [0, 0.018, 0], { rot: [0, 0, dir * 1.0], outline: false });
-      this.part(hurt, line(0.055), dark, [0, -0.018, 0], { rot: [0, 0, -dir * 1.0], outline: false });
-      holder.add(hurt);
-      closed.visible = happy.visible = hurt.visible = false;
-      this.eyeAlt.push({ closed, happy, hurt, lid });
+      // 顔の球（半径0.31、縦と奥行きを0.95倍）の中心から見た、目の方向
+      const ey = -0.02 / 0.95;
+      const ez = 0.27 / 0.95;
+      const phi = Math.atan2(ez, -x);
+      const theta = Math.acos(ey / Math.hypot(x, ey, ez));
+      const side: 1 | -1 = x > 0 ? 1 : -1;
+      const mat = new THREE.MeshBasicMaterial({ map: eyeTexture('normal', iris, side, false), transparent: true, depthWrite: false });
+      capBrightness(mat, 'eye-cap');
+      const geo = new THREE.SphereGeometry(0.313, 10, 10, phi - 0.33, 0.66, theta - 0.37, 0.74);
+      const patch = new THREE.Mesh(geo, mat);
+      patch.position.set(0, 0.29, 0);
+      patch.scale.set(1, 0.95, 0.95);
+      patch.renderOrder = 2;
+      this.head.add(patch);
+      this.eyePatches.push({ mat, side });
     }
+    // 焦ったときの汗（ふだんは隠す）
+    const sweat = new THREE.Group();
+    const drop = this.glow(0x9fdcff);
+    this.part(sweat, new THREE.SphereGeometry(0.035, 10, 8), drop, [0, 0, 0], { outline: false });
+    this.part(sweat, new THREE.ConeGeometry(0.03, 0.06, 10), drop, [0, 0.04, 0], { outline: false });
+    sweat.position.set(-0.27, 0.42, 0.14);
+    sweat.visible = false;
+    this.head.add(sweat);
+    this.sweat = sweat;
+  }
+
+  private hairToon(color: number): THREE.MeshToonMaterial {
+    const m = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
+    capBrightness(m, 'toon-hair', true);
+    this.mats.push(m);
+    return m;
+  }
+
+  /** 揺れものの付け根を作る（中の部品は付け根からの位置で置く） */
+  private swingPivot(parent: THREE.Object3D, pos: [number, number, number], amt: number): THREE.Group {
+    const g = new THREE.Group();
+    g.position.set(...pos);
+    parent.add(g);
+    this.swings.push({ g, amt, ang: 0, vel: 0, phase: Math.random() * 6 });
+    return g;
   }
 
   /** 口（ふつう・開いた口・笑った口を切り替える） */
@@ -293,26 +494,16 @@ export class FighterModel {
   }
 
   /** 表情を切り替える */
-  private setExpression(kind: 'normal' | 'angry' | 'hurt' | 'closed' | 'happy', mouth: 'line' | 'open' | 'smile', tired: boolean): void {
-    this.eyes.forEach((eye, i) => {
-      const alt = this.eyeAlt[i];
-      eye.visible = kind === 'normal' || kind === 'angry';
-      alt.closed.visible = kind === 'closed';
-      alt.happy.visible = kind === 'happy';
-      alt.hurt.visible = kind === 'hurt';
-      alt.lid.visible = eye.visible;
-      const side = i === 0 ? -1 : 1;
-      if (kind === 'angry') {
-        alt.lid.position.y = 0.05;
-        alt.lid.rotation.z = Math.PI / 2 + side * 0.35;
-        eye.scale.y = 0.85;
-      } else {
-        alt.lid.position.y = tired ? 0.04 : 0.068;
-        alt.lid.rotation.z = Math.PI / 2;
-        eye.scale.y = tired ? 0.7 : 1;
-      }
-    });
-    for (const b of this.browMeshes) b.mesh.rotation.z = b.base + (kind === 'angry' ? b.side * 0.3 : kind === 'hurt' ? -b.side * 0.25 : 0);
+  private setExpression(kind: 'normal' | 'angry' | 'hurt' | 'closed' | 'happy' | 'panic' | 'smug', mouth: 'line' | 'open' | 'smile', tired: boolean): void {
+    const eye: EyeKind = kind === 'normal' && tired ? 'tired' : kind;
+    if (eye !== this.eyeKind) {
+      this.eyeKind = eye;
+      const iris = EYE_COLORS[this.def.id] ?? 0x3a5aa0;
+      for (const p of this.eyePatches) p.mat.map = eyeTexture(eye, iris, p.side, this.sparkle);
+    }
+    if (this.sweat) this.sweat.visible = kind === 'panic';
+    const browAdd = kind === 'angry' ? 0.3 : kind === 'hurt' || kind === 'panic' ? -0.25 : kind === 'smug' ? 0.12 : 0;
+    for (const b of this.browMeshes) b.mesh.rotation.z = b.base + b.side * browAdd;
     if (this.mouths) {
       this.mouths.line.visible = mouth === 'line';
       this.mouths.open.visible = mouth === 'open';
@@ -362,13 +553,16 @@ export class FighterModel {
         [-0.02, -0.1],
         [-0.12, -0.4],
       ]) {
-        this.part(h, new THREE.ConeGeometry(0.06, 0.16, 6), this.toon(c.hair), [x, 0.43, 0.24], { rot: [1.9, 0, r], outline: false });
+        this.part(h, new THREE.ConeGeometry(0.06, 0.16, 6), this.hairToon(c.hair), [x, 0.43, 0.24], { rot: [1.9, 0, r], outline: false });
       }
       const glass = this.glow(c.accent);
       for (const x of [0.11, -0.11]) this.part(h, new THREE.BoxGeometry(0.13, 0.08, 0.02), glass, [x, 0.27, 0.31], { outline: false });
       this.part(h, new THREE.BoxGeometry(0.06, 0.015, 0.015), glass, [0, 0.29, 0.31], { outline: false });
       // パーカーのひも・ポケット・ファスナー
-      for (const x of [0.06, -0.06]) this.part(this.body, new THREE.CylinderGeometry(0.008, 0.008, 0.18, 6), this.toon(0xeeeeee), [x, 1.05, 0.17], { outline: false });
+      for (const x of [0.06, -0.06]) {
+        const sw = this.swingPivot(this.body, [x, 1.14, 0.17], 1);
+        this.part(sw, new THREE.CylinderGeometry(0.008, 0.008, 0.18, 6), this.toon(0xeeeeee), [0, -0.09, 0], { outline: false });
+      }
       this.part(this.body, new THREE.BoxGeometry(0.26, 0.1, 0.03), this.toon(c.sub), [0, 0.76, 0.16], { outline: false });
       this.part(this.body, new THREE.BoxGeometry(0.015, 0.36, 0.01), glass, [0, 0.95, 0.17], { outline: false });
       // ノートPC（左手）
@@ -381,12 +575,16 @@ export class FighterModel {
       const beanie = this.toon(c.sub);
       this.part(h, new THREE.SphereGeometry(0.33, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), beanie, [0, 0.33, 0], { scale: [1, 1.05, 1] });
       this.part(h, new THREE.TorusGeometry(0.31, 0.045, 8, 26), this.toon(c.main), [0, 0.35, 0], { rot: [Math.PI / 2, 0, 0] });
+      // ニット帽のぼんぼり（揺れる）
+      const pom = this.swingPivot(h, [0, 0.66, -0.02], 1.3);
+      this.part(pom, new THREE.CylinderGeometry(0.012, 0.012, 0.05, 6), beanie, [0, 0.025, 0], { outline: false });
+      this.part(pom, new THREE.SphereGeometry(0.07, 12, 10), this.toon(c.main), [0, 0.08, 0]);
       for (const [x, z, r] of [
         [0.26, -0.1, -1.0],
         [-0.26, -0.1, 1.0],
         [0.1, -0.27, -0.4],
       ]) {
-        this.part(h, new THREE.ConeGeometry(0.05, 0.18, 6), this.toon(c.hair), [x, 0.3, z], { rot: [-0.5, 0, r], outline: false });
+        this.part(h, new THREE.ConeGeometry(0.05, 0.18, 6), this.hairToon(c.hair), [x, 0.3, z], { rot: [-0.5, 0, r], outline: false });
       }
       // マスク（顔の下半分）
       this.part(h, new THREE.SphereGeometry(0.318, 22, 10, Math.PI / 2 - 1.0, 2.0, Math.PI * 0.55, Math.PI * 0.27), this.toon(0x3a3150), [0, 0.29, 0], { scale: [1.01, 0.96, 0.96], outline: false });
@@ -400,14 +598,15 @@ export class FighterModel {
     } else if (id === 'streamer') {
       // 配信者：ボブヘア・ねこ耳ヘッドホン・自撮り棒
       this.mouth();
-      const hair = this.toon(c.hair);
+      const hair = this.hairToon(c.hair);
       // 髪は後ろに傾けてかぶせ、顔（目）にかからないようにする
       this.part(h, new THREE.SphereGeometry(0.34, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.58), hair, [0, 0.31, -0.03], { rot: [-0.55, 0, 0] });
       for (const [x, col] of [
         [0.26, c.hair],
         [-0.26, c.accent],
       ] as const) {
-        this.part(h, new THREE.CapsuleGeometry(0.075, 0.2, 4, 8), this.toon(col), [x, 0.17, 0.05]);
+        const sw = this.swingPivot(h, [x, 0.3, 0.05], 0.8);
+        this.part(sw, new THREE.CapsuleGeometry(0.075, 0.2, 4, 8), col === c.hair ? hair : this.toon(col), [0, -0.13, 0]);
       }
       for (let i = 0; i < 4; i++) {
         this.part(h, new THREE.CapsuleGeometry(0.045, 0.07, 4, 6), hair, [-0.15 + i * 0.1, 0.5, 0.22], { rot: [0.9, 0, 0], outline: false });
@@ -424,7 +623,10 @@ export class FighterModel {
       }
       // パーカー（フードを下ろしている）
       this.part(this.body, new THREE.TorusGeometry(0.17, 0.06, 8, 20), this.toon(c.sub), [0, 1.17, -0.03], { rot: [Math.PI / 2 - 0.3, 0, 0] });
-      for (const x of [0.05, -0.05]) this.part(this.body, new THREE.CylinderGeometry(0.008, 0.008, 0.16, 6), this.toon(c.accent), [x, 1.04, 0.17], { outline: false });
+      for (const x of [0.05, -0.05]) {
+        const sw = this.swingPivot(this.body, [x, 1.12, 0.17], 1);
+        this.part(sw, new THREE.CylinderGeometry(0.008, 0.008, 0.16, 6), this.toon(c.accent), [0, -0.08, 0], { outline: false });
+      }
       // 自撮り棒とスマホ（右手）
       const stick = this.hand(this.armR);
       // 手から上へ伸ばし、先のスマホを自分に向ける
@@ -434,6 +636,39 @@ export class FighterModel {
     }
   }
 
+  /** 攻撃のときだけ手に持つ道具 */
+  private buildAttackProps(id: string): void {
+    const c = this.c;
+    if (id === 'guard') {
+      // 警棒（腕の先へ伸びるように持つ）
+      const hnd = this.hand(this.armR);
+      const g = new THREE.Group();
+      hnd.add(g);
+      this.part(g, new THREE.CylinderGeometry(0.03, 0.035, 0.5, 8), this.toon(0x15151c), [0, -0.2, 0.03]);
+      this.part(g, new THREE.CylinderGeometry(0.04, 0.04, 0.08, 8), this.toon(0x444455), [0, 0.03, 0.03], { outline: false });
+      this.attackProps.push({ obj: g, moves: ['jab', 'side', 'smash', 'charge', 'fair', 'up', 'uair'] });
+    } else if (id === 'ai') {
+      // ホログラムの剣
+      const hnd = this.hand(this.armR);
+      const g = new THREE.Group();
+      hnd.add(g);
+      const m = new THREE.MeshBasicMaterial({ color: c.accent, transparent: true, opacity: 0.75 });
+      capBrightness(m, 'basic-cap');
+      this.part(g, new THREE.BoxGeometry(0.05, 0.62, 0.015), m, [0, -0.33, 0.02], { outline: false });
+      this.part(g, new THREE.BoxGeometry(0.12, 0.03, 0.04), this.toon(0x2a2f3a), [0, -0.02, 0.02], { outline: false });
+      this.attackProps.push({ obj: g, moves: ['side', 'smash', 'charge', 'fair', 'up', 'uair'] });
+    } else if (id === 'gacha') {
+      // ガチャのカプセル（上が赤、下が白）
+      const hnd = this.hand(this.armR);
+      const g = new THREE.Group();
+      hnd.add(g);
+      this.part(g, new THREE.SphereGeometry(0.17, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), this.toon(0xe5484d), [0, -0.12, 0.08]);
+      this.part(g, new THREE.SphereGeometry(0.17, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), this.toon(0xf2f2f5), [0, -0.12, 0.08]);
+      this.attackProps.push({ obj: g, moves: ['smash', 'charge'] });
+    }
+    for (const p of this.attackProps) p.obj.visible = false;
+  }
+
   /** 追加の4体 */
   private buildCharacter2(id: string): void {
     const c = this.c;
@@ -441,7 +676,7 @@ export class FighterModel {
     if (id === 'dopa') {
       // ドパガキ：ぶかぶかの蛍光パーカー・イヤホン・スマホ・エナジードリンク・キラキラの目
       this.mouth();
-      const hair = this.toon(c.hair);
+      const hair = this.hairToon(c.hair);
       this.part(h, new THREE.SphereGeometry(0.33, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, [0, 0.31, -0.02], { rot: [-0.45, 0, 0] });
       for (const [x, z, rx, rz] of [
         [0.15, 0.2, 1.2, -0.4],
@@ -454,13 +689,16 @@ export class FighterModel {
       }
       this.part(h, new THREE.ConeGeometry(0.05, 0.12, 6), this.toon(c.accent), [0.05, 0.62, 0.05], { rot: [0.3, 0, -0.3], outline: false });
       // キラキラの目（ハイライトを1つ増やす）
-      for (const e of this.eyes) this.part(e, new THREE.SphereGeometry(0.01, 6, 5), this.glow(0xfff6a0), [-0.015, -0.025, 0.02], { outline: false });
+      this.sparkle = true;
       // イヤホン
       for (const x of [0.3, -0.3]) this.part(h, new THREE.SphereGeometry(0.035, 8, 6), this.glow(0xffffff), [x, 0.26, 0.04], { outline: false });
       // ぶかぶかのパーカー（フードは下ろしている）
       this.part(this.body, new THREE.TorusGeometry(0.18, 0.07, 8, 20), this.toon(c.main), [0, 1.16, -0.04], { rot: [Math.PI / 2 - 0.35, 0, 0] });
       this.part(this.body, new THREE.BoxGeometry(0.3, 0.1, 0.03), this.toon(c.sub), [0, 0.76, 0.17], { outline: false });
-      for (const x of [0.06, -0.06]) this.part(this.body, new THREE.CylinderGeometry(0.008, 0.008, 0.2, 6), this.toon(c.accent), [x, 1.03, 0.17], { outline: false });
+      for (const x of [0.06, -0.06]) {
+        const sw = this.swingPivot(this.body, [x, 1.13, 0.17], 1.1);
+        this.part(sw, new THREE.CylinderGeometry(0.008, 0.008, 0.2, 6), this.toon(c.accent), [0, -0.1, 0], { outline: false });
+      }
       // エナジードリンク（腰）
       this.part(this.body, new THREE.CylinderGeometry(0.045, 0.045, 0.14, 12), this.toon(c.accent), [-0.27, 0.72, 0.05]);
       this.part(this.body, new THREE.CylinderGeometry(0.046, 0.046, 0.03, 12), this.toon(0x222222), [-0.27, 0.74, 0.05], { outline: false });
@@ -474,7 +712,7 @@ export class FighterModel {
       for (const x of [0.11, -0.11]) {
         this.part(h, new THREE.SphereGeometry(0.05, 10, 6), this.glow(0x6a4a8a), [x, 0.2, 0.27], { scale: [1, 0.35, 0.3], outline: false });
       }
-      const hair = this.toon(c.hair);
+      const hair = this.hairToon(c.hair);
       this.part(h, new THREE.SphereGeometry(0.345, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.6), hair, [0, 0.3, -0.03], { rot: [-0.5, 0, 0] });
       for (const [x, y] of [
         [0.25, 0.12],
@@ -482,7 +720,8 @@ export class FighterModel {
         [0.15, 0.02],
         [-0.15, 0.02],
       ]) {
-        this.part(h, new THREE.CapsuleGeometry(0.06, 0.24, 4, 8), hair, [x, y, -0.08], { rot: [0.2, 0, x > 0 ? 0.15 : -0.15] });
+        const sw = this.swingPivot(h, [x, y + 0.15, -0.08], 0.7);
+        this.part(sw, new THREE.CapsuleGeometry(0.06, 0.24, 4, 8), hair, [0, -0.15, 0], { rot: [0.2, 0, x > 0 ? 0.15 : -0.15] });
       }
       for (let i = 0; i < 3; i++) this.part(h, new THREE.ConeGeometry(0.06, 0.18, 6), hair, [-0.1 + i * 0.1, 0.5, 0.22], { rot: [1.6, 0, (i - 1) * 0.3], outline: false });
       // ジャージ（腕と胴に線）
@@ -497,13 +736,14 @@ export class FighterModel {
       // 配達員：ヘルメット・四角い配達バッグ・自転車
       this.mouth();
       this.brows(0.05, c.hair);
-      const helmet = this.toon(c.main);
+      const helmet = this.hairToon(c.main);
       this.part(h, new THREE.SphereGeometry(0.335, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), helmet, [0, 0.33, 0], { scale: [1, 0.95, 1.08] });
       this.part(h, new THREE.BoxGeometry(0.06, 0.04, 0.5), this.toon(c.accent), [0, 0.62, 0], { outline: false });
       this.part(h, new THREE.BoxGeometry(0.3, 0.025, 0.12), this.toon(0x15151c), [0, 0.42, 0.32], { rot: [0.25, 0, 0] });
       // 配達バッグ（背中）
-      this.part(this.body, new THREE.BoxGeometry(0.5, 0.48, 0.32), this.toon(c.main), [0, 1.0, -0.33]);
-      this.part(this.body, new THREE.BoxGeometry(0.51, 0.08, 0.33), this.toon(c.accent), [0, 1.06, -0.33], { outline: false });
+      const bag = this.swingPivot(this.body, [0, 1.22, -0.2], 0.35);
+      this.part(bag, new THREE.BoxGeometry(0.5, 0.48, 0.32), this.toon(c.main), [0, -0.22, -0.13]);
+      this.part(bag, new THREE.BoxGeometry(0.51, 0.08, 0.33), this.toon(c.accent), [0, -0.16, -0.13], { outline: false });
       for (const x of [0.14, -0.14]) this.part(this.body, new THREE.BoxGeometry(0.04, 0.4, 0.05), this.toon(c.sub), [x, 0.98, -0.13], { outline: false });
       // 自転車（乗っているときだけ表示）
       const bike = new THREE.Group();
@@ -523,9 +763,10 @@ export class FighterModel {
       // AIエンジニア：きちんとした髪・ヘッドセット・カーディガン・肩に浮かぶAIアシスタント
       this.mouth();
       this.brows(0, c.hair);
-      const hair = this.toon(c.hair);
+      const hair = this.hairToon(c.hair);
       this.part(h, new THREE.SphereGeometry(0.335, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0.31, -0.02], { rot: [-0.35, 0, 0] });
-      this.part(h, new THREE.CapsuleGeometry(0.07, 0.22, 4, 8), hair, [0.06, 0.5, 0.2], { rot: [0, 0, Math.PI / 2 - 0.25], outline: false });
+      const lock = this.swingPivot(h, [0.06, 0.55, 0.2], 0.5);
+      this.part(lock, new THREE.CapsuleGeometry(0.07, 0.22, 4, 8), hair, [0, -0.05, 0], { rot: [0, 0, Math.PI / 2 - 0.25], outline: false });
       // ヘッドセット
       const hs = this.toon(0x2a2f3a);
       this.part(h, new THREE.TorusGeometry(0.34, 0.022, 8, 24, Math.PI), hs, [0, 0.3, 0]);
@@ -556,28 +797,45 @@ export class FighterModel {
     const target = this.victory ? 0 : this.previewTurn ?? v.facing * (Math.PI / 2 - 0.45);
     this.turn += (target - this.turn) * Math.min(1, dt * 18);
 
-    const p = this.victory ? this.victoryPose(time) : this.pose(v, def, time);
+    const target0 = this.victory ? this.victoryPose(def.id, time) : this.pose(v, def, time);
+    // キャラごとの姿勢のくせ（ドパガキ・ガチャ廃人は猫背、警備員は胸を張る）
+    if (!this.victory && v.state !== 'hitstun' && v.state !== 'grabbed') {
+      const lean = def.id === 'dopa' ? 0.07 : def.id === 'gacha' ? 0.06 : def.id === 'guard' ? -0.04 : 0;
+      const tilt = def.id === 'dopa' ? 0.1 : def.id === 'gacha' ? 0.08 : def.id === 'guard' ? -0.05 : 0;
+      target0.lean += lean;
+      target0.headTilt += tilt;
+    }
     // 自転車（配達員）：乗っている間と、立ちこぎジャンプ中に表示
     const onBike = (v.fx & FX_BIKE) !== 0 || (def.id === 'courier' && v.state === 'attack' && v.move === 'uspecial');
     if (this.bikeGroup) {
       this.bikeGroup.visible = onBike;
       if (onBike) {
         const c = Math.sin(time * 18);
-        p.legL = -0.9 + c * 0.6;
-        p.legR = -0.9 - c * 0.6;
-        p.lean = 0.25;
-        p.armL = FWD * 0.75;
-        p.armR = FWD * 0.75;
-        p.bob = 0.34;
-        p.spinY = 0;
+        target0.legL = -0.9 + c * 0.6;
+        target0.legR = -0.9 - c * 0.6;
+        target0.lean = 0.25;
+        target0.armL = FWD * 0.75;
+        target0.armR = FWD * 0.75;
+        target0.bob = 0.34;
+        target0.spinY = 0;
       }
     }
+    // 攻撃のときだけ持つ道具
+    for (const ap of this.attackProps) ap.obj.visible = v.state === 'attack' && !!v.move && ap.moves.includes(v.move);
     // AIアシスタント：ふわふわ浮かぶ
     if (this.buddy) {
       this.buddy.visible = !this.buddyAway;
-      this.buddy.position.set(-v.facing * 0.55, 1.95 * def.scale + Math.sin(time * 3) * 0.08, 0.1);
+      // 少し遅れてついてくる
+      const k = 1 - Math.exp(-dt * 6);
+      const bp = this.buddy.position;
+      bp.x += (-v.facing * 0.55 - (v.x - this.prevX) * 0.6 - bp.x) * k;
+      bp.y += (1.95 * def.scale + Math.sin(time * 3) * 0.08 - bp.y) * k;
+      bp.z = 0.1;
       this.buddy.rotation.y = Math.sin(time * 1.5) * 0.4;
     }
+    // ポーズをいきなり切り替えず、ばねのように追いかけてなめらかにする（攻撃中は速く追いかける）
+    const p = this.smooth(target0, dt, v.state === 'attack');
+    this.updateSwings(v, p, time, dt);
     this.turnGroup.rotation.y = this.turn + p.spinY;
     this.spin.rotation.z = p.spinZ;
     this.body.rotation.set(p.lean, 0, 0);
@@ -593,10 +851,16 @@ export class FighterModel {
     // 表情：攻撃中はキリッ、被弾中は「><」、眠り・まばたきは閉じ目、勝利は笑顔
     const blinking = (time + this.blinkSeed) % 3.7 < 0.12;
     const tired = def.id === 'gacha';
-    if (this.victory) this.setExpression('happy', 'smile', false);
+    const special = v.state === 'attack' && v.move ? moveOf(def.id, v.move).special : undefined;
+    const smugType = def.id === 'guard' || def.id === 'hacker' || def.id === 'thief' || def.id === 'ai';
+    if (this.victory) this.setExpression(smugType ? 'smug' : 'happy', smugType ? 'smile' : 'open', false);
     else if (v.state === 'hitstun' || v.state === 'shieldbreak' || v.state === 'helpless' || v.state === 'grabbed') this.setExpression('hurt', 'open', false);
     else if (v.state === 'sleep' || blinking) this.setExpression('closed', 'line', false);
-    else if (v.state === 'attack') this.setExpression('angry', v.move === 'smash' || (v.move ?? '').endsWith('special') ? 'open' : 'line', false);
+    // 課金・倍速・吸収などの「強化」はドヤ顔
+    else if (special === 'pay' || special === 'speedup' || special === 'absorb' || special === 'drone') this.setExpression('smug', 'smile', false);
+    else if (v.state === 'attack') this.setExpression('angry', v.move === 'smash' || v.move === 'charge' || (v.move ?? '').endsWith('special') || (v.move ?? '').endsWith('throw') ? 'open' : 'line', false);
+    // ピンチ（崖につかまっている・%が高い）は焦り顔と汗
+    else if (v.state === 'ledge' || v.damage >= 100) this.setExpression('panic', 'open', false);
     else this.setExpression('normal', 'line', tired);
 
     // ガード
@@ -626,6 +890,7 @@ export class FighterModel {
       m.transparent = opacity < 1;
       m.opacity = opacity;
     }
+    for (const e of this.eyePatches) e.mat.opacity = opacity;
     this.outlineMat.transparent = opacity < 1;
     this.outlineMat.opacity = opacity;
     this.outlineMat.visible = opacity > 0.3;
@@ -634,22 +899,166 @@ export class FighterModel {
     this.marker.position.y = 2.25 * def.scale + Math.sin(time * 4) * 0.05;
   }
 
+  /** ばねのように目標のポーズを追いかける（少し行き過ぎて戻るので、動きに余韻が出る） */
+  private smooth(t: Pose, dt: number, snappy: boolean): Pose {
+    if (!this.cur) {
+      this.cur = { ...t };
+      return this.cur;
+    }
+    const c = this.cur;
+    const w = snappy ? 62 : 30;
+    const z = snappy ? 0.62 : 0.75;
+    const h = Math.min(dt, 1 / 20);
+    const n = Math.max(1, Math.ceil(h / (1 / 120)));
+    const st = h / n;
+    for (const k of SPRING_KEYS) {
+      let x = c[k];
+      let vel = this.vel[k] ?? 0;
+      const goal = t[k];
+      for (let i = 0; i < n; i++) {
+        vel += (w * w * (goal - x) - 2 * z * w * vel) * st;
+        x += vel * st;
+      }
+      c[k] = x;
+      this.vel[k] = vel;
+    }
+    // 回転：くるくる回る動き（空中攻撃・ふっとび）はそのまま、体のひねり程度ならなめらかに
+    for (const k of ['spinY', 'spinZ'] as const) {
+      const fast = Math.abs(t[k] - this.prevSpin[k]) > 0.15 || Math.abs(t[k] - c[k]) > 1.2;
+      this.prevSpin[k] = t[k];
+      if (fast) c[k] = t[k];
+      else c[k] += (t[k] - c[k]) * (1 - Math.exp(-h * (snappy ? 30 : 18)));
+    }
+    return c;
+  }
+
+  /** 揺れもの：体の加速・傾きの変化で揺れて、ばねで戻る */
+  private updateSwings(v: ViewFighter, p: Pose, time: number, dt: number): void {
+    const h = Math.max(1 / 240, Math.min(dt, 1 / 20));
+    let vx = (v.x - this.prevX) / h;
+    let vy = (v.y - this.prevY) / h;
+    // 復活・入れ替えなどの瞬間移動では揺らさない
+    if (Math.abs(v.x - this.prevX) > 1.5 || Math.abs(v.y - this.prevY) > 1.5) {
+      vx = this.prevVx;
+      vy = this.prevVy;
+    }
+    const ax = (vx - this.prevVx) / h;
+    const ay = (vy - this.prevVy) / h;
+    const dLean = (p.lean - this.prevLean) / h;
+    this.prevX = v.x;
+    this.prevY = v.y;
+    this.prevVx = vx;
+    this.prevVy = vy;
+    this.prevLean = p.lean;
+    const fwdAcc = ax * v.facing;
+    for (const s of this.swings) {
+      const drive = Math.max(-40, Math.min(40, fwdAcc * 0.05 + ay * 0.02 + dLean * 0.8)) * s.amt;
+      const steps = Math.max(1, Math.ceil(h / (1 / 120)));
+      const st = h / steps;
+      for (let i = 0; i < steps; i++) {
+        s.vel += (drive - 140 * s.ang - 9 * s.vel) * st;
+        s.ang += s.vel * st;
+      }
+      s.ang = Math.max(-0.7, Math.min(0.7, s.ang));
+      // 何もしていなくても、ほんの少しゆらゆら
+      s.g.rotation.x = s.ang + Math.sin(time * 2.2 + s.phase) * 0.04 * s.amt;
+      s.g.rotation.z = Math.sin(time * 1.7 + s.phase) * 0.03 * s.amt;
+    }
+  }
+
   private victory = false;
   /** 結果画面で勝ったときのポーズ */
   setVictory(on: boolean): void {
     this.victory = on;
   }
 
-  private victoryPose(time: number): Pose {
+  /** キャラごとの勝利ポーズ */
+  private victoryPose(id: string, time: number): Pose {
     const p = basePose();
     const b = Math.sin(time * 8);
-    p.bob = Math.abs(b) * 0.12;
-    p.armR = UP * 0.9 + b * 0.2;
-    p.armL = 0.3 - b * 0.3;
-    p.armLz = 0.6;
-    p.legL = b * 0.3;
-    p.legR = -b * 0.3;
-    p.headTilt = -0.1;
+    const slow = Math.sin(time * 3);
+    switch (id) {
+      case 'guard':
+        // 敬礼して胸を張る
+        p.armR = UP * 0.78;
+        p.armRz = 1.15;
+        p.armL = 0.05;
+        p.armLz = 0.1;
+        p.lean = -0.08;
+        p.headTilt = -0.12;
+        p.bob = Math.abs(slow) * 0.02;
+        break;
+      case 'hacker':
+        // ノートPCを掲げてガッツポーズ
+        p.armL = UP * 0.85;
+        p.armLz = 0.2;
+        p.armR = FWD * 0.6 + b * 0.25;
+        p.armRz = 0.5;
+        p.bob = Math.abs(b) * 0.06;
+        break;
+      case 'thief':
+        // USBメモリを見せびらかす
+        p.armR = FWD * 1.25 + slow * 0.1;
+        p.armRz = 0.3;
+        p.armL = 0.3;
+        p.armLz = 0.6;
+        p.lean = 0.1;
+        p.squash = 0.95;
+        p.spinY = slow * 0.15;
+        break;
+      case 'streamer':
+        // ピースして跳ねる
+        p.armR = UP * 0.7;
+        p.armRz = 0.9;
+        p.armL = 0.2;
+        p.armLz = 0.5;
+        p.bob = Math.abs(b) * 0.14;
+        p.legL = Math.max(0, b) * -0.5;
+        p.headTilt = -0.15 + slow * 0.05;
+        break;
+      case 'dopa':
+        // スマホで自撮りしながら跳ねる
+        p.armR = UP * 0.75;
+        p.armRz = -0.2;
+        p.armL = UP * 0.4 + b * 0.3;
+        p.bob = Math.abs(Math.sin(time * 11)) * 0.15;
+        p.headTilt = -0.2;
+        break;
+      case 'gacha':
+        // 両手を上げて大喜び
+        p.armR = UP * 0.95 + b * 0.15;
+        p.armL = UP * 0.95 - b * 0.15;
+        p.armLz = 0.3;
+        p.armRz = -0.3;
+        p.bob = Math.abs(b) * 0.16;
+        p.headTilt = -0.25;
+        break;
+      case 'courier':
+        // 親指を立てる
+        p.armR = FWD * 1.0;
+        p.armRz = 0.25;
+        p.armL = 0.3;
+        p.armLz = 0.55;
+        p.bob = Math.abs(slow) * 0.03;
+        p.lean = -0.05;
+        break;
+      case 'ai':
+        // メガネ（ヘッドセット）に手を当ててきめる
+        p.armR = FWD * 1.4;
+        p.armRz = 0.75;
+        p.armL = 0.15;
+        p.armLz = 0.35;
+        p.headTilt = -0.1 + slow * 0.04;
+        break;
+      default:
+        p.bob = Math.abs(b) * 0.12;
+        p.armR = UP * 0.9 + b * 0.2;
+        p.armL = 0.3 - b * 0.3;
+        p.armLz = 0.6;
+        p.legL = b * 0.3;
+        p.legR = -b * 0.3;
+        p.headTilt = -0.1;
+    }
     return p;
   }
 
@@ -663,15 +1072,28 @@ export class FighterModel {
         break;
       case 'run': {
         const c = Math.sin(t * 0.42);
-        p.legL = c * 1.0;
-        p.legR = -c * 1.0;
-        p.armL = -c * 0.9;
-        p.armR = c * 0.9;
-        p.lean = 0.28;
-        p.bob = Math.abs(Math.cos(t * 0.42)) * 0.06;
+        p.legL = c * 1.05;
+        p.legR = -c * 1.05;
+        p.armL = -c * 0.95;
+        p.armR = c * 0.95;
+        p.armLz = 0.2;
+        p.armRz = -0.2;
+        p.lean = 0.3;
+        p.bob = Math.abs(Math.cos(t * 0.42)) * 0.07;
+        p.squash = 1 - Math.abs(Math.cos(t * 0.42)) * 0.04;
+        p.headTilt = -0.08;
         break;
       }
       case 'air':
+        if (t < 7) {
+          // 跳んだ直後は体が伸びる
+          p.squash = 1.12;
+          p.legL = -0.2;
+          p.legR = 0.1;
+          p.armL = 0.3;
+          p.armR = -0.3;
+          break;
+        }
         p.legL = -0.8;
         p.legR = 0.35;
         p.armL = -0.6;
@@ -690,6 +1112,7 @@ export class FighterModel {
         p.armR = FWD * 0.6;
         break;
       case 'hitstun':
+        if (t < 5) p.squash = 0.84; // 当たった瞬間につぶれる
         p.armL = UP * 0.7 + Math.sin(time * 25) * 0.3;
         p.armR = UP * 0.6 - Math.sin(time * 25) * 0.3;
         p.legL = 0.6;
@@ -1080,6 +1503,154 @@ export class FighterModel {
         p.lean = 0.5 * k;
         p.squash = 1 - 0.12 * k;
         break;
+    }
+    // キャラごとの通常技の動き（道具を使う・蹴るなど）
+    this.attackStyle(def.id, v, s, a, e, p);
+    // 予備動作：出す前に少し体を引く
+    if (f < s && (v.move === 'jab' || v.move === 'side' || v.move === 'up' || v.move === 'down')) {
+      p.lean -= 0.15 * wind;
+      p.squash *= 1 - 0.05 * wind;
+    }
+  }
+
+  /**
+   * キャラごとの通常技の動き。振りかぶり・当てる瞬間・戻りのポーズを決めるだけで、
+   * 間のつながりはばね（smooth）がなめらかにする。技の当たり判定は全キャラ共通のまま。
+   */
+  private attackStyle(id: string, v: ViewFighter, s: number, a: number, e: number, p: Pose): void {
+    const f = v.moveFrame;
+    const charging = v.charge > 0;
+    const wind = f < s || charging; // 振りかぶり中
+    const rec = f >= s + a ? Math.min(1, (f - s - a) / e) : 0; // 戻り（0→1）
+    const hold = 1 - rec * rec; // 当てたポーズをしばらく保ってから戻す
+    const m = v.move;
+    if (m !== 'jab' && m !== 'side' && m !== 'smash' && m !== 'charge') return;
+    const strong = m === 'smash' || m === 'charge';
+    switch (id) {
+      case 'guard':
+        // 警棒：弱は突き、横・スマッシュは振り下ろし
+        if (m === 'jab') {
+          p.armR = wind ? 0.2 : FWD * 1.05 * hold;
+          p.lean = wind ? -0.05 : 0.2 * hold;
+        } else {
+          p.armR = wind ? UP * 1.08 : FWD * 0.65 * hold;
+          p.armRz = -0.15;
+          p.armL = wind ? FWD * 0.4 : 0.4;
+          p.lean = wind ? -0.25 : (strong ? 0.55 : 0.35) * hold;
+          p.squash = wind ? 0.94 : 1 - 0.08 * hold;
+          p.legL = wind ? 0.2 : -0.5 * hold;
+          p.legR = wind ? -0.2 : 0.4 * hold;
+        }
+        return;
+      case 'hacker':
+        // 左手のノートPCで殴る（弱は押し出し、横は横なぎ、スマッシュは振り下ろし）
+        p.armR = 0.3;
+        if (m === 'jab') {
+          p.armL = wind ? FWD * 0.4 : FWD * 1.05 * hold;
+          p.armLz = 0;
+        } else if (m === 'side') {
+          p.armL = FWD * 0.9;
+          p.armLz = wind ? 1.2 : -0.6 * hold;
+          p.lean = wind ? -0.1 : 0.3 * hold;
+          p.spinY = wind ? 0.35 : -0.25 * hold;
+        } else {
+          p.armL = wind ? UP * 1.05 : FWD * 0.6 * hold;
+          p.armR = wind ? UP * 1.05 : FWD * 0.6 * hold;
+          p.lean = wind ? -0.25 : 0.5 * hold;
+          p.squash = wind ? 0.93 : 1 - 0.08 * hold;
+        }
+        return;
+      case 'thief':
+        // USBメモリで素早く突く。踏み込みが深い
+        p.armR = wind ? 0.5 : FWD * 1.15 * hold;
+        p.armL = wind ? FWD * 0.3 : 0.6 * hold;
+        p.lean = wind ? -0.05 : (strong ? 0.7 : m === 'side' ? 0.55 : 0.35) * hold;
+        p.legL = wind ? 0.1 : (strong ? -0.9 : -0.6) * hold;
+        p.legR = wind ? -0.1 : 0.6 * hold;
+        p.squash = wind ? 0.9 : 1 - 0.06 * hold;
+        return;
+      case 'streamer':
+        // 自撮り棒をバットのように振る
+        if (m === 'jab') {
+          p.armR = wind ? 0.3 : FWD * 0.9 * hold;
+          p.armRz = wind ? -0.6 : 0.3 * hold;
+        } else {
+          p.armR = wind ? (strong ? UP * 1.0 : 0.9) : FWD * (strong ? 0.6 : 0.85) * hold;
+          p.armRz = wind ? -1.1 : 0.5 * hold;
+          p.armL = wind ? FWD * 0.5 : 0.3;
+          p.spinY = wind ? 0.4 : -0.35 * hold;
+          p.lean = wind ? -0.15 : 0.35 * hold;
+        }
+        return;
+      case 'dopa':
+        // 弱はスマホで小突く、横は裏拳、スマッシュは跳び蹴り
+        if (m === 'jab') {
+          p.armR = wind ? FWD * 0.6 : FWD * 1.1 * hold;
+        } else if (m === 'side') {
+          p.armR = FWD * 0.9;
+          p.armRz = wind ? -1.2 : 0.7 * hold;
+          p.spinY = wind ? -0.4 : 0.45 * hold;
+          p.lean = 0.2;
+        } else {
+          p.legL = wind ? 0.3 : FWD * 0.9 * hold;
+          p.legR = wind ? -0.3 : FWD * 0.6 * hold;
+          p.lean = wind ? 0.15 : -0.45 * hold;
+          p.bob = wind ? 0 : 0.16 * hold;
+          p.armL = UP * 0.4;
+          p.armR = UP * 0.3;
+        }
+        return;
+      case 'gacha':
+        // 弱・横はだるそうにスマホを振る、スマッシュはカプセルをたたきつける
+        if (strong) {
+          p.armR = wind ? UP * 1.1 : FWD * 0.55 * hold;
+          p.armL = wind ? UP * 0.9 : FWD * 0.5 * hold;
+          p.lean = wind ? -0.3 : 0.55 * hold;
+          p.squash = wind ? 0.92 : 1 - 0.1 * hold;
+        } else {
+          p.armR = wind ? 0.4 : FWD * (m === 'side' ? 1.0 : 0.9) * hold;
+          p.armRz = m === 'side' ? (wind ? -0.8 : 0.5 * hold) : 0;
+          p.lean = wind ? 0.05 : 0.25 * hold;
+          p.headTilt = 0.2;
+        }
+        return;
+      case 'courier':
+        // 足技：弱はひざ蹴り、横は前蹴り、スマッシュは回し蹴り
+        p.armL = FWD * 0.5;
+        p.armR = FWD * 0.4;
+        p.armLz = -0.3;
+        p.armRz = 0.3;
+        if (m === 'jab') {
+          p.legR = wind ? 0.2 : FWD * 0.7 * hold;
+          p.bob = wind ? 0 : 0.04 * hold;
+        } else if (m === 'side') {
+          p.legR = wind ? 0.4 : FWD * 1.15 * hold;
+          p.lean = wind ? 0.1 : -0.3 * hold;
+        } else {
+          p.legR = wind ? 0.5 : FWD * 1.25 * hold;
+          p.lean = wind ? 0.15 : -0.4 * hold;
+          p.spinY = wind ? 0.5 : -0.3 * hold;
+          p.armL = 0.5;
+          p.armR = -0.5;
+        }
+        return;
+      case 'ai':
+        // 弱は手のひらで押す、横・スマッシュはホログラムの剣で斬る
+        if (m === 'jab') {
+          p.armR = wind ? FWD * 0.5 : FWD * 1.05 * hold;
+          p.armRz = 0.2;
+        } else if (m === 'side') {
+          p.armR = FWD * 0.9;
+          p.armRz = wind ? -1.25 : 0.65 * hold;
+          p.spinY = wind ? 0.35 : -0.3 * hold;
+          p.lean = 0.2 * hold;
+        } else {
+          p.armR = wind ? UP * 1.05 : FWD * 0.6 * hold;
+          p.armL = wind ? UP * 1.0 : FWD * 0.55 * hold;
+          p.lean = wind ? -0.25 : 0.5 * hold;
+          p.squash = wind ? 0.93 : 1 - 0.08 * hold;
+        }
+        return;
     }
   }
 
