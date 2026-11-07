@@ -64,7 +64,8 @@ export type MoveId =
   | 'sspecial'
   | 'uspecial'
   | 'dspecial'
-  | 'grab';
+  | 'grab'
+  | 'charge';
 
 export const MOVE_IDS: MoveId[] = [
   'jab',
@@ -82,6 +83,7 @@ export const MOVE_IDS: MoveId[] = [
   'uspecial',
   'dspecial',
   'grab',
+  'charge',
 ];
 
 export type RuleMode = 'stock' | 'time';

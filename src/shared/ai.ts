@@ -110,6 +110,12 @@ export class CpuController {
       const highDamage = t.damage > 90;
       if (t.state === 'shield' && this.rng.chance(0.5)) return { mx: 0, my: 0, buttons: BTN_SHIELD | BTN_A };
       if (dy > 1.0) return { mx: 0, my: 1, buttons: BTN_A };
+      if (highDamage && r < 0.12) {
+        // 溜め攻撃：Aを押し続ける（弱攻撃のあと溜めに入り、離すと殴る）
+        b.hold = { mx: 0, my: 0, buttons: BTN_A };
+        b.holdFrames = 24 + Math.round(this.rng.range(0, 40));
+        return b.hold;
+      }
       if (highDamage && r < 0.35 + lv * 0.03) {
         // スマッシュ（はじき入力のため、直前のフレームはスティックを戻している必要がある）
         if (Math.abs(f.input.mx) < 0.3) {

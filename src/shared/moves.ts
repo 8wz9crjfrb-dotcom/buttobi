@@ -66,7 +66,8 @@ export type SpecialKind =
   | 'tether'
   | 'swap'
   | 'drone'
-  | 'pull';
+  | 'pull'
+  | 'charge';
 
 export interface MoveDef {
   startup: number;
@@ -123,6 +124,22 @@ const NORMALS: Record<string, MoveDef> = {
   bair: { startup: 6, active: 4, end: 14, hitboxes: [{ x: -1.1, y: 0.95, r: 0.66 }], dmg: 11, base: 6.5, growth: 11.5, angle: 145, air: true, landLag: 8 },
   uair: { startup: 5, active: 5, end: 12, hitboxes: [{ x: 0.1, y: 2.05, r: 0.72 }], dmg: 8, base: 5.5, growth: 9, angle: 85, air: true, landLag: 6 },
   dair: { startup: 9, active: 4, end: 18, hitboxes: [{ x: 0, y: -0.05, r: 0.66 }], dmg: 12, base: 5, growth: 9, angle: -80, air: true, landLag: 12 },
+  // 溜め攻撃：Aを押し続けると弱攻撃のあとに溜めに入り、離すと大きく殴る（最大1.5秒、威力最大1.75倍）
+  charge: {
+    startup: 20,
+    active: 5,
+    end: 26,
+    hitboxes: [
+      { x: 1.2, y: 0.95, r: 0.8 },
+      { x: 0.55, y: 0.95, r: 0.6 },
+    ],
+    dmg: 12,
+    base: 8,
+    growth: 15,
+    angle: 38,
+    air: false,
+    special: 'charge',
+  },
   grab: { startup: 6, active: 3, end: 24, hitboxes: [{ x: 0.9, y: 0.95, r: 0.55 }], dmg: 9, base: 6.5, growth: 9.5, angle: 40, air: false, special: 'grab' },
 };
 
@@ -488,3 +505,6 @@ export const DRONE = { life: 300, interval: 40, range: 8 };
 export const PULL = { range: 4.5, speed: 11 };
 /** ガチャの天井（外れがこの回数続くと次は必ず大当たり） */
 export const PITY = 6;
+
+/** 溜め攻撃：溜められる最大フレームと、最大まで溜めたときの威力の倍率 */
+export const CHARGE = { max: 90, mul: 1.75 };

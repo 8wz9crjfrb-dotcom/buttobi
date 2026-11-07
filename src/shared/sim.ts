@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, type CharacterDef } from './characters';
-import { BIKE, DECOY, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { BIKE, CHARGE, DECOY, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -88,7 +88,7 @@ const SNAPSHOT_KEYS = [
   'ledgeSide', 'ledgeCooldown', 'dropThrough', 'respawnTimer', 'dodgeDir', 'prevButtons', 'prevMx', 'prevMy',
   'flickX', 'flickY', 'neutralXAge', 'neutralYAge', 'poison', 'poisonFrom',
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHitCd', 'confused', 'chain', 'redirected', 'pity', 'crit',
-  'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'tetherOn', 'tetherX', 'tetherY',
+  'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'tetherOn', 'tetherX', 'tetherY',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -171,6 +171,8 @@ export class Fighter {
   absorbCharge = false;
   /** 今出している技が、吸収で強くなっているか */
   chargedMove = false;
+  /** 弱攻撃を出してからAを押し続けている（溜め攻撃に移る） */
+  holdA = false;
   /** 飽き性：今の技の威力の倍率 */
   stale = 1;
   /** 走り続けている時間（時間指定） */
@@ -711,6 +713,7 @@ export class Sim {
     f.moveFrame = 0;
     f.moveHit = new Set();
     f.charge = 0;
+    f.holdA = id === 'jab';
     this.setState(f, 'attack');
   }
 
@@ -820,9 +823,13 @@ export class Sim {
     const t = moveTiming(md, f);
     const inp = f.input;
 
-    // スマッシュ攻撃の溜め（Aを押し続けている間）
-    if (md.special === 'smash' && f.moveFrame === t.s - 3 && this.held(f, BTN_A) && f.charge < 60) {
+    if (!this.held(f, BTN_A)) f.holdA = false;
+    // スマッシュ攻撃・溜め攻撃の溜め（Aを押し続けている間）
+    const maxCharge = md.special === 'smash' ? 60 : md.special === 'charge' ? CHARGE.max : 0;
+    if (maxCharge && f.moveFrame === t.s - 3 && this.held(f, BTN_A) && f.charge < maxCharge) {
       f.charge++;
+      // 溜め攻撃は、溜めている間に振り向ける
+      if (md.special === 'charge' && Math.abs(inp.mx) > 0.5) f.facing = inp.mx > 0 ? 1 : -1;
     } else {
       f.moveFrame++;
     }
@@ -1067,6 +1074,11 @@ export class Sim {
     if (!f.grounded && f.flickY <= 2 && inp.my < -0.7 && f.vy < 3 && md.air && !md.helpless) f.fastFall = true;
 
     if (mf >= t.s + t.a + t.e) {
+      // 弱攻撃のあともAを押し続けていたら、溜め攻撃に移る
+      if (f.move === 'jab' && f.holdA && f.grounded && f.state === 'attack') {
+        this.startMove(f, 'charge');
+        return;
+      }
       f.move = null;
       if (md.helpless && !f.grounded) this.setState(f, 'helpless');
       else this.setState(f, f.grounded ? 'idle' : 'air');
@@ -1506,7 +1518,7 @@ export class Sim {
       this.events.push({ k: 'hit', x: hx, y: hy, p: md.dmg, s: v.slot });
       return;
     }
-    const chargeMul = 1 + (a.charge / 60) * 0.4;
+    const chargeMul = md.special === 'charge' ? 1 + (a.charge / CHARGE.max) * (CHARGE.mul - 1) : 1 + (a.charge / 60) * 0.4;
     const pm = this.powerMul(a);
     const dmg = md.dmg * pm.dmg * chargeMul;
     if (this.tryCounter(v, a, dmg)) return;

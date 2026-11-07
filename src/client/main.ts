@@ -2,7 +2,7 @@
 
 import './styles.css';
 import { CpuController } from '../shared/ai';
-import { CHARACTERS, getCharacter, SLOT_COLORS } from '../shared/characters';
+import { CHARACTERS, getCharacter, SLOT_COLORS, SPECIAL_DESCS } from '../shared/characters';
 import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
 import { Sim } from '../shared/sim';
 import { STAGES, getStage } from '../shared/stages';
@@ -365,16 +365,72 @@ function charCards(selected: string): string {
   ).join('')}</div>`;
 }
 
-/** キャラ選択画面の説明欄 */
+/** 全キャラ共通の溜め攻撃の説明（キャラ選択の長押しで出す） */
+const CHARGE_DESC = 'Aを押し続けると、弱攻撃のあと溜めに入り、離すと大きく殴る。最大1.5秒溜められ、威力は最大1.75倍。溜めている間はスティックで振り向ける。';
+
+/** キャラ選択画面の説明欄。技は長押しで説明が出る */
 function charDetail(id: string): string {
   const c = getCharacter(id);
   const n = c.specialNames;
+  const row = (key: string, label: string, name: string) => `<div class="mv" data-mv="${key}"><span class="key">${label}</span>${name}</div>`;
   return `<div class="cd-desc">${c.desc}</div>
     <div class="cd-trait"><span class="tag">特性</span><b>${c.trait.name}</b>：${c.trait.desc}</div>
     <div class="cd-moves">
-      <div><span class="key">B</span>${n.n}</div><div><span class="key">横B</span>${n.s}</div>
-      <div><span class="key">下B</span>${n.d}</div><div><span class="key">上B</span>${n.u}</div>
-    </div>`;
+      ${row('n', 'B', n.n)}${row('s', '横B', n.s)}${row('d', '下B', n.d)}${row('u', '上B', n.u)}${row('charge', '共通', '溜め攻撃（A長押し）')}
+    </div>
+    <div class="cd-hint">技を長押しすると説明が出ます</div>`;
+}
+
+/** 技の説明のポップアップ：長押し（0.35秒）で出し、どこかを触ると消す */
+function bindMovePopups(root: HTMLElement, charId: () => string): void {
+  let timer = 0;
+  let pop: HTMLElement | null = null;
+  const hide = () => {
+    pop?.remove();
+    pop = null;
+    root.querySelectorAll('.mv.on').forEach((x) => x.classList.remove('on'));
+  };
+  const show = (el: HTMLElement) => {
+    hide();
+    const key = el.dataset.mv!;
+    const c = getCharacter(charId());
+    const descs = SPECIAL_DESCS[c.id] ?? SPECIAL_DESCS.guard;
+    const name = key === 'charge' ? '溜め攻撃' : c.specialNames[key as 'n' | 's' | 'd' | 'u'];
+    const text = key === 'charge' ? CHARGE_DESC : descs[key as 'n' | 's' | 'd' | 'u'];
+    pop = document.createElement('div');
+    pop.className = 'mv-pop';
+    pop.innerHTML = `<b>${name}</b><div>${text}</div>`;
+    root.appendChild(pop);
+    el.classList.add('on');
+    // 押した技のすぐ上に出す（画面からはみ出さないように）
+    const r = el.getBoundingClientRect();
+    const rr = root.getBoundingClientRect();
+    const pw = pop.offsetWidth;
+    const ph = pop.offsetHeight;
+    const left = Math.max(8, Math.min(rr.width - pw - 8, r.left - rr.left));
+    let top = r.top - rr.top - ph - 6;
+    if (top < 8) top = r.bottom - rr.top + 6;
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top + root.scrollTop}px`;
+    sfx.click();
+  };
+  root.addEventListener('pointerdown', (e) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>('.mv');
+    if (!el) {
+      hide();
+      return;
+    }
+    clearTimeout(timer);
+    timer = window.setTimeout(() => show(el), 350);
+  });
+  const cancel = () => clearTimeout(timer);
+  root.addEventListener('pointerup', cancel);
+  root.addEventListener('pointercancel', cancel);
+  root.addEventListener('pointerleave', cancel);
+  root.addEventListener('contextmenu', (e) => {
+    if ((e.target as HTMLElement).closest('.mv')) e.preventDefault();
+  });
+  root.addEventListener('scroll', hide);
 }
 
 interface CharSelectOptions {
@@ -413,6 +469,7 @@ function showCharSelect(o: CharSelectOptions): void {
           sfx.click();
         }),
       );
+      bindMovePopups(root, () => picked);
       // 左側をなぞるとキャラが回る
       const drag = root.querySelector<HTMLElement>('.cs-drag')!;
       let lastX: number | null = null;
@@ -680,6 +737,7 @@ function showHowTo(): void {
        <p><b>ルール：</b>攻撃を当てると相手のダメージ%が増え、%が高いほど遠くへ飛びます。画面の外まで飛ばすと撃墜です。</p>
        <p><b>移動：</b>画面の左半分をなぞるとスティックが出ます。大きく倒すとダッシュ。上にはじくとジャンプ（設定で切替）、下にはじくと足場をすり抜けます。</p>
        <p><b>A（攻撃）：</b>スティックの向き＋Aで技が変わります。横に素早くはじきながらAで強力なスマッシュ攻撃（Aを押し続けると溜め）。空中では空中攻撃。</p>
+       <p><b>溜め攻撃：</b>Aを押し続けると、弱攻撃のあと溜めに入り、離すと大きく殴ります（全キャラ共通。最大1.5秒、威力は最大1.75倍）。</p>
        <p><b>B（必殺技）：</b>キャラごとに4種類（そのまま・横・下・上）。上の必殺技は復帰に使え、使った後は着地まで無防備になります。</p>
        <p><b>キャラごとの特性：</b>各キャラには1つずつ特性があります（キャラ選択画面に表示されます）。</p>
        <p><b>データセンター警備員：</b>B 利用規約を読み上げる（ゆっくり進む文字で長くひるませる）／横B 物理ファイアウォール（壁で飛び道具を防ぎ、相手を押し返す）／下B クレーム対応（構え中に攻撃されると1.3倍で返す）／上B 非常口ダッシュ（斜め上へ突進）</p>

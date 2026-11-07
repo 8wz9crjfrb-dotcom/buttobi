@@ -618,7 +618,7 @@ export class FighterModel {
     const fxGlow = v.fx & FX_POWER ? 0x5a1010 : v.fx & FX_CHARGED ? 0x0a4a5a : v.fx & FX_SPEED ? 0x10305a : 0;
     for (const m of this.mats) {
       m.emissive.setHex(flash ? 0x555555 : charging ? 0xffaa00 : poisoned ? 0x5a1a7a : helpless ? 0x220022 : fxGlow);
-      m.emissiveIntensity = charging ? 0.3 + 0.3 * Math.sin(time * 30) : fxGlow && !flash && !poisoned ? 0.6 + 0.6 * pulse : 1;
+      m.emissiveIntensity = charging ? 0.12 + 0.1 * Math.sin(time * 30) : fxGlow && !flash && !poisoned ? 0.6 + 0.6 * pulse : 1;
       m.transparent = opacity < 1;
       m.opacity = opacity;
     }
@@ -963,6 +963,27 @@ export class FighterModel {
           p.lean = 0.45 * k;
           p.legL = -0.5 * k;
           p.legR = 0.5 * k;
+        }
+        break;
+      case 'charge':
+        if (v.charge > 0 || f < s) {
+          // 溜め：大きく振りかぶって、溜まるほど体が震える
+          const shake = Math.sin(v.stateTime * 2.1) * 0.04 * Math.min(1, v.charge / 45);
+          p.armR = 1.35;
+          p.armRz = -0.35;
+          p.armL = FWD * 0.5;
+          p.lean = -0.3 + shake;
+          p.legL = 0.35;
+          p.legR = -0.35;
+          p.squash = 0.9;
+        } else {
+          // 解放：体ごと踏み込んで殴る
+          p.armR = lerp(1.35, FWD * 1.2, Math.min(1, k * 1.6));
+          p.armL = lerp(FWD * 0.5, -0.6, k);
+          p.lean = 0.55 * k;
+          p.legL = -0.7 * k;
+          p.legR = 0.6 * k;
+          p.spinY = -0.35 * (1 - k);
         }
         break;
       case 'up':

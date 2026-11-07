@@ -1023,3 +1023,43 @@ input[inputmode='numeric'] {
 .setup-grid.wide {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
+
+/* キャラ選択：技の長押し説明 */
+.cd-moves .mv {
+  border-radius: 6px;
+  padding: 1px 4px;
+  margin: 0 -4px;
+  cursor: pointer;
+  -webkit-touch-callout: none;
+}
+
+.cd-moves .mv.on {
+  background: rgba(255, 207, 63, 0.2);
+}
+
+.cd-hint {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.mv-pop {
+  position: absolute;
+  z-index: 5;
+  max-width: min(360px, calc(54% - 16px));
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(20, 24, 52, 0.97);
+  box-shadow: 0 0 0 1px rgba(255, 207, 63, 0.6), 0 6px 18px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+  line-height: 1.55;
+  color: #fff;
+  pointer-events: none;
+}
+
+.mv-pop b {
+  display: block;
+  color: var(--accent);
+  margin-bottom: 2px;
+}

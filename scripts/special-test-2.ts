@@ -315,4 +315,24 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   }
   check('横に大きく動く床は台の外まで運んでくれる', !fell && maxX > 7, `いちばん外 |x|=${maxX.toFixed(1)}（台の端は6.5）`);
 }
+// ---- 溜め攻撃（全キャラ共通：Aを押し続ける）
+{
+  const A: InputState = { mx: 0, my: 0, buttons: BTN_A };
+  const tryHold = (frames: number) => {
+    const sim = make('streamer', 'guard');
+    sim.fighters[0].x = 0; sim.fighters[0].facing = 1; sim.fighters[1].x = 1.3;
+    let charged = false;
+    for (let i = 0; i < frames + 80; i++) {
+      sim.step(new Map([[0, i < frames ? A : N]]));
+      if (sim.fighters[0].move === 'charge') charged = true;
+    }
+    return { charged, dmg: sim.fighters[1].damage };
+  };
+  const tap = tryHold(1);
+  check('Aを押してすぐ離すと、弱攻撃だけで溜め攻撃にはならない', !tap.charged, `${tap.dmg.toFixed(1)}%`);
+  const short = tryHold(30);
+  const long = tryHold(140);
+  check('Aを押し続けると溜め攻撃が出る', short.charged && long.charged);
+  check('長く溜めるほど威力が上がる', long.dmg > short.dmg * 1.3, `少し溜め${short.dmg.toFixed(1)}% / 最大溜め${long.dmg.toFixed(1)}%`);
+}
 process.exit(fail ? 1 : 0);
