@@ -32,6 +32,7 @@ export class GameRenderer {
   private stageGroup = new THREE.Group();
   private platformMeshes: THREE.Object3D[] = [];
   private built: BuiltStage | null = null;
+  private hemi: THREE.HemisphereLight;
   /** 光のにじみ（画質「きれい」のときだけ） */
   private composer: EffectComposer | null = null;
   private bloom: UnrealBloomPass | null = null;
@@ -52,6 +53,18 @@ export class GameRenderer {
   private sun: THREE.DirectionalLight;
   private quality: Quality = 'high';
   private time = 0;
+  /** キャラ選択画面の3D表示（null なら通常の対戦画面） */
+  private preview: {
+    scene: THREE.Scene;
+    camera: THREE.PerspectiveCamera;
+    model: FighterModel | null;
+    charId: string;
+    spin: number;
+    pop: number;
+    ring: THREE.Mesh;
+    disposables: { dispose(): void }[];
+  } | null = null;
+  private thumbs = new Map<string, string>();
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -60,7 +73,8 @@ export class GameRenderer {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.5, 200);
     // 夜の街：空からの青い光と、正面上からの月明かり（ネオンの色の照明はステージ側で足す）
-    this.scene.add(new THREE.HemisphereLight(0xd8dcff, 0x3a2a4a, 1.8));
+    this.hemi = new THREE.HemisphereLight(0xd8dcff, 0x3a2a4a, 1.8);
+    this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xfff2e6, 2.3);
     this.sun.position.set(-8, 20, 14);
     this.sun.castShadow = true;
@@ -93,6 +107,7 @@ export class GameRenderer {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.85, 0.5, 0.86);
       this.composer.addPass(this.bloom);
       this.composer.addPass(new OutputPass());
+      if (this.stage) this.bloom.enabled = this.stage.theme.kind !== 'day';
     } else if (q !== 'high' && this.composer) {
       this.composer.dispose();
       this.composer = null;
@@ -184,14 +199,193 @@ export class GameRenderer {
   private buildStage(stage: StageDef): void {
     const th = stage.theme;
     this.scene.background = makeSkyTexture(th.sky, th.skyBottom);
-    this.scene.fog = new THREE.Fog(th.fog, 30, 120);
+    if (th.kind === 'day') {
+      // 昼：元の明るい照明。光のにじみはかけない
+      this.scene.fog = new THREE.Fog(th.skyBottom, 40, 90);
+      this.hemi.color.setHex(0xffffff);
+      this.hemi.groundColor.setHex(0x445566);
+      this.hemi.intensity = 1.6;
+      this.sun.color.setHex(0xffffff);
+      this.sun.intensity = 2.2;
+    } else {
+      // 夜の街：空からの青い光と、正面上からの月明かり
+      this.scene.fog = new THREE.Fog(th.fog, 30, 120);
+      this.hemi.color.setHex(0xd8dcff);
+      this.hemi.groundColor.setHex(0x3a2a4a);
+      this.hemi.intensity = 1.8;
+      this.sun.color.setHex(0xfff2e6);
+      this.sun.intensity = 2.3;
+    }
+    if (this.bloom) this.bloom.enabled = th.kind !== 'day';
     this.built = buildStageScene(stage, this.quality);
     this.stageGroup.add(this.built.group);
     this.platformMeshes = this.built.platformMeshes;
   }
 
+  // ---------------------------------------------------------------- キャラ選択の3D表示
+  /** キャラ選択画面で、選んでいるキャラを左側に大きく表示する */
+  showPreview(charId: string, slot = 0): void {
+    if (!this.preview) {
+      const scene = new THREE.Scene();
+      const disposables: { dispose(): void }[] = [];
+      const sky = makeSkyTexture(0x3a2f7a, 0x10122a);
+      disposables.push(sky);
+      scene.background = sky;
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.7));
+      const key = new THREE.DirectionalLight(0xffffff, 2.2);
+      key.position.set(-3, 6, 8);
+      scene.add(key);
+      // 台座：丸い台と、足元の光る輪
+      const baseGeo = new THREE.CylinderGeometry(1.5, 1.7, 0.4, 40);
+      const baseMat = new THREE.MeshToonMaterial({ color: 0x2a2f5a });
+      disposables.push(baseGeo, baseMat);
+      const base = new THREE.Mesh(baseGeo, baseMat);
+      base.position.y = -0.2;
+      scene.add(base);
+      const topGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.02, 40);
+      const topMat = new THREE.MeshToonMaterial({ color: 0x3d4580 });
+      disposables.push(topGeo, topMat);
+      const top = new THREE.Mesh(topGeo, topMat);
+      top.position.y = 0.005;
+      scene.add(top);
+      const ringGeo = new THREE.RingGeometry(1.25, 1.42, 48);
+      const ringMat = new THREE.MeshBasicMaterial({ color: SLOT_COLORS[slot % SLOT_COLORS.length], transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+      disposables.push(ringGeo, ringMat);
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.03;
+      scene.add(ring);
+      // 後ろでゆっくり回る光の粒
+      const dotGeo = new THREE.SphereGeometry(0.05, 6, 5);
+      const dotMat = new THREE.MeshBasicMaterial({ color: 0xbfc8ff, transparent: true, opacity: 0.6 });
+      disposables.push(dotGeo, dotMat);
+      const dots = new THREE.Group();
+      dots.name = 'dots';
+      for (let i = 0; i < 40; i++) {
+        const d = new THREE.Mesh(dotGeo, dotMat);
+        const a = (i / 40) * Math.PI * 2;
+        const r = 3 + (i % 5) * 0.7;
+        d.position.set(Math.cos(a) * r, 0.5 + ((i * 37) % 30) / 8, Math.sin(a) * r - 2);
+        dots.add(d);
+      }
+      scene.add(dots);
+      const camera = new THREE.PerspectiveCamera(30, 16 / 9, 0.1, 100);
+      this.preview = { scene, camera, model: null, charId: '', spin: 0, pop: 1, ring, disposables };
+    }
+    const pv = this.preview;
+    (pv.ring.material as THREE.MeshBasicMaterial).color.setHex(SLOT_COLORS[slot % SLOT_COLORS.length]);
+    if (pv.charId === charId && pv.model) return;
+    if (pv.model) {
+      pv.scene.remove(pv.model.root);
+      pv.model.dispose();
+    }
+    const def = getCharacter(charId);
+    pv.model = new FighterModel(def, getCostume(undefined, charId), SLOT_COLORS[slot % SLOT_COLORS.length]);
+    pv.model.previewTurn = 0.35;
+    pv.scene.add(pv.model.root);
+    pv.charId = charId;
+    pv.spin = 0;
+    pv.pop = 0;
+  }
+
+  /** キャラ選択画面：指でなぞってキャラを回す */
+  spinPreview(delta: number): void {
+    if (this.preview) this.preview.spin += delta;
+  }
+
+  hidePreview(): void {
+    const pv = this.preview;
+    if (!pv) return;
+    if (pv.model) pv.model.dispose();
+    pv.disposables.forEach((d) => d.dispose());
+    this.preview = null;
+  }
+
+  private renderPreview(dt: number): void {
+    const pv = this.preview!;
+    const cam = pv.camera;
+    const w = window.innerWidth;
+    const h = Math.max(1, window.innerHeight);
+    cam.aspect = w / h;
+    // キャラを画面の左寄り（約 22%）に置く。縦はキャラの全身が入る距離
+    const dist = 8.2;
+    const halfW = Math.tan(((cam.fov / 2) * Math.PI) / 180) * dist * cam.aspect;
+    const offset = halfW * 0.56;
+    cam.position.set(offset, 1.9, dist);
+    cam.lookAt(offset, 1.25, 0);
+    cam.updateProjectionMatrix();
+    if (pv.model) {
+      const def = getCharacter(pv.charId);
+      pv.pop = Math.min(1, pv.pop + dt * 5);
+      // 選び直したときに、ぽんっと弾む
+      const s = 1 + Math.sin(pv.pop * Math.PI) * 0.12;
+      pv.model.root.scale.setScalar(1.25 * s);
+      pv.spin *= Math.pow(0.15, dt);
+      pv.model.previewTurn = 0.35 + pv.spin;
+      const fake: ViewFighter = {
+        slot: 0, x: 0, y: 0, facing: 1, state: 'idle', stateTime: Math.floor(this.time * 60), move: null, moveFrame: 0,
+        damage: 0, stocks: 0, invuln: false, shield: 1, charge: 0, kos: 0, falls: 0, out: false, poison: false, fx: 0,
+      };
+      pv.model.update(fake, def, this.time, dt);
+      pv.model.root.position.y = 0;
+    }
+    const dots = pv.scene.getObjectByName('dots');
+    if (dots) dots.rotation.y = this.time * 0.15;
+    this.renderer.render(pv.scene, cam);
+  }
+
+  /** ステージ選択用の小さな画像（実際のステージを描いて作る。一度作ったら使い回す） */
+  stageThumbnail(stage: StageDef): string {
+    const cached = this.thumbs.get(stage.id);
+    if (cached) return cached;
+    const scene = new THREE.Scene();
+    const th = stage.theme;
+    const sky = makeSkyTexture(th.sky, th.skyBottom);
+    scene.background = sky;
+    const day = th.kind === 'day';
+    scene.fog = new THREE.Fog(day ? th.skyBottom : th.fog, day ? 40 : 30, day ? 90 : 120);
+    scene.add(day ? new THREE.HemisphereLight(0xffffff, 0x445566, 1.6) : new THREE.HemisphereLight(0xd8dcff, 0x3a2a4a, 1.8));
+    const sun = new THREE.DirectionalLight(day ? 0xffffff : 0xfff2e6, day ? 2.2 : 2.3);
+    sun.position.set(-8, 20, 14);
+    scene.add(sun);
+    const built = buildStageScene(stage, 'low');
+    scene.add(built.group);
+    built.animate(1, 0);
+    const m = stage.main;
+    const cx = (m.x1 + m.x2) / 2;
+    const cam = new THREE.PerspectiveCamera(32, 16 / 9, 0.5, 200);
+    cam.position.set(cx, m.top + 6, 34);
+    cam.lookAt(cx, m.top + 2.5, 0);
+    // 画面の左下に小さく描いて、すぐに 2D の画像へ写す（描いた直後なら読み取れる）
+    const W = 256;
+    const H = 144;
+    const pr = this.renderer.getPixelRatio();
+    const size = this.renderer.getSize(new THREE.Vector2());
+    this.renderer.setViewport(0, 0, W, H);
+    this.renderer.setScissor(0, 0, W, H);
+    this.renderer.setScissorTest(true);
+    this.renderer.render(scene, cam);
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const gl = this.renderer.domElement;
+    c.getContext('2d')!.drawImage(gl, 0, gl.height - H * pr, W * pr, H * pr, 0, 0, W, H);
+    this.renderer.setScissorTest(false);
+    this.renderer.setViewport(0, 0, size.x, size.y);
+    built.dispose();
+    sky.dispose();
+    const url = c.toDataURL('image/jpeg', 0.85);
+    this.thumbs.set(stage.id, url);
+    return url;
+  }
+
   render(view: ViewState | null, dt: number, newEvents: GameEvent[]): void {
     this.time += dt;
+    if (this.preview) {
+      this.updateParticles(dt);
+      this.renderPreview(dt);
+      return;
+    }
     if (view && this.stage) {
       // 動く足場
       this.stage.platforms.forEach((p, i) => {
@@ -201,6 +395,7 @@ export class GameRenderer {
       for (const f of view.fighters) {
         const m = this.models.get(f.slot);
         if (!m) continue;
+        m.model.buddyAway = view.entities.some((e) => e.kind === 'drone' && e.owner === f.slot);
         m.model.update(f, getCharacter(m.charId), this.time, dt);
       }
       // 飛び道具・壁・罠・広告ウィンドウ・Zzz
@@ -402,6 +597,31 @@ export class GameRenderer {
       for (let i = 0; i < 10; i++) {
         this.spawn(this.sparkGeo, 0xff9ec8, e.x + (Math.random() - 0.5) * 0.8, e.y + Math.random() * 1.8, (Math.random() - 0.5) * 3, Math.random() * 2, 0.12, 20, -0.004);
       }
+      return;
+    }
+    if (e.k === 'swap') {
+      // なりすまし：入れ替わった2か所に紫の煙
+      for (const [x, y] of [[e.x, e.y], [e.x2, e.y2]]) {
+        for (let i = 0; i < 12; i++) {
+          const a = Math.random() * Math.PI * 2;
+          this.spawn(this.sparkGeo, i % 2 ? 0xb06bff : 0xe8e8f0, x, y + 0.9, Math.cos(a) * 3, Math.sin(a) * 3, 0.2, 22, 0.008);
+        }
+        this.spawn(this.ringGeo, 0xb06bff, x, y + 0.9, 0, 0, 0.3, 14, 0.04);
+      }
+      this.props.showText('入れ替わり！', '#c77dff', (e.x + e.x2) / 2, Math.max(e.y, e.y2) + 2.2);
+      return;
+    }
+    if (e.k === 'pull') {
+      // 通知爆撃：相手からドパガキへ通知バッジの列が流れる
+      const n = 6;
+      for (let i = 0; i < n; i++) {
+        const t = i / n;
+        const x = e.x + (e.tx - e.x) * t;
+        const y = e.y + (e.ty - e.y) * t;
+        this.spawn(this.sparkGeo, 0xff3b3b, x, y, (e.tx - e.x) * 1.5, (e.ty - e.y) * 1.5, 0.16, 16 + i * 2, -0.004);
+      }
+      this.spawn(this.ringGeo, 0xff3b3b, e.x, e.y, 0, 0, 0.3, 12, 0.04);
+      this.props.showText('通知！', '#ff5a5a', e.x, e.y + 1.2);
       return;
     }
     if (e.k === 'sleep') {

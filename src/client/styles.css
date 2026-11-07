@@ -812,3 +812,214 @@ input[inputmode='numeric'] {
     display: none;
   }
 }
+
+/* ---------- キャラ選択：左に3Dのキャラ、右に一覧 ---------- */
+.screen.charsel-screen {
+  background: linear-gradient(90deg, rgba(10, 12, 30, 0) 0%, rgba(10, 12, 30, 0) 40%, rgba(10, 12, 30, 0.88) 50%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding-left: calc(46% + var(--safe-l));
+}
+
+.charsel-screen .footer {
+  background: none;
+}
+
+.cs-drag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 44%;
+  touch-action: none;
+  cursor: grab;
+}
+
+.cs-nameplate {
+  position: absolute;
+  left: calc(16px + var(--safe-l));
+  bottom: calc(14px + var(--safe-b));
+  max-width: 42%;
+  pointer-events: none;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+.cs-role {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.cs-name {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.15;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.charsel-screen .chars {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.charsel-screen .char-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 6px 8px;
+}
+
+.charsel-screen .char-card .swatch {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  flex: none;
+}
+
+.charsel-screen .char-card .rl {
+  display: none;
+}
+
+.char-detail {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.char-detail .cd-trait {
+  margin-top: 4px;
+}
+
+.char-detail b {
+  color: #fff;
+}
+
+.char-detail .tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 6px;
+  padding: 0 5px;
+  margin-right: 5px;
+}
+
+.cd-moves {
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 10px;
+  color: #fff;
+}
+
+.cd-moves .key {
+  display: inline-block;
+  min-width: 30px;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+/* ---------- ステージ選択 ---------- */
+.stages {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stage-card {
+  border-radius: 10px;
+  padding: 4px;
+  background: var(--panel-2);
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-align: center;
+}
+
+.stage-card.on {
+  border-color: var(--accent);
+  background: rgba(255, 207, 63, 0.15);
+}
+
+.stage-card .thumb {
+  aspect-ratio: 16 / 9;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.stage-card .thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.stage-card .thumb img:not([src]) {
+  visibility: hidden;
+}
+
+.stage-card .nm {
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 3px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.h2-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+.opt-label {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 10px 0 4px;
+}
+
+.my-char {
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.my-char .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+@media (max-width: 760px) {
+  .stages {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-height: 480px) {
+  .cs-name {
+    font-size: 20px;
+  }
+  .charsel-screen .char-card {
+    padding: 4px 6px;
+  }
+  .charsel-screen .char-card .nm {
+    font-size: 12px;
+  }
+  .char-detail {
+    font-size: 11px;
+    margin-top: 4px;
+  }
+  .stage-card .nm {
+    font-size: 11px;
+  }
+}
+
+/* ロビー：設定を1行に並べて、下のボタンに隠れないようにする */
+.setup-grid.wide {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}

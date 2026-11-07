@@ -129,6 +129,8 @@ export type GameEvent =
   | { k: 'heal'; x: number; y: number; s: number }
   | { k: 'buff'; s: number }
   | { k: 'poof'; x: number; y: number }
+  | { k: 'swap'; x: number; y: number; x2: number; y2: number; s: number }
+  | { k: 'pull'; x: number; y: number; tx: number; ty: number }
   | { k: 'shot'; s: number };
 
 /** 描画用の選手の状態（ローカル対戦でもオンライン対戦でも同じ形） */
@@ -171,7 +173,7 @@ export interface ViewProjectile {
 
 /** ステージに置かれる物（壁・罠・一時的な足場） */
 export interface ViewEntity {
-  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy';
+  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy' | 'drone';
   x: number;
   y: number;
   owner: number;

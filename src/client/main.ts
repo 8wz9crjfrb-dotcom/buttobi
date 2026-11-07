@@ -182,6 +182,7 @@ let lastView: ViewState | null = null;
 let resultsShown = false;
 
 function startSession(s: Session): void {
+  renderer.hidePreview();
   session = s;
   resultsShown = false;
   lastView = null;
@@ -299,6 +300,8 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'poof') sfx.poof();
     else if (e.k === 'buff') sfx.buff();
     else if (e.k === 'absorb') sfx.absorb();
+    else if (e.k === 'swap') sfx.swap();
+    else if (e.k === 'pull') sfx.notify();
   }
   const c = view.countdown > 100 ? 3 : view.countdown > 50 ? 2 : view.countdown > 0 ? 1 : 0;
   if (c !== lastCountdownBeep) {
@@ -311,10 +314,13 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
 // ---------------------------------------------------------------------------
 // 画面
 function clearScreen(): void {
+  renderer.hidePreview();
   screensEl.innerHTML = '';
 }
 
 function showScreen(html: string, cls = '', bind?: (root: HTMLElement) => void): HTMLElement {
+  // キャラ選択の3D表示は、キャラ選択画面（showCharSelect）でだけ出す
+  renderer.hidePreview();
   screensEl.innerHTML = '';
   const el = document.createElement('div');
   el.className = `screen ${cls}`;
@@ -351,30 +357,116 @@ function bindSeg(root: HTMLElement, name: string, onChange: (v: string) => void)
   });
 }
 
-function charInfo(id: string): string {
-  const c = getCharacter(id);
-  const n = c.specialNames;
-  return `<b>${c.name}</b>（${c.role}）${c.desc}<br/>特性「${c.trait.name}」：${c.trait.desc}<br/>必殺技：B「${n.n}」／横B「${n.s}」／下B「${n.d}」／上B「${n.u}」`;
-}
-
 function charCards(selected: string): string {
   return `<div class="chars">${CHARACTERS.map(
     (c) => `<div class="char-card ${c.id === selected ? 'on' : ''}" data-char="${c.id}">
       <div class="swatch" style="background:${hex(c.color)}"></div>
       <div class="nm">${c.name}</div><div class="rl">${c.role}</div></div>`,
-  ).join('')}</div><div class="char-info">${charInfo(selected)}</div>`;
+  ).join('')}</div>`;
 }
 
-function bindChars(root: HTMLElement, onPick: (id: string) => void): void {
-  root.querySelectorAll<HTMLElement>('.char-card').forEach((el) =>
+/** キャラ選択画面の説明欄 */
+function charDetail(id: string): string {
+  const c = getCharacter(id);
+  const n = c.specialNames;
+  return `<div class="cd-desc">${c.desc}</div>
+    <div class="cd-trait"><span class="tag">特性</span><b>${c.trait.name}</b>：${c.trait.desc}</div>
+    <div class="cd-moves">
+      <div><span class="key">B</span>${n.n}</div><div><span class="key">横B</span>${n.s}</div>
+      <div><span class="key">下B</span>${n.d}</div><div><span class="key">上B</span>${n.u}</div>
+    </div>`;
+}
+
+interface CharSelectOptions {
+  title: string;
+  /** 自分の色（プレイヤー番号） */
+  slot: number;
+  current: string;
+  nextLabel: string;
+  onBack(): void;
+  onNext(charId: string): void;
+}
+
+/** キャラ選択：左に選んでいるキャラ（3D・待機ポーズ）、右に一覧と説明 */
+function showCharSelect(o: CharSelectOptions): void {
+  let picked = CHARACTERS.some((c) => c.id === o.current) ? o.current : CHARACTERS[0].id;
+  const nameHtml = (id: string) => {
+    const c = getCharacter(id);
+    return `<div class="cs-role">${c.role}</div><div class="cs-name">${c.name}</div>`;
+  };
+  showScreen(
+    `<div class="cs-drag" data-charsel></div>
+     <div class="cs-nameplate">${nameHtml(picked)}</div>
+     <h2>${o.title}</h2>
+     ${charCards(picked)}
+     <div class="char-detail">${charDetail(picked)}</div>
+     <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="next">${o.nextLabel}</button></div>`,
+    'overlay charsel-screen',
+    (root) => {
+      root.querySelectorAll<HTMLElement>('.char-card').forEach((el) =>
+        el.addEventListener('click', () => {
+          picked = el.dataset.char!;
+          root.querySelectorAll('.char-card').forEach((x) => x.classList.toggle('on', x === el));
+          root.querySelector('.char-detail')!.innerHTML = charDetail(picked);
+          root.querySelector('.cs-nameplate')!.innerHTML = nameHtml(picked);
+          renderer.showPreview(picked, o.slot);
+          sfx.click();
+        }),
+      );
+      // 左側をなぞるとキャラが回る
+      const drag = root.querySelector<HTMLElement>('.cs-drag')!;
+      let lastX: number | null = null;
+      drag.addEventListener('pointerdown', (e) => {
+        lastX = e.clientX;
+        drag.setPointerCapture(e.pointerId);
+      });
+      drag.addEventListener('pointermove', (e) => {
+        if (lastX === null) return;
+        renderer.spinPreview((e.clientX - lastX) * 0.012);
+        lastX = e.clientX;
+      });
+      const up = () => (lastX = null);
+      drag.addEventListener('pointerup', up);
+      drag.addEventListener('pointercancel', up);
+      root.querySelector('#back')!.addEventListener('click', o.onBack);
+      root.querySelector('#next')!.addEventListener('click', () => {
+        settings.charId = picked;
+        saveSettings(settings);
+        o.onNext(picked);
+      });
+    },
+  );
+  renderer.showPreview(picked, o.slot);
+}
+
+/** ステージの一覧（実際のステージの小さな画像つき） */
+function stageCards(selected: string): string {
+  return `<div class="stages">${STAGES.map((st) => {
+    const th = st.theme;
+    const bg = `linear-gradient(${hex(th.sky)}, ${hex(th.skyBottom)})`;
+    return `<div class="stage-card ${st.id === selected ? 'on' : ''}" data-stage="${st.id}">
+      <div class="thumb" style="background:${bg}"><img alt="" data-thumb="${st.id}"/></div>
+      <div class="nm">${st.name}</div></div>`;
+  }).join('')}</div>`;
+}
+
+function bindStages(root: HTMLElement, onPick: (id: string) => void): void {
+  root.querySelectorAll<HTMLElement>('.stage-card').forEach((el) =>
     el.addEventListener('click', () => {
-      root.querySelectorAll('.char-card').forEach((x) => x.classList.toggle('on', x === el));
-      const info = root.querySelector('.char-info');
-      if (info) info.innerHTML = charInfo(el.dataset.char!);
+      root.querySelectorAll('.stage-card').forEach((x) => x.classList.toggle('on', x === el));
       sfx.click();
-      onPick(el.dataset.char!);
+      onPick(el.dataset.stage!);
     }),
   );
+  // 画像は1枚ずつ、画面が出たあとに作る（まとめて作ると一瞬止まるため）
+  const imgs = [...root.querySelectorAll<HTMLImageElement>('img[data-thumb]')];
+  const next = () => {
+    const img = imgs.shift();
+    if (!img || !img.isConnected) return;
+    img.src = renderer.stageThumbnail(getStage(img.dataset.thumb!));
+    requestAnimationFrame(next);
+  };
+  requestAnimationFrame(next);
 }
 
 function ruleControls(rules: MatchRules): string {
@@ -444,7 +536,9 @@ function showMenu(): void {
     'overlay',
     (root) => {
       root.querySelector('#cpu')!.addEventListener('click', showLocalSetup);
-      root.querySelector('#create')!.addEventListener('click', () => createRoom(0));
+      root.querySelector('#create')!.addEventListener('click', () =>
+        showCharSelect({ title: 'ルームを作る：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'ルームを作る', onBack: showMenu, onNext: () => createRoom(0) }),
+      );
       root.querySelector('#join')!.addEventListener('click', showJoin);
       root.querySelector('#howto')!.addEventListener('click', showHowTo);
       root.querySelector('#settings')!.addEventListener('click', showSettings);
@@ -457,31 +551,48 @@ document.addEventListener('installable', () => {
 });
 
 function showLocalSetup(): void {
+  showCharSelect({
+    title: 'CPUと対戦：キャラを選ぶ',
+    slot: 0,
+    current: settings.charId,
+    nextLabel: 'つぎへ',
+    onBack: showMenu,
+    onNext: () => showLocalRules(),
+  });
+}
+
+function showLocalRules(): void {
   const rules = { ...settings.rules };
+  if (!STAGES.some((s) => s.id === settings.stageId)) settings.stageId = STAGES[0].id;
   showScreen(
-    `<h2>CPUと対戦</h2>
-     ${charCards(settings.charId)}
+    `<h2>CPUと対戦：ステージとルール <small class="h2-sub">使うキャラ：${getCharacter(settings.charId).name}</small></h2>
+     ${stageCards(settings.stageId)}
      <div class="setup-grid">
        <div class="opt">CPUの人数 ${seg('cpu', [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']], settings.cpuCount)}</div>
        <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], settings.cpuLevel)}</div>
-       <div class="opt">ステージ ${seg('stage', STAGES.map((s) => [s.id, s.name] as [string, string]), settings.stageId)}</div>
        ${ruleControls(rules)}
      </div>
-     <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="start">対戦開始！</button></div>`,
+     <div class="footer"><button class="btn" id="back">キャラ選択へ</button><button class="btn primary" id="start">対戦開始！</button></div>`,
     'overlay',
     (root) => {
-      bindChars(root, (id) => (settings.charId = id));
+      bindStages(root, (v) => (settings.stageId = v));
       bindSeg(root, 'cpu', (v) => (settings.cpuCount = Number(v)));
       bindSeg(root, 'lv', (v) => (settings.cpuLevel = Number(v)));
-      bindSeg(root, 'stage', (v) => (settings.stageId = v));
       bindRules(root, rules, () => (settings.rules = { ...rules }));
-      root.querySelector('#back')!.addEventListener('click', showMenu);
+      root.querySelector('#back')!.addEventListener('click', () => {
+        settings.rules = { ...rules };
+        saveSettings(settings);
+        showLocalSetup();
+      });
       root.querySelector('#start')!.addEventListener('click', () => {
         settings.rules = { ...rules };
         saveSettings(settings);
         const players = [{ slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0 }];
+        // CPUは自分以外のキャラから順に選ぶ
+        const others = CHARACTERS.filter((c) => c.id !== settings.charId);
+        const offset = (Math.random() * others.length) | 0;
         for (let i = 1; i <= settings.cpuCount; i++) {
-          players.push({ slot: i, name: `CPU ${settings.cpuLevel}`, charId: CHARACTERS[(i + 1) % CHARACTERS.length].id, cpu: true, cpuLevel: settings.cpuLevel });
+          players.push({ slot: i, name: `CPU ${settings.cpuLevel}`, charId: others[(offset + i - 1) % others.length].id, cpu: true, cpuLevel: settings.cpuLevel });
         }
         lastSetup = { players, stageId: settings.stageId, rules: settings.rules, seed: (Math.random() * 1e9) | 0 };
         startSession(new LocalSession(lastSetup));
@@ -570,10 +681,15 @@ function showHowTo(): void {
        <p><b>移動：</b>画面の左半分をなぞるとスティックが出ます。大きく倒すとダッシュ。上にはじくとジャンプ（設定で切替）、下にはじくと足場をすり抜けます。</p>
        <p><b>A（攻撃）：</b>スティックの向き＋Aで技が変わります。横に素早くはじきながらAで強力なスマッシュ攻撃（Aを押し続けると溜め）。空中では空中攻撃。</p>
        <p><b>B（必殺技）：</b>キャラごとに4種類（そのまま・横・下・上）。上の必殺技は復帰に使え、使った後は着地まで無防備になります。</p>
+       <p><b>キャラごとの特性：</b>各キャラには1つずつ特性があります（キャラ選択画面に表示されます）。</p>
        <p><b>データセンター警備員：</b>B 利用規約を読み上げる（ゆっくり進む文字で長くひるませる）／横B 物理ファイアウォール（壁で飛び道具を防ぎ、相手を押し返す）／下B クレーム対応（構え中に攻撃されると1.3倍で返す）／上B 非常口ダッシュ（斜め上へ突進）</p>
        <p><b>ハッカー：</b>B DDoS（3連射）／横B 全体メール誤送信（3方向に飛ぶ封筒）／下B キャッシュ（触れると爆発する罠、1個まで）／上B ポップアップ広告（窓を足場にして上昇）</p>
-       <p><b>データ泥棒：</b>B マルウェア（約3秒間じわじわダメージ）／横B スクショ（高速で突き抜ける）／下B オフライン表示（一瞬透明になり攻撃が当たらない）／上B 炎上させる（炎をまとって上昇）</p>
+       <p><b>データ泥棒：</b>B マルウェア（約3秒間じわじわダメージ）／横B スクショ（高速で突き抜ける）／下B なりすまし（近くの相手と位置を入れ替え、相手は一瞬固まる）／上B 炎上させる（炎をまとって上昇）</p>
        <p><b>配信者：</b>B 投げ銭（山なりのコイン）／横B 切り抜き（瞬間移動して斬る）／下B 強制アップデート（近くの相手をしばらく動けなくする）／上B スパチャ読み（上昇しながらハートを飛ばす）</p>
+       <p><b>ドパガキ：</b>B 倍速再生（しばらく動きと攻撃が速くなる）／横B 無限スクロール（横へ滑って攻撃、Bを押し直すと最大3回）／下B 通知爆撃（周りの相手を自分のほうへ引き寄せる。ガードで防げる）／上B 次の動画へ（上へ滑り上がる。途中でBを押すと方向転換）</p>
+       <p><b>ガチャ廃人：</b>B 10連ガチャ（毎回ランダムで大当たり〜大外れ）／横B 単発ガチャ（ときどき超強力な一撃）／下B 課金（自分のダメージ%が増える代わりに、しばらく攻撃力アップ）／上B 無償石を配る（上昇しながら石を降らせる）</p>
+       <p><b>フードデリバリー配達員：</b>B 配達バッグ投げ（投げると戻ってくる）／横B 自転車（乗ったまま走り回る。ジャンプで降りる）／下B 置き配（拾うと回復する料理を置く。相手も拾える）／上B 立ちこぎジャンプ（自転車ごと大ジャンプ）</p>
+       <p><b>AIエンジニア：</b>B 推論（近くの相手を追いかける弾）／横B 学習（構え中に飛び道具を吸収し、次の攻撃を強化）／下B エージェント起動（AIドローンがそばを飛び、近くの相手を自動で撃つ。攻撃を当てると壊れる）／上B API呼び出し（ワイヤーで崖をつかんで復帰）</p>
        <p><b>ガード：</b>押している間ガード。ガード中にスティックをはじくと回避、ガード中にAでつかみ投げ（ガードを崩せます）。空中で押すと空中回避。</p>
        <p><b>崖：</b>ステージの端に近づくと自動でつかまります。スティック上かジャンプで上がります。</p>
        <p><b>クレジット：</b>キャラクター・BGM・効果音はすべてこのゲームのプログラムで作っています。</p>
@@ -647,6 +763,8 @@ const net = new NetClient({
   },
   onLobby(l) {
     lobby = l;
+    // ロビーからキャラ選択を開いている間は画面を切り替えない（戻ったときに最新の内容を出す）
+    if (screensEl.querySelector('[data-charsel]')) return;
     if (screensEl.querySelector('[data-lobby]')) showLobby();
     else if (!session || session.kind === 'demo') showLobby();
   },
@@ -701,9 +819,18 @@ function showJoin(): void {
         const code = inp.value.trim();
         if (!isRoomCode(code)) return toast('4桁の数字を入力してください');
         unlockAudio();
-        creating = false;
-        showScreen(`<h2>接続中…</h2>`, 'overlay');
-        net.connect(settings.serverUrl, code, false, settings.name || 'プレイヤー', settings.charId);
+        showCharSelect({
+          title: `ルーム ${code} に参加：キャラを選ぶ`,
+          slot: 0,
+          current: settings.charId,
+          nextLabel: '参加する',
+          onBack: showJoin,
+          onNext: () => {
+            creating = false;
+            showScreen(`<h2>接続中…</h2>`, 'overlay');
+            net.connect(settings.serverUrl, code, false, settings.name || 'プレイヤー', settings.charId);
+          },
+        });
       });
       root.querySelector('#back')!.addEventListener('click', showMenu);
     },
@@ -730,10 +857,11 @@ function showLobby(): void {
   const cpuLevel = cpus[0]?.cpuLevel ?? 3;
   const cpuOpts = Array.from({ length: maxCpu + 1 }, (_, i) => [i, String(i)] as [number, string]);
   const hostControls = isHost
-    ? `<div class="setup-grid">
+    ? `<div class="opt-label">ステージ</div>
+      ${stageCards(l.stageId)}
+      <div class="setup-grid wide">
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
-        <div class="opt">ステージ ${seg('stage', STAGES.map((s) => [s.id, s.name] as [string, string]), l.stageId)}</div>
         ${ruleControls(rules)}
       </div>`
     : `<p class="help">ステージ：${getStage(l.stageId).name} ／ ルール：${l.rules.mode === 'stock' ? `ストック ${l.rules.stocks}` : `タイム ${l.rules.timeLimit / 60}分`}<br/>★のホストが開始するのを待っています…</p>`;
@@ -743,7 +871,11 @@ function showLobby(): void {
        <div><div style="font-size:12px;color:var(--muted)">ルームコード（友達に教えてください）</div><div class="code-big">${l.code}</div></div>
        <div class="players grow" style="max-width:560px">${slots}</div>
      </div>
-     <div style="margin-top:8px">${charCards(me?.charId ?? settings.charId)}</div>
+     <div class="row my-char">
+       <span class="dot" style="background:${hex(SLOT_COLORS[net.slot % SLOT_COLORS.length])}"></span>
+       <div>あなたのキャラ：<b>${getCharacter(me?.charId ?? settings.charId).name}</b></div>
+       <button class="btn small" id="change-char">キャラを変える</button>
+     </div>
      ${hostControls}
      <div class="footer">
        <button class="btn" id="leave">抜ける</button>
@@ -751,11 +883,19 @@ function showLobby(): void {
      </div>`,
     'overlay',
     (root) => {
-      bindChars(root, (id) => {
-        settings.charId = id;
-        saveSettings(settings);
-        net.setChar(id);
-      });
+      root.querySelector('#change-char')!.addEventListener('click', () =>
+        showCharSelect({
+          title: 'キャラを変える',
+          slot: net.slot,
+          current: me?.charId ?? settings.charId,
+          nextLabel: 'これにする',
+          onBack: showLobby,
+          onNext: (id) => {
+            net.setChar(id);
+            showLobby();
+          },
+        }),
+      );
       root.querySelector('#leave')!.addEventListener('click', () => {
         net.close();
         lobby = null;
@@ -774,7 +914,7 @@ function showLobby(): void {
           lv = Number(v);
           push();
         });
-        bindSeg(root, 'stage', (v) => {
+        bindStages(root, (v) => {
           stageId = v;
           push();
         });

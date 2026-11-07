@@ -2,7 +2,7 @@
 // 当たり判定は shared/stages.ts の数値で決まっており、ここは見た目だけ。
 
 import * as THREE from 'three';
-import type { StageDef } from '../shared/stages';
+import type { DayTheme, NightTheme, StageDef } from '../shared/stages';
 import type { Quality } from './renderer';
 
 export interface BuiltStage {
@@ -49,8 +49,76 @@ export function makeSkyTexture(top: number, bottom: number): THREE.CanvasTexture
   });
 }
 
+/** 昼のステージ（最初からある3つ）：空・草の台・岩・雲と遠くの島 */
+function buildDayStage(stage: StageDef, th: DayTheme): BuiltStage {
+  const group = new THREE.Group();
+  const platformMeshes: THREE.Object3D[] = [];
+  const disposables: { dispose(): void }[] = [];
+  const track = <T extends { dispose(): void }>(x: T): T => {
+    disposables.push(x);
+    return x;
+  };
+  const m = stage.main;
+  const w = m.x2 - m.x1;
+  const depth = 5;
+  // 本体の台：上面（草など）と側面
+  const top = new THREE.Mesh(track(new THREE.BoxGeometry(w, 0.5, depth)), track(new THREE.MeshStandardMaterial({ color: th.ground, roughness: 0.8 })));
+  top.position.set((m.x1 + m.x2) / 2, m.top - 0.25, 0);
+  top.receiveShadow = true;
+  group.add(top);
+  const bodyH = m.top - 0.5 - m.bottom;
+  const sideMat = track(new THREE.MeshStandardMaterial({ color: th.side, roughness: 0.9, flatShading: true }));
+  const side = new THREE.Mesh(track(new THREE.CylinderGeometry(w / 2, w / 2.8, bodyH, 6, 1, false)), sideMat);
+  side.scale.z = depth / w;
+  side.position.set((m.x1 + m.x2) / 2, m.top - 0.5 - bodyH / 2, 0);
+  side.receiveShadow = true;
+  group.add(side);
+  // 台の下に伸びる岩
+  const rock = new THREE.Mesh(track(new THREE.ConeGeometry(w / 2.8, 6, 6)), track(new THREE.MeshStandardMaterial({ color: th.side, roughness: 1, flatShading: true })));
+  rock.rotation.x = Math.PI;
+  rock.scale.z = depth / w;
+  rock.position.set((m.x1 + m.x2) / 2, m.bottom - 3, 0);
+  group.add(rock);
+  // 端の目印
+  const edgeMat = track(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }));
+  for (const x of [m.x1, m.x2]) {
+    const edge = new THREE.Mesh(track(new THREE.BoxGeometry(0.12, 0.52, depth + 0.02)), edgeMat);
+    edge.position.set(x, m.top - 0.25, 0);
+    group.add(edge);
+  }
+  // すり抜け足場
+  for (const p of stage.platforms) {
+    const mesh = new THREE.Mesh(
+      track(new THREE.BoxGeometry(p.x2 - p.x1, 0.22, 2.4)),
+      track(new THREE.MeshStandardMaterial({ color: th.plat, roughness: 0.5, transparent: true, opacity: 0.92 })),
+    );
+    mesh.position.set((p.x1 + p.x2) / 2, p.y - 0.11, 0);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+    platformMeshes.push(mesh);
+  }
+  // 背景の飾り（遠くの島と雲）
+  const rnd = rand(stage.id.length * 97 + 13);
+  for (let i = 0; i < 14; i++) {
+    const isCloud = i % 2 === 0;
+    const geo = track(isCloud ? new THREE.SphereGeometry(1, 10, 8) : new THREE.ConeGeometry(1, 2.2, 6));
+    const mat = track(
+      new THREE.MeshStandardMaterial({ color: isCloud ? 0xffffff : th.side, roughness: 1, flatShading: !isCloud, transparent: isCloud, opacity: isCloud ? 0.85 : 1 }),
+    );
+    const mesh = new THREE.Mesh(geo, mat);
+    const sc = isCloud ? 1.5 + rnd() * 2.5 : 1.5 + rnd() * 3;
+    mesh.scale.set(sc * (isCloud ? 2.2 : 1), sc * (isCloud ? 0.8 : 1), sc);
+    if (!isCloud) mesh.rotation.x = Math.PI;
+    mesh.position.set(-45 + rnd() * 90, -6 + rnd() * 24, -25 - rnd() * 30);
+    group.add(mesh);
+  }
+  return { group, platformMeshes, animate: () => {}, dispose: () => disposables.forEach((d) => d.dispose()) };
+}
+
 export function buildStageScene(stage: StageDef, quality: Quality): BuiltStage {
-  const th = stage.theme;
+  if (stage.theme.kind === 'day') return buildDayStage(stage, stage.theme);
+  const th = stage.theme as NightTheme;
   const group = new THREE.Group();
   const platformMeshes: THREE.Object3D[] = [];
   const animators: ((t: number, dt: number) => void)[] = [];

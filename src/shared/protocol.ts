@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -67,8 +67,8 @@ export interface EncodedState {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const SHOT_KINDS = ['text', 'bullet', 'mail', 'malware', 'coin', 'thanks', 'badge', 'stone', 'bag', 'orb', 'gold'];
-const ENTITY_KINDS: ViewEntity['kind'][] = ['wall', 'trap', 'popup', 'food', 'decoy'];
+const SHOT_KINDS = ['text', 'bullet', 'mail', 'malware', 'coin', 'thanks', 'badge', 'stone', 'bag', 'orb', 'gold', 'spark'];
+const ENTITY_KINDS: ViewEntity['kind'][] = ['wall', 'trap', 'popup', 'food', 'decoy', 'drone'];
 
 export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
   return {

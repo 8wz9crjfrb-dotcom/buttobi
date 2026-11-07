@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, type CharacterDef } from './characters';
-import { BIKE, DECOY, FOOD, moveOf, PAY, PITY, POPUP, SPEEDUP, TETHER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { BIKE, DECOY, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -65,7 +65,7 @@ export interface Projectile {
 /** ステージに置かれる物（壁・罠・一時的な足場） */
 export interface Entity {
   id: number;
-  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy';
+  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy' | 'drone';
   owner: number;
   x: number;
   y: number;
@@ -924,6 +924,64 @@ export class Sim {
             this.addEntity('food', f.slot, f.x + f.facing * 0.6 * sc, f.y, FOOD.life);
           }
           break;
+        case 'swap': {
+          // なりすまし：いちばん近い相手と位置を入れ替える
+          let target: Fighter | null = null;
+          let best: number = SWAP.range;
+          for (const v of this.fighters) {
+            if (v === f || !v.alive || v.state === 'ledge') continue;
+            const d = Math.hypot(v.x - f.x, v.y - f.y);
+            if (d < best) {
+              best = d;
+              target = v;
+            }
+          }
+          if (target) {
+            const keys = ['x', 'y', 'vx', 'vy', 'grounded', 'groundRef'] as const;
+            const mine = keys.map((k) => f[k]);
+            this.events.push({ k: 'swap', x: f.x, y: f.y, x2: target.x, y2: target.y, s: f.slot });
+            keys.forEach((k, i) => ((f as unknown as Record<string, unknown>)[k] = target![k]));
+            keys.forEach((k, i) => ((target as unknown as Record<string, unknown>)[k] = mine[i]));
+            target.hitlag = Math.max(target.hitlag, SWAP.freeze);
+            if (!target.grounded && target.state === 'idle') this.setState(target, 'air');
+          }
+          break;
+        }
+        case 'drone':
+          // エージェント起動：AIドローンを呼び出す（1機まで）
+          this.removeEntities(f.slot, 'drone');
+          this.addEntity('drone', f.slot, f.x - f.facing * 0.8, f.y + 2.2 * sc, DRONE.life, f.facing);
+          break;
+        case 'pull': {
+          // 通知爆撃：周りの相手を自分のほうへ引き寄せる
+          const pm = this.powerMul(f);
+          for (const v of this.fighters) {
+            if (v === f || !v.alive || v.invuln > 0) continue;
+            const dx = f.x - v.x;
+            const dy = f.y - v.y;
+            const d = Math.hypot(dx, dy);
+            if (d > PULL.range || d < 0.01) continue;
+            if (v.state === 'shield') continue; // ガードしていれば引き寄せられない
+            if (this.tryCounter(v, f, md.dmg * pm.dmg)) continue;
+            const before = v.damage;
+            v.damage = Math.min(999, v.damage + md.dmg * pm.dmg);
+            this.lifesteal(f, v.damage - before);
+            const sp = Math.min(PULL.speed, d * 4);
+            v.vx = (dx / d) * sp;
+            v.vy = Math.max((dy / d) * sp, 3);
+            v.grounded = false;
+            v.groundRef = -1;
+            v.move = null;
+            v.bike = 0;
+            v.hitstun = 18;
+            v.tumble = false;
+            v.lastHitBy = f.slot;
+            v.lastHitFrame = this.frame;
+            this.setState(v, 'hitstun');
+            this.events.push({ k: 'pull', x: v.x, y: v.y + v.h / 2, tx: f.x, ty: f.y + f.h / 2 });
+          }
+          break;
+        }
         case 'decoy':
           this.removeEntities(f.slot, 'decoy');
           this.addEntity('decoy', f.slot, f.x, f.y, DECOY.life, f.facing);
@@ -1104,6 +1162,38 @@ export class Sim {
             this.events.push({ k: 'boom', x: e.x, y: e.y + 0.3 });
             this.events.push({ k: 'hit', x: e.x, y: e.y + 0.3, p: md.dmg, s: hit.slot });
             continue;
+          }
+        }
+      } else if (e.kind === 'drone') {
+        // エージェント起動：持ち主のそばを飛び、近くの相手を自動で撃つ
+        const o = this.fighter(e.owner);
+        if (!o || !o.alive) continue;
+        const tx = o.x - o.facing * 0.9;
+        const ty = o.y + 2.2 * o.def.scale;
+        e.x += (tx - e.x) * 0.12;
+        e.y += (ty - e.y) * 0.12;
+        e.dir = o.facing;
+        if (e.age % DRONE.interval === 0) {
+          let target: Fighter | null = null;
+          let best: number = DRONE.range;
+          for (const v of this.fighters) {
+            if (v.slot === e.owner || !v.alive) continue;
+            const d = Math.hypot(v.x - e.x, v.y + v.h / 2 - e.y);
+            if (d < best) {
+              best = d;
+              target = v;
+            }
+          }
+          if (target) {
+            const dx = target.x - e.x;
+            const dy = target.y + target.h / 2 - e.y;
+            const d = Math.hypot(dx, dy) || 1;
+            const pm = this.powerMul(o);
+            this.projectiles.push({
+              owner: e.owner, kind: 'spark', x: e.x, y: e.y, vx: (dx / d) * 13, vy: (dy / d) * 13, gravity: 0, life: 40,
+              dmg: 3 * pm.dmg, base: 3, growth: 3, angle: 45, r: 0.22, hitstunMul: 1, poison: 0, confuse: 0, homing: 0, boomerang: 0, age: 0, returning: false, hits: [],
+            });
+            this.events.push({ k: 'shot', s: e.owner });
           }
         }
       } else if (e.kind === 'wall') {
@@ -1371,6 +1461,12 @@ export class Sim {
         }
         // ハルシネーション：分身を攻撃した相手は目を回す
         for (const e of this.entities) {
+          // エージェント起動のドローン：攻撃を当てると壊れる
+          if (e.kind === 'drone' && e.owner !== a.slot && e.life > 0 && Math.hypot(cx - e.x, cy - e.y) < r + 0.35) {
+            e.life = 0;
+            this.events.push({ k: 'poof', x: e.x, y: e.y });
+            continue;
+          }
           if (e.kind !== 'decoy' || e.owner === a.slot || e.life <= 0) continue;
           const nx = Math.max(e.x - 0.42, Math.min(cx, e.x + 0.42));
           const ny = Math.max(e.y, Math.min(cy, e.y + 1.8));
@@ -1577,9 +1673,15 @@ export class Sim {
       p.life--;
       let gone = p.life <= 0 || p.x < bl.left || p.x > bl.right || p.y < bl.bottom || p.y > bl.top;
       if (p.x > m.x1 && p.x < m.x2 && p.y < m.top && p.y > m.bottom && !p.returning) gone = true;
-      // 分身に当たると、分身と一緒に消える
+      // 分身・ドローンに当たると、一緒に消える
       if (!gone) {
         for (const e of this.entities) {
+          if (e.kind === 'drone' && e.owner !== p.owner && Math.hypot(p.x - e.x, p.y - e.y) < p.r + 0.35) {
+            e.life = 0;
+            this.events.push({ k: 'poof', x: e.x, y: e.y });
+            gone = true;
+            break;
+          }
           if (e.kind !== 'decoy' || e.owner === p.owner) continue;
           if (Math.abs(p.x - e.x) < 0.42 + p.r && p.y > e.y && p.y < e.y + 1.8) {
             e.life = 0;

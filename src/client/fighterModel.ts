@@ -116,6 +116,10 @@ export class FighterModel {
   private bikeGroup: THREE.Group | null = null;
   /** 肩に浮かぶAIアシスタント（AIエンジニア） */
   private buddy: THREE.Group | null = null;
+  /** AIアシスタントがドローンとして出かけている間は隠す */
+  buddyAway = false;
+  /** キャラ選択画面：この角度でカメラの方を向かせる（null なら通常） */
+  previewTurn: number | null = null;
   /** 分身として半透明で表示するとき（0 = 通常） */
   ghost = 0;
   private c: Costume['colors'];
@@ -549,7 +553,7 @@ export class FighterModel {
     this.root.position.set(v.x, v.y, 0);
 
     // 向き：少しカメラ側を向かせる
-    const target = this.victory ? 0 : v.facing * (Math.PI / 2 - 0.45);
+    const target = this.victory ? 0 : this.previewTurn ?? v.facing * (Math.PI / 2 - 0.45);
     this.turn += (target - this.turn) * Math.min(1, dt * 18);
 
     const p = this.victory ? this.victoryPose(time) : this.pose(v, def, time);
@@ -570,6 +574,7 @@ export class FighterModel {
     }
     // AIアシスタント：ふわふわ浮かぶ
     if (this.buddy) {
+      this.buddy.visible = !this.buddyAway;
       this.buddy.position.set(-v.facing * 0.55, 1.95 * def.scale + Math.sin(time * 3) * 0.08, 0.1);
       this.buddy.rotation.y = Math.sin(time * 1.5) * 0.4;
     }
@@ -625,7 +630,7 @@ export class FighterModel {
     this.outlineMat.opacity = opacity;
     this.outlineMat.visible = opacity > 0.3;
     this.halo.visible = v.state === 'respawn';
-    this.marker.visible = !invisible;
+    this.marker.visible = !invisible && this.previewTurn === null;
     this.marker.position.y = 2.25 * def.scale + Math.sin(time * 4) * 0.05;
   }
 

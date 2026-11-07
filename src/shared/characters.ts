@@ -105,7 +105,7 @@ export const CHARACTERS: CharacterDef[] = [
     kbMul: 0.92,
     frameMul: 0.82,
     scale: 0.92,
-    specialNames: { n: 'マルウェア', s: 'スクショ', d: 'オフライン表示', u: '炎上させる' },
+    specialNames: { n: 'マルウェア', s: 'スクショ', d: 'なりすまし', u: '炎上させる' },
     trait: { name: '抜き取り', desc: '攻撃を当てると、与えたダメージの1/4だけ自分のダメージ%が回復する。' },
   },
   {
@@ -208,7 +208,7 @@ export const CHARACTERS: CharacterDef[] = [
     id: 'ai',
     name: 'AIエンジニア',
     role: 'トリッキー',
-    desc: 'AIアシスタントを連れたエンジニア。相手を惑わせて戦う。',
+    desc: 'AIアシスタントを連れたエンジニア。AIを使ってトリッキーに戦う。',
     color: 0xe8ecf4,
     accent: 0x4fd8ff,
     walkSpeed: 3.5,
@@ -225,7 +225,7 @@ export const CHARACTERS: CharacterDef[] = [
     kbMul: 1.0,
     frameMul: 1.0,
     scale: 1.0,
-    specialNames: { n: '推論', s: '学習', d: 'ハルシネーション', u: 'API呼び出し' },
+    specialNames: { n: '推論', s: '学習', d: 'エージェント起動', u: 'API呼び出し' },
     trait: { name: '学習データ', desc: '同じ相手から攻撃を受けるほど、その相手からのダメージが減る。' },
   },
 ];

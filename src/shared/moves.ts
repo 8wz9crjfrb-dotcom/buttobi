@@ -8,7 +8,7 @@ export interface Hitbox {
 }
 
 /** 飛び道具の見た目の種類 */
-export type ShotKind = 'text' | 'bullet' | 'mail' | 'malware' | 'coin' | 'thanks' | 'badge' | 'stone' | 'bag' | 'orb' | 'gold';
+export type ShotKind = 'text' | 'bullet' | 'mail' | 'malware' | 'coin' | 'thanks' | 'badge' | 'stone' | 'bag' | 'orb' | 'gold' | 'spark';
 
 export interface ShotSpec {
   /** 技が出てから何フレーム後に出すか */
@@ -63,7 +63,10 @@ export type SpecialKind =
   | 'food'
   | 'absorb'
   | 'decoy'
-  | 'tether';
+  | 'tether'
+  | 'swap'
+  | 'drone'
+  | 'pull';
 
 export interface MoveDef {
   startup: number;
@@ -241,8 +244,8 @@ const SPECIALS: Record<string, Specials> = {
       dashSpeed: 18,
       landLag: 10,
     },
-    // オフライン表示：一瞬だけ透明になり攻撃が当たらない
-    dspecial: { startup: 2, active: 28, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'invis' },
+    // なりすまし：近くの相手と位置を入れ替える（相手は一瞬固まる）
+    dspecial: { startup: 12, active: 1, end: 22, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'swap' },
     // 炎上させる：炎をまとって上昇（連続ヒット）
     uspecial: {
       startup: 4,
@@ -319,34 +322,8 @@ const SPECIALS: Record<string, Specials> = {
       dashSpeed: 12,
       landLag: 8,
     },
-    // 通知爆撃：通知バッジをまき散らし、当たった相手の左右の操作を逆にする
-    dspecial: {
-      startup: 10,
-      active: 1,
-      end: 20,
-      hitboxes: [],
-      dmg: 0,
-      base: 0,
-      growth: 0,
-      angle: 0,
-      air: true,
-      special: 'shot',
-      shots: [0, 60, 120, 180, 240, 300].map((deg) => ({
-        at: 0,
-        kind: 'badge' as const,
-        x: 0,
-        y: 1.0,
-        vx: Math.cos((deg * Math.PI) / 180) * 7,
-        vy: Math.sin((deg * Math.PI) / 180) * 7,
-        life: 22,
-        r: 0.3,
-        dmg: 3,
-        base: 3,
-        growth: 3,
-        angle: 50,
-        confuse: 120,
-      })),
-    },
+    // 通知爆撃：通知に気を取られた周りの相手を、自分のほうへ引き寄せる
+    dspecial: { startup: 10, active: 1, end: 18, hitboxes: [], dmg: 3, base: 0, growth: 0, angle: 0, air: true, special: 'pull' },
     // 次の動画へ：上へ高速で滑り上がる。途中でもう一度Bを押すと方向転換
     uspecial: {
       startup: 3,
@@ -457,8 +434,8 @@ const SPECIALS: Record<string, Specials> = {
     },
     // 学習：構えている間に飛んできた飛び道具を吸収し、次の攻撃を強化
     sspecial: { startup: 4, active: 40, end: 16, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'absorb' },
-    // ハルシネーション：自分そっくりの分身を出す（攻撃した相手は目を回す）
-    dspecial: { startup: 10, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'decoy' },
+    // エージェント起動：AIドローンを呼び出す（そばを飛び、近くの相手を自動で撃つ）
+    dspecial: { startup: 10, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'drone' },
     // API呼び出し：ワイヤーで遠くの崖をつかんで復帰
     uspecial: {
       startup: 6,
@@ -503,5 +480,11 @@ export const FOOD = { heal: 12, life: 600, selfDelay: 60, r: 0.6 };
 export const DECOY = { life: 240, dizzy: 50 };
 /** API呼び出し：ワイヤーの届く距離と、引き寄せる速さ */
 export const TETHER = { range: 6, speed: 18 };
+/** なりすまし：位置を入れ替えられる距離と、入れ替えられた相手が固まる時間 */
+export const SWAP = { range: 7, freeze: 14 };
+/** エージェント起動：ドローンがいる時間、撃つ間隔、狙える距離 */
+export const DRONE = { life: 300, interval: 40, range: 8 };
+/** 通知爆撃：引き寄せる範囲と速さ */
+export const PULL = { range: 4.5, speed: 11 };
 /** ガチャの天井（外れがこの回数続くと次は必ず大当たり） */
 export const PITY = 6;

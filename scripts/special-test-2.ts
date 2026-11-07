@@ -53,14 +53,13 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
 }
 {
   const sim = make('dopa', 'guard');
-  sim.fighters[0].x = 0; sim.fighters[1].x = 1.2;
-  run(sim, 20, at(0, B(0, -1)));
-  const v = sim.fighters[1];
-  check('通知爆撃で相手の操作が左右逆になる', v.confused > 0, `残り${v.confused}`);
-  sim.fighters[1].state = 'idle'; sim.fighters[1].hitstun = 0; sim.fighters[1].grounded = true; sim.fighters[1].y = 0;
-  const x0 = v.x;
-  run(sim, 20, () => N, () => ({ mx: 1, my: 0, buttons: 0 }));
-  check('操作反転中は右を押すと左へ動く', v.x < x0, `${x0.toFixed(2)} → ${v.x.toFixed(2)}`);
+  sim.fighters[0].x = 0; sim.fighters[1].x = 3.5;
+  run(sim, 30, at(0, B(0, -1)));
+  check('通知爆撃で離れた相手を引き寄せる', sim.fighters[1].x < 2.5 && sim.fighters[1].damage > 0, `相手x 3.5 → ${sim.fighters[1].x.toFixed(2)}、${sim.fighters[1].damage.toFixed(1)}%`);
+  const sim2 = make('dopa', 'guard');
+  sim2.fighters[0].x = 0; sim2.fighters[1].x = 3.5;
+  run(sim2, 30, at(0, B(0, -1)), () => ({ mx: 0, my: 0, buttons: BTN_SHIELD }));
+  check('ガードしていれば引き寄せられない', Math.abs(sim2.fighters[1].x - 3.5) < 0.3, `x=${sim2.fighters[1].x.toFixed(2)}`);
 }
 {
   const sim = make('dopa', 'guard');
@@ -195,14 +194,16 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
 }
 {
   const sim = make('ai', 'streamer');
-  sim.fighters[0].x = 0; sim.fighters[0].facing = 1; sim.fighters[1].x = 3; sim.fighters[1].facing = -1;
+  sim.fighters[0].x = 0; sim.fighters[0].facing = 1; sim.fighters[1].x = 4;
   run(sim, 14, at(0, B(0, -1)));
-  const decoy = sim.entities.find((e) => e.kind === 'decoy');
-  check('ハルシネーションで分身が出る', !!decoy);
-  sim.fighters[1].x = decoy!.x + 1.0;
-  let dizzy = false;
-  for (let i = 0; i < 20; i++) { sim.step(new Map([[1, i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N]])); dizzy ||= sim.fighters[1].state === 'sleep'; }
-  check('分身を攻撃した相手は目を回す', dizzy);
+  check('エージェント起動でドローンが出る', sim.entities.some((e) => e.kind === 'drone'));
+  run(sim, 120);
+  check('ドローンが近くの相手を自動で撃つ', sim.fighters[1].damage > 0, `相手${sim.fighters[1].damage.toFixed(1)}%`);
+  const drone = sim.entities.find((e) => e.kind === 'drone')!;
+  const v = sim.fighters[1];
+  v.x = drone.x - 0.9; v.y = drone.y - 1.0; v.facing = 1; v.state = 'air'; v.grounded = false; v.hitstun = 0; v.invuln = 0;
+  run(sim, 15, () => N, at(0, { mx: 0, my: 0, buttons: BTN_A }));
+  check('ドローンは攻撃を当てると壊れる', !sim.entities.some((e) => e.kind === 'drone'));
 }
 {
   const sim = make('ai', 'guard');

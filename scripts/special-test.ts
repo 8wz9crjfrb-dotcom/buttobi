@@ -97,12 +97,12 @@ check('全キャラ×全必殺技で異常値なし', true);
   run(sim, 200);
   check('マルウェアで毒になり、じわじわ増える', poisoned && sim.fighters[1].damage >= d1 + 5, `${d1.toFixed(1)}% → ${sim.fighters[1].damage.toFixed(1)}%`);
 }
-// データ泥棒：オフライン表示中は攻撃が当たらない
+// データ泥棒：なりすましで近くの相手と位置が入れ替わる
 {
   const sim = make('thief', 'guard');
-  sim.fighters[0].x = 0; sim.fighters[1].x = 1.0; sim.fighters[1].facing = -1;
-  run(sim, 30, tap({ mx: 0, my: -1, buttons: BTN_B }), (i) => (i === 6 ? { mx: 0, my: 0, buttons: BTN_A } : N));
-  check('オフライン表示中は当たらない', sim.fighters[0].damage === 0, `${sim.fighters[0].damage}%`);
+  sim.fighters[0].x = -3; sim.fighters[1].x = 2;
+  run(sim, 16, tap({ mx: 0, my: -1, buttons: BTN_B }));
+  check('なりすましで相手と位置が入れ替わる', Math.abs(sim.fighters[0].x - 2) < 0.3 && Math.abs(sim.fighters[1].x + 3) < 0.3, `泥棒x=${sim.fighters[0].x.toFixed(2)} 相手x=${sim.fighters[1].x.toFixed(2)}`);
 }
 // 配信者：強制アップデートで相手が眠る
 {

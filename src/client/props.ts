@@ -50,21 +50,25 @@ export class PropRenderer {
 
   /** 浮かんで消える文字（ガチャの結果など） */
   showText(text: string, color: string, x: number, y: number, big = false): void {
-    const tex = canvasTexture(256, 96, (g) => {
-      g.font = `900 ${big ? 64 : 48}px ${FONT}`;
+    const size = big ? 64 : 48;
+    // 文字数に合わせて横幅を決める（長い文字が切れないように）
+    const W = Math.max(256, Math.ceil((text.length * size + 30) / 64) * 64);
+    const tex = canvasTexture(W, 96, (g) => {
+      g.font = `900 ${size}px ${FONT}`;
       g.textAlign = 'center';
       g.lineWidth = 10;
       g.strokeStyle = '#1b1b28';
-      g.strokeText(text, 128, 70);
+      g.strokeText(text, W / 2, 70);
       if (color === 'rainbow') {
-        const grad = g.createLinearGradient(20, 0, 236, 0);
+        const grad = g.createLinearGradient(20, 0, W - 20, 0);
         ['#ff5a5a', '#ffd23f', '#4fd18b', '#4f9dff', '#c77dff'].forEach((c, i) => grad.addColorStop(i / 4, c));
         g.fillStyle = grad;
       } else g.fillStyle = color;
-      g.fillText(text, 128, 70);
+      g.fillText(text, W / 2, 70);
     });
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
-    sprite.scale.set(big ? 3 : 2.2, big ? 1.12 : 0.82, 1);
+    const h = big ? 1.12 : 0.82;
+    sprite.scale.set((h * W) / 96, h, 1);
     sprite.position.set(x, y, 1);
     this.scene.add(sprite);
     this.texts.push({ sprite, life: 70, max: 70 });
@@ -158,6 +162,36 @@ export class PropRenderer {
         const g = new THREE.Group();
         g.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 10), basic(0x4fd8ff, { transparent: true, opacity: 0.55 })));
         g.add(new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), basic(0xffffff)));
+        return g;
+      }
+      case 'spark': {
+        // ドローンの電撃弾
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), basic(0xffffff)));
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), basic(0x4fd8ff, { transparent: true, opacity: 0.5 })));
+        return g;
+      }
+      case 'drone': {
+        // エージェント起動：AIアシスタントがプロペラ付きのドローンになる
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), new THREE.MeshToonMaterial({ color: 0x4fd8ff })));
+        const visor = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.09, 0.05), basic(0x0b1a2a));
+        visor.position.set(0, 0.03, 0.2);
+        g.add(visor);
+        for (const x of [0.06, -0.06]) {
+          const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 5), basic(0x7dffcf));
+          eye.position.set(x, 0.03, 0.23);
+          g.add(eye);
+        }
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.04, 0.06), basic(0x2a2a33));
+        arm.position.y = 0.2;
+        g.add(arm);
+        for (const x of [0.4, -0.4]) {
+          const prop = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.015, 16), basic(0xdfe6f0, { transparent: true, opacity: 0.6 }));
+          prop.position.set(x, 0.23, 0);
+          prop.name = 'prop';
+          g.add(prop);
+        }
         return g;
       }
       case 'food': {
@@ -264,6 +298,7 @@ export class PropRenderer {
       else if (p.kind === 'stone' || p.kind === 'gold') o.rotation.set(time * 3, time * 4, 0);
       else if (p.kind === 'bag') o.rotation.z = time * 14;
       else if (p.kind === 'orb') o.scale.setScalar(1 + Math.sin(time * 20) * 0.1);
+      else if (p.kind === 'spark') o.scale.setScalar(1 + Math.sin(time * 40) * 0.2);
     }
     for (const e of view.entities) {
       const o = this.take(e.kind, e.owner, used);
@@ -283,6 +318,14 @@ export class PropRenderer {
           this.scene.add(b);
           this.bubbles.push({ mesh: b, life: 0.8 });
         }
+      } else if (e.kind === 'drone') {
+        o.position.set(e.x, e.y + Math.sin(time * 4) * 0.08, 0.3);
+        o.rotation.set(0, e.dir > 0 ? 0.5 : -0.5, Math.sin(time * 3) * 0.08);
+        o.traverse((c) => {
+          if (c.name === 'prop') c.rotation.y = time * 40;
+        });
+        // 残り時間が少ないと点滅
+        o.visible = e.life > 60 || Math.floor(time * 10) % 2 === 0;
       } else if (e.kind === 'trap') {
         o.position.set(e.x, e.y, 0);
         const led = o.getObjectByName('led');

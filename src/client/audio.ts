@@ -115,6 +115,14 @@ export class Sfx {
   absorb(): void {
     this.tone(1200, 0.2, 'sine', 0.15, 300);
   }
+  swap(): void {
+    this.tone(300, 0.15, 'sine', 0.16, 900);
+    setTimeout(() => this.tone(900, 0.15, 'sine', 0.14, 300), 110);
+  }
+  notify(): void {
+    // スマホの通知音っぽい「ポロン」を重ねる
+    [0, 70, 140].forEach((d, i) => setTimeout(() => this.tone(1175 + i * 220, 0.12, 'sine', 0.13), d));
+  }
   beep(high = false): void {
     this.tone(high ? 880 : 440, high ? 0.4 : 0.15, 'square', 0.15);
   }
@@ -126,7 +134,7 @@ export class Sfx {
 // ---------------------------------------------------------------------------
 // BGM（Web Audio でその場で組み立てるオリジナル曲。音声ファイルは使わない）
 
-export type TrackId = 'menu' | 'plain' | 'tiers' | 'drift';
+export type TrackId = 'menu' | 'plain' | 'tiers' | 'drift' | 'rooftop' | 'arcade' | 'cyber';
 
 interface Track {
   bpm: number;
@@ -154,6 +162,12 @@ const TRACKS: Record<TrackId, Track> = {
   tiers: { bpm: 136, root: 45, chords: [[0, 3, 7], [8, 12, 15], [3, 7, 10], [10, 14, 17]], scale: MINOR, drums: 'drive', seed: 37, lead: 'sawtooth' },
   // ただよう浮島：ふわっとした（Dドリア i-IV-i-VII）
   drift: { bpm: 124, root: 50, chords: [[0, 3, 7], [5, 9, 12], [0, 3, 7], [10, 14, 17]], scale: DORIAN, drums: 'half', seed: 41, lead: 'triangle' },
+  // データセンター屋上：夜景の疾走感（A短調 i-VI-VII-v）
+  rooftop: { bpm: 128, root: 45, chords: [[0, 3, 7], [8, 12, 15], [10, 14, 17], [7, 10, 14]], scale: MINOR, drums: 'drive', seed: 53, lead: 'sawtooth' },
+  // ネオン商店街：ゆったりしたグルーヴ（C#短調 i-iv-VII-III）
+  arcade: { bpm: 112, root: 49, chords: [[0, 3, 7], [5, 8, 12], [10, 14, 17], [3, 7, 10]], scale: MINOR, drums: 'half', seed: 61, lead: 'square' },
+  // 電脳空間：速い電子音（D短調 i-VI-III-VII）
+  cyber: { bpm: 142, root: 50, chords: [[0, 3, 7], [8, 12, 15], [3, 7, 10], [10, 14, 17]], scale: MINOR, drums: 'drive', seed: 71, lead: 'triangle' },
 };
 
 const midiHz = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
@@ -194,6 +208,7 @@ export class Music {
   }
 
   play(id: TrackId): void {
+    if (!TRACKS[id]) id = 'plain'; // 曲のないステージは標準の曲
     if (this.trackId === id) return;
     this.stop();
     this.trackId = id;
