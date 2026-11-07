@@ -4,9 +4,10 @@ import './styles.css';
 import { CpuController } from '../shared/ai';
 import { CHARACTERS, getCharacter, SLOT_COLORS, SPECIAL_DESCS } from '../shared/characters';
 import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
-import { Sim } from '../shared/sim';
+import { COUNTDOWN_FRAMES, Sim } from '../shared/sim';
+import { moveOf } from '../shared/moves';
 import { STAGES, getStage } from '../shared/stages';
-import type { GameEvent, InputState, MatchRules, MatchSetup, ResultEntry, ViewState } from '../shared/types';
+import { BTN_JUMP, BTN_SHIELD, type GameEvent, type InputState, type MatchRules, type MatchSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { InputManager } from './input';
@@ -77,17 +78,39 @@ class LocalSession implements Session {
   acc = 0;
   paused = false;
   mySlot: number | null;
-  constructor(public setup: MatchSetup, demo = false) {
+  constructor(
+    public setup: MatchSetup,
+    demo = false,
+    /** 練習モードの設定（練習モードのときだけ） */
+    public training: TrainingOpts | null = null,
+  ) {
     this.kind = demo ? 'demo' : 'local';
     this.sim = new Sim(setup);
     this.ai = new CpuController(setup.seed);
     this.mySlot = demo ? null : setup.players.find((p) => !p.cpu)?.slot ?? null;
+    // 練習モードはカウントダウンなしで始める
+    if (training) while (this.sim.frame <= COUNTDOWN_FRAMES) this.sim.step(new Map());
+  }
+
+  /** 練習相手の操作（立ち止まる・歩く・ジャンプ・ガード） */
+  private dummyInput(mode: DummyMode): InputState {
+    const fr = this.sim.frame;
+    switch (mode) {
+      case 'walk':
+        return { mx: Math.floor(fr / 90) % 2 === 0 ? 0.5 : -0.5, my: 0, buttons: 0 };
+      case 'jump':
+        return { mx: 0, my: 0, buttons: fr % 70 === 0 ? BTN_JUMP : 0 };
+      case 'shield':
+        return { mx: 0, my: 0, buttons: BTN_SHIELD };
+      default:
+        return { mx: 0, my: 0, buttons: 0 };
+    }
   }
   frame(dt: number) {
     const events: GameEvent[] = [];
     if (!this.paused) {
       // 撃墜確定の一撃のあとは、少しの間スローで進める（CPU戦だけ。オンラインはサーバーの時間に合わせるのでスローにしない）
-      this.acc += Math.min(dt, 0.1) * (this.kind === 'local' ? renderer.timeScale : 1);
+      this.acc += Math.min(dt, 0.1) * (this.kind === 'local' ? renderer.timeScale : 1) * (this.training?.speed ?? 1);
       const human = this.mySlot !== null ? readInput() : null;
       if (human) human.buttons |= input.takePressed();
       while (this.acc >= 1 / 60) {
@@ -95,10 +118,14 @@ class LocalSession implements Session {
         const inputs = new Map<number, InputState>();
         for (const f of this.sim.fighters) {
           const p = this.setup.players.find((x) => x.slot === f.slot)!;
-          if (p.cpu) inputs.set(f.slot, this.ai.think(this.sim, f, p.cpuLevel));
+          const tr = this.training;
+          if (p.cpu && tr && tr.mode !== 'cpu') inputs.set(f.slot, this.dummyInput(tr.mode));
+          else if (p.cpu) inputs.set(f.slot, this.ai.think(this.sim, f, tr ? tr.cpuLevel : p.cpuLevel));
           else if (human) inputs.set(f.slot, human);
         }
         this.sim.step(inputs);
+        // 練習モード：何度落ちても終わらない
+        if (this.training) for (const f of this.sim.fighters) f.stocks = 99;
         events.push(...this.sim.events);
         if (this.sim.finished) break;
       }
@@ -198,9 +225,14 @@ function startSession(s: Session): void {
     hud.show(false);
     touchEl.classList.add('hidden');
     pauseBtn.classList.add('hidden');
+    trainingBtn.classList.add('hidden');
+    comboEl.classList.add('hidden');
     return;
   }
-  hud.setup(s.setup, s.mySlot);
+  const isTraining = s instanceof LocalSession && !!s.training;
+  hud.setup(s.setup, s.mySlot, isTraining);
+  trainingBtn.classList.toggle('hidden', !isTraining);
+  combo.reset();
   hud.show(true);
   updateTouchVisibility();
   pauseBtn.classList.remove('hidden');
@@ -242,10 +274,11 @@ function loop(t: number): void {
       hud.update(lastView, events);
       if (session.kind === 'net') hud.setNetInfo(net.connected ? `通信 ${Math.round(net.rtt)}ms` : '再接続中…');
       playEvents(events, session.mySlot, lastView);
+      if (session instanceof LocalSession && session.training) combo.update(lastView, events, dt);
     }
     if (session instanceof LocalSession) {
       if (session.kind === 'demo' && session.sim.finished) startDemo();
-      else if (session.kind === 'local' && session.sim.finished && !resultsShown) {
+      else if (session.kind === 'local' && !session.training && session.sim.finished && !resultsShown) {
         resultsShown = true;
         showResults(session.sim.results(), session.setup, false);
       }
@@ -593,6 +626,7 @@ function showMenu(): void {
        <button class="btn primary" id="cpu">CPUと対戦<small>ひとりで練習</small></button>
        <button class="btn" id="create" ${online ? '' : 'disabled'}>ルームを作る<small>友達とオンライン対戦</small></button>
        <button class="btn" id="join" ${online ? '' : 'disabled'}>コードで参加<small>4桁の合言葉を入力</small></button>
+       <button class="btn" id="training">練習モード<small>技やコンボを試す</small></button>
        <button class="btn" id="howto">遊び方<small>操作とルール</small></button>
        <button class="btn" id="settings">設定<small>ボタン・画質・音</small></button>
        ${install}
@@ -606,6 +640,9 @@ function showMenu(): void {
       );
       root.querySelector('#join')!.addEventListener('click', showJoin);
       root.querySelector('#howto')!.addEventListener('click', showHowTo);
+      root.querySelector('#training')!.addEventListener('click', () =>
+        showCharSelect({ title: '練習モード：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'つぎへ', onBack: showMenu, onNext: () => showTrainingSetup() }),
+      );
       root.querySelector('#settings')!.addEventListener('click', showSettings);
       root.querySelector('#install')?.addEventListener('click', () => void promptInstall().then(showMenu));
       // ログインボーナス（その日はじめてメニューを開いたとき）
@@ -749,6 +786,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
 
 function showPause(): void {
   if (!session || session.kind === 'demo') return;
+  if (session instanceof LocalSession && session.training) return showTrainingMenu(session);
   const online = session.kind === 'net';
   session.paused = !online;
   showScreen(
@@ -769,6 +807,7 @@ function showPause(): void {
 }
 pauseBtn.addEventListener('click', showPause);
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyR' && session instanceof LocalSession && session.training && !screensEl.children.length) resetTrainingPositions(session);
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (screensEl.children.length && session?.paused) {
       session.paused = false;
@@ -854,6 +893,267 @@ function showSettings(): void {
         showMenu();
       });
     },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 練習モード
+type DummyMode = 'stand' | 'walk' | 'jump' | 'shield' | 'cpu';
+interface TrainingOpts {
+  dummyChar: string;
+  mode: DummyMode;
+  cpuLevel: number;
+  /** ゲームの速さ（1 = 通常） */
+  speed: number;
+  /** コンボ・ダメージの表示 */
+  showInfo: boolean;
+}
+const training: TrainingOpts = { dummyChar: 'guard', mode: 'stand', cpuLevel: 3, speed: 1, showInfo: true };
+const DUMMY_MODES: [DummyMode, string][] = [
+  ['stand', '立ち止まる'],
+  ['walk', '歩く'],
+  ['jump', 'ジャンプ'],
+  ['shield', 'ガード'],
+  ['cpu', 'CPU'],
+];
+
+// 画面上のリセットボタン（位置を初めに戻す）
+const trainingBtn = document.createElement('button');
+trainingBtn.id = 'training-btn';
+trainingBtn.className = 'hidden';
+trainingBtn.textContent = '位置リセット';
+document.getElementById('app')!.appendChild(trainingBtn);
+trainingBtn.addEventListener('click', () => {
+  if (session instanceof LocalSession && session.training) resetTrainingPositions(session);
+});
+
+// コンボとダメージの表示
+const comboEl = document.createElement('div');
+comboEl.id = 'combo';
+comboEl.className = 'hidden';
+document.getElementById('app')!.appendChild(comboEl);
+
+/** 練習相手が続けて受けた攻撃（ひるみが解ける前に次が当たればコンボ）を数える */
+class ComboTracker {
+  private hits = 0;
+  private total = 0;
+  private last = 0;
+  private prevDamage = 0;
+  private active = false;
+  private shown = 0;
+  reset(): void {
+    this.hits = this.total = this.last = 0;
+    this.active = false;
+    this.shown = 0;
+    comboEl.classList.add('hidden');
+  }
+  update(view: ViewState, events: GameEvent[], dt: number): void {
+    const d = view.fighters.find((f) => f.slot === 1);
+    if (!d) return;
+    const delta = d.damage - this.prevDamage;
+    this.prevDamage = d.damage;
+    const hit = events.some((e) => e.k === 'hit' && e.s === 1);
+    if (hit && delta > 0.01) {
+      if (!this.active) {
+        this.active = true;
+        this.hits = 0;
+        this.total = 0;
+      }
+      this.hits++;
+      this.total += delta;
+      this.last = delta;
+      this.shown = 2.5;
+      this.render(true);
+    } else if (this.active && d.state !== 'hitstun' && d.state !== 'grabbed') {
+      // ひるみが解けたらコンボ終わり（表示はしばらく残す）
+      this.active = false;
+      this.render(false);
+    }
+    if (!this.active && this.shown > 0) {
+      this.shown -= dt;
+      if (this.shown <= 0) comboEl.classList.add('hidden');
+    }
+  }
+  private render(live: boolean): void {
+    if (!training.showInfo) {
+      comboEl.classList.add('hidden');
+      return;
+    }
+    comboEl.classList.remove('hidden');
+    comboEl.classList.toggle('done', !live);
+    const head = this.hits >= 2 ? `<div class="cb-hits">${this.hits}<small>ヒット</small></div>` : '';
+    comboEl.innerHTML = `${head}<div class="cb-dmg">${this.hits >= 2 ? `コンボ ${this.total.toFixed(1)}%　` : ''}最後の一撃 ${this.last.toFixed(1)}%</div>`;
+  }
+}
+const combo = new ComboTracker();
+
+/** 練習モードのステージと相手を選ぶ */
+function showTrainingSetup(): void {
+  if (!STAGES.some((s) => s.id === settings.stageId)) settings.stageId = STAGES[0].id;
+  const chips = CHARACTERS.map((c) => `<button type="button" data-v="${c.id}" class="${c.id === training.dummyChar ? 'on' : ''}">${c.name}</button>`).join('');
+  showScreen(
+    `<h2>練習モード：ステージと相手 <small class="h2-sub">使うキャラ：${getCharacter(settings.charId).name}</small></h2>
+     ${stageCards(settings.stageId)}
+     <div class="opt-label">練習相手のキャラ</div>
+     <div class="seg wrap" data-seg="dummy">${chips}</div>
+     <div class="opt-label">練習相手の動き（対戦中も II ボタンで変えられます）</div>
+     ${seg('mode', DUMMY_MODES, training.mode)}
+     <div class="footer"><button class="btn" id="back">キャラ選択へ</button><button class="btn primary" id="start">練習開始！</button></div>`,
+    'overlay',
+    (root) => {
+      bindStages(root, (v) => (settings.stageId = v));
+      bindSeg(root, 'dummy', (v) => (training.dummyChar = v));
+      bindSeg(root, 'mode', (v) => (training.mode = v as DummyMode));
+      root.querySelector('#back')!.addEventListener('click', () =>
+        showCharSelect({ title: '練習モード：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'つぎへ', onBack: showMenu, onNext: () => showTrainingSetup() }),
+      );
+      root.querySelector('#start')!.addEventListener('click', () => {
+        saveSettings(settings);
+        startTraining();
+      });
+    },
+  );
+}
+
+function startTraining(): void {
+  const setup: MatchSetup = {
+    players: [
+      { slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0 },
+      { slot: 1, name: '練習相手', charId: training.dummyChar, cpu: true, cpuLevel: training.cpuLevel },
+    ],
+    stageId: settings.stageId,
+    // 時間は実質無制限（99分）、残機は毎フレーム99に戻す
+    rules: { mode: 'stock', stocks: 99, timeLimit: 99 * 60 },
+    seed: (Math.random() * 1e9) | 0,
+  };
+  startSession(new LocalSession(setup, false, training));
+}
+
+/** 2人を最初の位置に戻す（ダメージ%はそのまま） */
+function resetTrainingPositions(s: LocalSession): void {
+  const st = getStage(s.setup.stageId);
+  s.sim.fighters.forEach((f, i) => {
+    const sp = st.spawns[i % st.spawns.length];
+    f.x = sp.x;
+    f.y = sp.y + 0.05;
+    f.vx = 0;
+    f.vy = 0;
+    f.grounded = false;
+    f.groundRef = -1;
+    f.move = null;
+    f.hitstun = 0;
+    f.hitlag = 0;
+    f.grabbing = -1;
+    f.grabbedBy = -1;
+    f.facing = i === 0 ? 1 : -1;
+    if (f.alive) f.state = 'air';
+  });
+  combo.reset();
+}
+
+/** 練習モードのメニュー（II ボタン）：相手の動き・%・速さの変更、技表 */
+function showTrainingMenu(s: LocalSession): void {
+  s.paused = true;
+  const tr = s.training!;
+  const me = s.sim.fighters.find((f) => f.slot === 0);
+  const dm = s.sim.fighters.find((f) => f.slot === 1);
+  const pct: [number, string][] = [
+    [0, '0%'],
+    [30, '30%'],
+    [60, '60%'],
+    [100, '100%'],
+    [150, '150%'],
+  ];
+  const near = (v: number) => pct.reduce((a, b) => (Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a))[0];
+  showScreen(
+    `<h2>練習モード</h2>
+     <div class="setup-grid">
+       <div class="opt" style="grid-column:1/-1">練習相手の動き ${seg('mode', DUMMY_MODES, tr.mode)}</div>
+       <div class="opt" data-cpu>CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], tr.cpuLevel)}</div>
+       <div class="opt">相手のダメージ% ${seg('dpct', pct, near(dm?.damage ?? 0))}</div>
+       <div class="opt">自分のダメージ% ${seg('mpct', pct, near(me?.damage ?? 0))}</div>
+       <div class="opt">ゲームの速さ ${seg('speed', [[1, '通常'], [0.5, '1/2'], [0.25, '1/4']], tr.speed)}</div>
+       <div class="opt">コンボ・ダメージ表示 ${seg('info', [['on', 'する'], ['off', 'しない']], tr.showInfo ? 'on' : 'off')}</div>
+     </div>
+     <div class="footer">
+       <button class="btn" id="quit">練習をやめる</button>
+       <div class="row" style="gap:8px">
+         <button class="btn" id="moves">技表</button>
+         <button class="btn" id="reset">位置リセット</button>
+         <button class="btn primary" id="resume">続ける</button>
+       </div>
+     </div>`,
+    'overlay',
+    (root) => {
+      const syncCpu = () => root.querySelector<HTMLElement>('[data-cpu]')!.classList.toggle('hidden', tr.mode !== 'cpu');
+      syncCpu();
+      bindSeg(root, 'mode', (v) => {
+        tr.mode = v as DummyMode;
+        syncCpu();
+      });
+      bindSeg(root, 'lv', (v) => (tr.cpuLevel = Number(v)));
+      bindSeg(root, 'dpct', (v) => dm && (dm.damage = Number(v)));
+      bindSeg(root, 'mpct', (v) => me && (me.damage = Number(v)));
+      bindSeg(root, 'speed', (v) => (tr.speed = Number(v)));
+      bindSeg(root, 'info', (v) => {
+        tr.showInfo = v === 'on';
+        if (!tr.showInfo) comboEl.classList.add('hidden');
+      });
+      const resume = () => {
+        s.paused = false;
+        clearScreen();
+      };
+      root.querySelector('#resume')!.addEventListener('click', resume);
+      root.querySelector('#reset')!.addEventListener('click', () => {
+        resetTrainingPositions(s);
+        resume();
+      });
+      root.querySelector('#moves')!.addEventListener('click', () => showMoveList(s.setup.players[0].charId, () => showTrainingMenu(s)));
+      root.querySelector('#quit')!.addEventListener('click', endToMenu);
+    },
+  );
+}
+
+/** 技表：通常技（ダメージつき）・必殺技・つかみ・溜め攻撃と、操作 */
+function showMoveList(charId: string, back: () => void): void {
+  const c = getCharacter(charId);
+  const d = (id: Parameters<typeof moveOf>[1]) => (moveOf(charId, id).dmg * c.dmgMul).toFixed(1);
+  const normals: [string, string, string][] = [
+    ['弱攻撃', 'A', d('jab')],
+    ['横攻撃', '横＋A', d('side')],
+    ['上攻撃', '上＋A', d('up')],
+    ['下攻撃', '下＋A', d('down')],
+    ['スマッシュ攻撃', '横にはじく＋A（押し続けると溜め）', d('smash')],
+    ['溜め攻撃', 'Aを押し続ける', d('charge')],
+    ['空中攻撃', '空中でA', d('nair')],
+    ['空中前攻撃', '空中で前＋A', d('fair')],
+    ['空中後ろ攻撃', '空中で後ろ＋A', d('bair')],
+    ['空中上攻撃', '空中で上＋A', d('uair')],
+    ['空中下攻撃', '空中で下＋A', d('dair')],
+    ['つかみ攻撃', 'つかみ中にA', d('pummel')],
+    ['前投げ／後ろ投げ', 'つかみ中にスティック', `${d('fthrow')}／${d('bthrow')}`],
+    ['上投げ／下投げ', 'つかみ中にスティック', `${d('uthrow')}／${d('dthrow')}`],
+  ];
+  const descs = SPECIAL_DESCS[c.id] ?? SPECIAL_DESCS.guard;
+  const sp: [string, string, string][] = [
+    ['B', c.specialNames.n, descs.n],
+    ['横＋B', c.specialNames.s, descs.s],
+    ['下＋B', c.specialNames.d, descs.d],
+    ['上＋B', c.specialNames.u, descs.u],
+  ];
+  showScreen(
+    `<h2>技表：${c.name}</h2>
+     <div class="movelist">
+       <div class="ml-trait"><span class="tag">特性</span><b>${c.trait.name}</b>：${c.trait.desc}</div>
+       <div class="ml-head">必殺技</div>
+       ${sp.map(([k, n, t]) => `<div class="ml-sp"><span class="key">${k}</span><b>${n}</b><div>${t}</div></div>`).join('')}
+       <div class="ml-head">通常技（ダメージは溜め・強化なしの値）</div>
+       <div class="ml-grid">${normals.map(([n, k, v]) => `<div class="ml-n"><b>${n}</b><span>${k}</span><em>${v}%</em></div>`).join('')}</div>
+       <div class="ml-note">つかみはガード中にA。投げの方向は、つかんでいる人の向きが基準です。</div>
+     </div>
+     <div class="footer"><button class="btn primary" id="back">もどる</button></div>`,
+    'overlay',
+    (root) => root.querySelector('#back')!.addEventListener('click', back),
   );
 }
 

@@ -1186,3 +1186,123 @@ input[inputmode='numeric'] {
   color: var(--muted);
   margin-bottom: 8px;
 }
+
+/* ---------- 練習モード ---------- */
+#training-btn {
+  position: absolute;
+  top: calc(6px + var(--safe-t));
+  right: calc(58px + var(--safe-r));
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 20px;
+  border: 0;
+  background: rgba(10, 12, 30, 0.5);
+  color: #fff;
+  font-weight: 800;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+#combo {
+  position: absolute;
+  top: calc(44px + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  z-index: 5;
+}
+
+#combo .cb-hits {
+  font-size: 34px;
+  font-weight: 900;
+  color: var(--accent);
+  line-height: 1;
+}
+
+#combo .cb-hits small {
+  font-size: 15px;
+  margin-left: 2px;
+}
+
+#combo .cb-dmg {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#combo.done {
+  opacity: 0.65;
+}
+
+.seg.wrap {
+  flex-wrap: wrap;
+}
+
+.movelist {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.movelist b {
+  color: #fff;
+}
+
+.movelist .tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 6px;
+  padding: 0 5px;
+  margin-right: 5px;
+}
+
+.ml-head {
+  margin: 10px 0 4px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.ml-sp {
+  margin-bottom: 6px;
+}
+
+.ml-sp .key,
+.ml-n span {
+  display: inline-block;
+  min-width: 44px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.ml-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 14px;
+}
+
+.ml-n {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.ml-n b {
+  min-width: 8em;
+}
+
+.ml-n em {
+  margin-left: auto;
+  font-style: normal;
+  font-weight: 800;
+  color: #fff;
+}
+
+.ml-note {
+  margin-top: 8px;
+  font-size: 11px;
+}

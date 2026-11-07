@@ -13,6 +13,8 @@ export class Hud {
   private net: HTMLElement;
   private lastCenter = '';
   private stockMode = true;
+  /** 練習モード：残機とタイマーを出さない */
+  private training = false;
 
   constructor() {
     this.el = document.getElementById('hud')!;
@@ -21,7 +23,8 @@ export class Hud {
     this.net = document.createElement('div');
   }
 
-  setup(setup: MatchSetup, myslot: number | null): void {
+  setup(setup: MatchSetup, myslot: number | null, training = false): void {
+    this.training = training;
     this.el.innerHTML = '';
     this.panels.clear();
     this.stockMode = setup.rules.mode === 'stock';
@@ -64,7 +67,7 @@ export class Hud {
         p.dmg.style.color = `rgb(255, ${Math.round(255 - heat * 170)}, ${Math.round(255 - heat * 230)})`;
         p.last = d;
       }
-      p.stk.textContent = this.stockMode ? '●'.repeat(Math.max(0, f.stocks)) : `${f.kos - f.falls >= 0 ? '+' : ''}${f.kos - f.falls}`;
+      p.stk.textContent = this.training ? '' : this.stockMode ? '●'.repeat(Math.max(0, f.stocks)) : `${f.kos - f.falls >= 0 ? '+' : ''}${f.kos - f.falls}`;
       p.root.classList.toggle('out', f.out);
     }
     for (const e of events) {
@@ -78,7 +81,7 @@ export class Hud {
       }
     }
     const secs = Math.ceil(v.timeLeft / 60);
-    this.timer.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    this.timer.textContent = this.training ? '練習モード' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     let c = '';
     if (v.countdown > 0) c = v.countdown > 100 ? '3' : v.countdown > 50 ? '2' : '1';
     else if (v.frame < 210) c = 'GO!';
