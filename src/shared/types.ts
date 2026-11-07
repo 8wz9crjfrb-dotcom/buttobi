@@ -147,7 +147,9 @@ export type GameEvent =
   | { k: 'poof'; x: number; y: number }
   | { k: 'swap'; x: number; y: number; x2: number; y2: number; s: number }
   | { k: 'pull'; x: number; y: number; tx: number; ty: number }
-  | { k: 'shot'; s: number };
+  | { k: 'shot'; s: number }
+  /** 撃墜が確定するほどの一撃（演出：スロー＆ズーム） */
+  | { k: 'finish'; x: number; y: number; s: number };
 
 /** 描画用の選手の状態（ローカル対戦でもオンライン対戦でも同じ形） */
 export interface ViewFighter {

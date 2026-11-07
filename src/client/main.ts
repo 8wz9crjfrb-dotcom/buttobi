@@ -25,11 +25,14 @@ import {
 } from './platform';
 import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
+import { claimLogin, LOGIN_REWARDS, loadWallet, recordWin, saveWallet } from './wallet';
 
 registerServiceWorker();
 preventZoomGestures();
 
 const settings: Settings = loadSettings();
+const wallet = loadWallet();
+const coinBadge = () => `<div class="coin-badge" title="着せ替えガチャ（準備中）で使えます"><span class="coin-icon"></span>${wallet.coins.toLocaleString()}</div>`;
 applyUiSettings(settings);
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
@@ -83,7 +86,8 @@ class LocalSession implements Session {
   frame(dt: number) {
     const events: GameEvent[] = [];
     if (!this.paused) {
-      this.acc += Math.min(dt, 0.1);
+      // 撃墜確定の一撃のあとは、少しの間スローで進める（CPU戦だけ。オンラインはサーバーの時間に合わせるのでスローにしない）
+      this.acc += Math.min(dt, 0.1) * (this.kind === 'local' ? renderer.timeScale : 1);
       const human = this.mySlot !== null ? readInput() : null;
       if (human) human.buttons |= input.takePressed();
       while (this.acc >= 1 / 60) {
@@ -247,6 +251,8 @@ function loop(t: number): void {
       }
     }
   }
+  // 待ち受け画面のCPU同士の試合では、撃墜確定のスロー演出はしない
+  if (session?.kind === 'demo') events = events.filter((e) => e.k !== 'finish');
   renderer.render(lastView, dt, events);
   updateFps(t);
   requestAnimationFrame(loop);
@@ -302,6 +308,7 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'absorb') sfx.absorb();
     else if (e.k === 'swap') sfx.swap();
     else if (e.k === 'pull') sfx.notify();
+    else if (e.k === 'finish') sfx.finish();
   }
   const c = view.countdown > 100 ? 3 : view.countdown > 50 ? 2 : view.countdown > 0 ? 1 : 0;
   if (c !== lastCountdownBeep) {
@@ -581,7 +588,7 @@ function showMenu(): void {
   const online = !!settings.serverUrl;
   const install = canInstall() ? `<button class="btn" id="install">ホーム画面に追加<small>アプリとしてインストール</small></button>` : '';
   showScreen(
-    `<h2>メニュー</h2>
+    `<div class="row" style="justify-content:space-between"><h2>メニュー</h2>${coinBadge()}</div>
      <div class="menu-grid">
        <button class="btn primary" id="cpu">CPUと対戦<small>ひとりで練習</small></button>
        <button class="btn" id="create" ${online ? '' : 'disabled'}>ルームを作る<small>友達とオンライン対戦</small></button>
@@ -601,8 +608,34 @@ function showMenu(): void {
       root.querySelector('#howto')!.addEventListener('click', showHowTo);
       root.querySelector('#settings')!.addEventListener('click', showSettings);
       root.querySelector('#install')?.addEventListener('click', () => void promptInstall().then(showMenu));
+      // ログインボーナス（その日はじめてメニューを開いたとき）
+      const bonus = claimLogin(wallet);
+      if (bonus) {
+        saveWallet(wallet);
+        root.querySelector('.coin-badge')!.outerHTML = coinBadge();
+        showLoginBonus(root, bonus.day, bonus.amount);
+      }
     },
   );
+}
+
+/** ログインボーナスの知らせ（7日分のうち、今日が何日目か） */
+function showLoginBonus(root: HTMLElement, day: number, amount: number): void {
+  const cells = LOGIN_REWARDS.map(
+    (c, i) => `<div class="lb-day ${i + 1 < day ? 'got' : i + 1 === day ? 'today' : ''}"><div class="d">${i + 1}日目</div><span class="coin-icon"></span><div class="c">${c}</div></div>`,
+  ).join('');
+  const pop = document.createElement('div');
+  pop.className = 'lb-pop';
+  pop.innerHTML = `<div class="lb-card">
+      <div class="lb-title">ログインボーナス</div>
+      <div class="lb-sub">連続 ${day} 日目：<b>+${amount} コイン</b></div>
+      <div class="lb-days">${cells}</div>
+      <div class="lb-note">コインは今後の着せ替えガチャで使えます。勝利数でももらえます。</div>
+      <button class="btn primary" id="lb-ok">受け取る</button>
+    </div>`;
+  root.appendChild(pop);
+  sfx.gacha(4);
+  pop.querySelector('#lb-ok')!.addEventListener('click', () => pop.remove());
 }
 document.addEventListener('installable', () => {
   if (screensEl.querySelector('.menu-grid')) showMenu();
@@ -676,10 +709,23 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
     .join('');
   const win = results.find((r) => r.rank === 1);
   const winner = win ? setup.players.find((p) => p.slot === win.slot) : null;
+  // 自分が勝っていたらコインを渡す（相手がいる試合だけ）
+  const mine = online ? net.slot : setup.players.find((p) => !p.cpu)?.slot ?? -1;
+  const myResult = results.find((r) => r.slot === mine);
+  let reward = '';
+  if (myResult && myResult.rank === 1 && setup.players.length >= 2) {
+    const cpuLevel = Math.max(0, ...setup.players.filter((p) => p.cpu).map((p) => p.cpuLevel));
+    const r = recordWin(wallet, online, cpuLevel);
+    saveWallet(wallet);
+    reward = `<div class="reward"><span class="coin-icon"></span>勝利 +${r.base} コイン${
+      r.bonus ? `<span class="bonus">通算${r.bonus.wins}勝ボーナス +${r.bonus.amount}</span>` : ''
+    }<small>（所持 ${wallet.coins.toLocaleString()}・通算 ${r.total} 勝）</small></div>`;
+  }
   renderer.celebrate(win ? win.slot : null);
   music.play('menu');
   showScreen(
     `<h2 style="text-align:center">${winner ? esc(winner.name) + ' の勝ち！' : '結果'}</h2>
+     ${reward}
      <div class="results">${rows}</div>
      <div class="footer">
        <button class="btn" id="menu">メニューへ</button>

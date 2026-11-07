@@ -115,6 +115,12 @@ export class Sfx {
   absorb(): void {
     this.tone(1200, 0.2, 'sine', 0.15, 300);
   }
+  /** 撃墜確定：重い一撃と、高く鳴り響く音 */
+  finish(): void {
+    this.burst(0.5, 0.9, 220);
+    this.tone(90, 0.5, 'sawtooth', 0.22, 40);
+    this.tone(1760, 0.7, 'sine', 0.12, 1320);
+  }
   swap(): void {
     this.tone(300, 0.15, 'sine', 0.16, 900);
     setTimeout(() => this.tone(900, 0.15, 'sine', 0.14, 300), 110);

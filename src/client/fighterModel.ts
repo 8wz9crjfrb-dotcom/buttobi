@@ -320,6 +320,8 @@ export class FighterModel {
   previewTurn: number | null = null;
   /** 分身として半透明で表示するとき（0 = 通常） */
   ghost = 0;
+  /** 頭上の目印を出すか（残像では出さない） */
+  showMarker = true;
   private c: Costume['colors'];
   private blinkSeed: number;
 
@@ -913,7 +915,7 @@ export class FighterModel {
     this.outlineMat.opacity = opacity;
     this.outlineMat.visible = opacity > 0.3;
     this.halo.visible = v.state === 'respawn';
-    this.marker.visible = !invisible && this.previewTurn === null;
+    this.marker.visible = !invisible && this.previewTurn === null && this.showMarker;
     this.marker.position.y = 2.25 * def.scale + Math.sin(time * 4) * 0.05;
   }
 

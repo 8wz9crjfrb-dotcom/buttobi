@@ -16,6 +16,10 @@ import { PropRenderer } from './props';
 
 export type Quality = 'low' | 'high';
 
+/** 撃墜確定の演出：ふっとび始めてからのスローの長さと、元の速さへ戻すまでの長さ（秒） */
+const FINISH_SLOW = 0.5;
+const FINISH_BACK = 0.3;
+
 interface Particle {
   mesh: THREE.Mesh;
   vx: number;
@@ -190,6 +194,16 @@ export class GameRenderer {
     this.particles = [];
     for (const b of this.beams) this.scene.remove(b.mesh);
     this.beams = [];
+    for (const st of this.streaks) this.scene.remove(st.mesh);
+    this.streaks = [];
+    for (const f of this.flight.values()) {
+      for (const g of f.ghosts) {
+        this.scene.remove(g.root);
+        g.dispose();
+      }
+    }
+    this.flight.clear();
+    this.finish.on = false;
     this.built?.dispose();
     this.built = null;
     this.stageGroup.clear();
@@ -498,6 +512,7 @@ export class GameRenderer {
 
   /** 大きくふっとんでいる間、通り道に煙を残す。倍速中は残像 */
   private trails(view: ViewState): void {
+    this.flightFx(view);
     for (const f of view.fighters) {
       if (f.fx & FX_SPEED && (f.state === 'run' || f.state === 'air' || f.state === 'attack') && Math.floor(this.time * 30) % 2 === 0) {
         this.spawn(this.sparkGeo, 0x8ef0ff, f.x, f.y + 0.8, 0, 0, 0.3, 12, -0.01);
@@ -509,6 +524,90 @@ export class GameRenderer {
     }
   }
   private lastTrail = new Map<number, number>();
+
+  // ---------------------------------------------------------------- ふっとびの残像・スピード線
+  private flight = new Map<number, { px: number; py: number; vx: number; vy: number; hist: ViewFighter[]; ghosts: FighterModel[] }>();
+  private streaks: { mesh: THREE.Mesh; life: number; max: number }[] = [];
+  private streakGeo = new THREE.PlaneGeometry(1, 1);
+
+  /** 速くふっとんでいる人に、残像（半透明のキャラ）と、後ろへ流れる線を出す */
+  private flightFx(view: ViewState): void {
+    for (const f of view.fighters) {
+      let st = this.flight.get(f.slot);
+      if (!st) {
+        st = { px: f.x, py: f.y, vx: 0, vy: 0, hist: [], ghosts: [] };
+        this.flight.set(f.slot, st);
+      }
+      // 速さは表示位置の変化から求める（瞬間移動は無視）
+      const dx = f.x - st.px;
+      const dy = f.y - st.py;
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2 && view.frame !== this.lastFlightFrame) {
+        st.vx = st.vx * 0.5 + dx * 60 * 0.5;
+        st.vy = st.vy * 0.5 + dy * 60 * 0.5;
+      }
+      st.px = f.x;
+      st.py = f.y;
+      const speed = Math.hypot(st.vx, st.vy);
+      const flying = f.state === 'hitstun' && speed > 13;
+      if (view.frame !== this.lastFlightFrame) {
+        st.hist.unshift({ ...f });
+        if (st.hist.length > 12) st.hist.length = 12;
+      }
+      // 残像：画質「きれい」のときだけ（3体ぶんのキャラを描くので）
+      const useGhosts = flying && this.quality === 'high' && st.hist.length >= 10;
+      if (useGhosts && st.ghosts.length === 0) {
+        const p = this.setup?.players.find((x) => x.slot === f.slot);
+        if (p) {
+          const def = getCharacter(p.charId);
+          for (let i = 0; i < 3; i++) {
+            const g = new FighterModel(def, getCostume(p.costume, p.charId), SLOT_COLORS[f.slot % SLOT_COLORS.length]);
+            g.showMarker = false;
+            g.ghost = [0.4, 0.26, 0.14][i];
+            this.scene.add(g.root);
+            st.ghosts.push(g);
+          }
+        }
+      }
+      st.ghosts.forEach((g, i) => {
+        g.root.visible = useGhosts;
+        if (!useGhosts) return;
+        const past = st!.hist[(i + 1) * 3];
+        if (!past) return;
+        const p = this.setup!.players.find((x) => x.slot === f.slot)!;
+        g.update(past, getCharacter(p.charId), this.time, 1 / 60);
+      });
+      // スピード線：進む向きの反対側へ流れる白い線
+      if (flying && Math.random() < 0.8) {
+        const a = Math.atan2(st.vy, st.vx);
+        const len = 1.2 + Math.min(3, speed / 12);
+        const side = (Math.random() - 0.5) * 1.4;
+        const cx = f.x - Math.cos(a) * (len * 0.6 + 0.4) - Math.sin(a) * side;
+        const cy = f.y + 0.9 - Math.sin(a) * (len * 0.6 + 0.4) + Math.cos(a) * side;
+        const mesh = new THREE.Mesh(this.streakGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false }));
+        mesh.position.set(cx, cy, 0.6);
+        mesh.rotation.z = a;
+        mesh.scale.set(len, 0.05, 1);
+        this.scene.add(mesh);
+        this.streaks.push({ mesh, life: 10, max: 10 });
+      }
+    }
+    this.lastFlightFrame = view.frame;
+  }
+  private lastFlightFrame = -1;
+
+  // ---------------------------------------------------------------- 撃墜確定の一撃：スロー＆ズーム
+  /** 演出中か・始まってからの時間・ズームする相手・ふっとび始めた時間（-1 = まだヒットストップ中） */
+  private finish = { on: false, t: 0, slot: -1, x: 0, y: 0, sx: 0, sy: 0, flyAt: -1 };
+  /** スローの倍率（1 = 通常）。main.ts がCPU戦の進み方に使う */
+  get timeScale(): number {
+    const fi = this.finish;
+    if (!fi.on) return 1;
+    // 当たった瞬間の止まり（ヒットストップ）は半分の速さ → ふっとび始めたらゆっくり → 元の速さへ
+    if (fi.flyAt < 0) return 0.5;
+    const e = fi.t - fi.flyAt;
+    if (e < FINISH_SLOW) return 0.15;
+    return Math.min(1, 0.15 + ((e - FINISH_SLOW) / FINISH_BACK) * 0.85);
+  }
 
   private dust(x: number, y: number, n: number, spread: number): void {
     for (let i = 0; i < n; i++) {
@@ -598,6 +697,16 @@ export class GameRenderer {
       for (let i = 0; i < 10; i++) {
         this.spawn(this.sparkGeo, 0xff9ec8, e.x + (Math.random() - 0.5) * 0.8, e.y + Math.random() * 1.8, (Math.random() - 0.5) * 3, Math.random() * 2, 0.12, 20, -0.004);
       }
+      return;
+    }
+    if (e.k === 'finish') {
+      // 撃墜確定：スローにして寄る。白い閃光と、光る輪
+      const v = view.fighters.find((f) => f.slot === e.s);
+      this.finish = { on: true, t: 0, slot: e.s, x: e.x, y: e.y, sx: v?.x ?? e.x, sy: v?.y ?? e.y, flyAt: -1 };
+      this.spawn(this.sparkGeo, 0xffffff, e.x, e.y, 0, 0, 1.2, 10, 0.3, true);
+      this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.6, 22, 0.16, true);
+      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.4, 26, 0.1, true);
+      this.shake = Math.max(this.shake, 0.9);
       return;
     }
     if (e.k === 'swap') {
@@ -711,6 +820,23 @@ export class GameRenderer {
       b.mesh.scale.y = 0.3 + (1 - t) * 1.6;
       return true;
     });
+    this.streaks = this.streaks.filter((st) => {
+      st.life -= steps;
+      if (st.life <= 0) {
+        this.scene.remove(st.mesh);
+        (st.mesh.material as THREE.Material).dispose();
+        return false;
+      }
+      (st.mesh.material as THREE.MeshBasicMaterial).opacity = (st.life / st.max) * 0.7;
+      return true;
+    });
+    if (this.finish.on) {
+      const fi = this.finish;
+      fi.t += dt;
+      // 1秒たっても動かなければ（ヒットストップが長いなど）、ふっとび始めたことにする
+      if (fi.flyAt < 0 && fi.t > 1) fi.flyAt = fi.t;
+      if (fi.flyAt >= 0 && fi.t - fi.flyAt > FINISH_SLOW + FINISH_BACK) fi.on = false;
+    }
     for (const p of this.particles) {
       p.life -= steps;
       if (p.life <= 0) {
@@ -743,6 +869,34 @@ export class GameRenderer {
     }
     const st = this.stage!;
     const m = st.main;
+    if (this.finish.on && this.focusSlot === null) {
+      // 撃墜確定：ふっとぶ相手にぐっと寄る（演出の前半で寄り、後半で戻る）
+      const v = view.fighters.find((f) => f.slot === this.finish.slot);
+      if (v && v.state !== 'dead') {
+        this.finish.x = v.x;
+        this.finish.y = v.y + 0.9;
+        if (this.finish.flyAt < 0 && Math.hypot(v.x - this.finish.sx, v.y - this.finish.sy) > 0.05) this.finish.flyAt = this.finish.t;
+      }
+      // 元の速さへ戻す間に、いつものカメラへ戻す
+      const back = this.finish.flyAt < 0 ? 0 : this.finish.t - this.finish.flyAt - FINISH_SLOW;
+      const w = back <= 0 ? 1 : Math.max(0, 1 - back / FINISH_BACK);
+      const tx = this.finish.x;
+      const ty = this.finish.y;
+      const kk = Math.min(1, dt * 14 * w + 0.02);
+      this.camLook.x += (tx - this.camLook.x) * kk * w;
+      this.camLook.y += (ty - this.camLook.y) * kk * w;
+      this.camPos.x += (tx - this.camPos.x) * kk * w;
+      this.camPos.y += (ty + 0.8 - this.camPos.y) * kk * w;
+      this.camPos.z += (10 - this.camPos.z) * kk * w;
+      if (w >= 1) {
+        this.shake *= Math.pow(0.02, dt);
+        const sx = (Math.random() - 0.5) * this.shake * 0.5;
+        const sy = (Math.random() - 0.5) * this.shake * 0.5;
+        this.camera.position.set(this.camPos.x + sx, this.camPos.y + sy, this.camPos.z);
+        this.camera.lookAt(this.camLook.x + sx, this.camLook.y + sy, 0);
+        return;
+      }
+    }
     const focus = this.focusSlot !== null ? view.fighters.find((f) => f.slot === this.focusSlot && f.state !== 'dead') : undefined;
     if (focus) {
       // 勝った人を画面の左寄りに大きく映す（右側に順位表が出る）

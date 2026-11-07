@@ -1802,6 +1802,37 @@ export class Sim {
     v.lastHitFrame = this.frame;
     v.facing = -dir;
     this.setState(v, 'hitstun');
+    if (speed > 14 && this.willBeKO(v)) this.events.push({ k: 'finish', x: v.x, y: v.y + v.h / 2, s: v.slot });
+  }
+
+  /**
+   * このふっとびで場外まで飛ぶか（演出用の予測）。ひるみ中の動き（空気抵抗・重力）をそのまま先まで計算し、
+   * 自分で動けるようになる直後（5フレーム）までに場外の線を越えれば撃墜とみなす。台にぶつかる場合は撃墜にならない。
+   */
+  private willBeKO(v: Fighter): boolean {
+    const b = this.stage.blast;
+    const m = this.stage.main;
+    const d = v.def;
+    let x = v.x;
+    let y = v.y;
+    let vx = v.vx;
+    let vy = v.vy;
+    const frames = v.hitstun + 5;
+    for (let i = 0; i < frames; i++) {
+      vx *= HITSTUN_DRAG;
+      vy -= d.gravity * DT;
+      if (vy < -d.fallMax * 2) vy = -d.fallMax * 2;
+      const px = x;
+      const py = y;
+      x += vx * DT;
+      y += vy * DT;
+      if (x < b.left || x > b.right || y < b.bottom || y > b.top) return true;
+      // 台の上に落ちる・台の横や下にぶつかる
+      if (x >= m.x1 && x <= m.x2 && ((py >= m.top && y <= m.top) || (y < m.top && y + v.h > m.bottom))) return false;
+      if (px < m.x1 !== x < m.x1 && y < m.top && y > m.bottom - v.h) return false;
+      if (px > m.x2 !== x > m.x2 && y < m.top && y > m.bottom - v.h) return false;
+    }
+    return false;
   }
 
   private updateProjectiles(): void {
