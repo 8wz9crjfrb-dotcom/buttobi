@@ -391,6 +391,7 @@ export class GameRenderer {
       this.stage.platforms.forEach((p, i) => {
         const at = platformAt(p, view.frame);
         this.platformMeshes[i].position.x = (at.x1 + at.x2) / 2;
+        this.platformMeshes[i].position.y = at.y - 0.11;
       });
       for (const f of view.fighters) {
         const m = this.models.get(f.slot);
@@ -762,6 +763,13 @@ export class GameRenderer {
     // 画面下のダメージ表示と重ならないよう、足元側に余白を多めに取る
     let minY = m.top - 3;
     let maxY = m.top + 3;
+    // すり抜け床（動く床・浮島）も画面に入れる
+    for (const sp of st.platforms) {
+      const at = platformAt(sp, view.frame);
+      minX = Math.min(minX, at.x1 - 0.5);
+      maxX = Math.max(maxX, at.x2 + 0.5);
+      maxY = Math.max(maxY, at.y + 1.5);
+    }
     for (const f of view.fighters) {
       if (f.state === 'dead') continue;
       minX = Math.min(minX, f.x - 2);

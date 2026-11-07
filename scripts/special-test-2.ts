@@ -1,5 +1,6 @@
 // 追加4体の必殺技と、8体の特性が意図どおりに動くかを確かめる
 import { Sim, COUNTDOWN_FRAMES } from '../src/shared/sim';
+import { platformAt } from '../src/shared/stages';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type InputState } from '../src/shared/types';
 
 let fail = 0;
@@ -7,8 +8,8 @@ function check(name: string, ok: boolean, info = '') {
   console.log(`${ok ? 'OK ' : 'NG '} ${name}${info ? '  (' + info + ')' : ''}`);
   if (!ok) fail++;
 }
-function make(a: string, b: string, seed = 1): Sim {
-  const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: a, cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: b, cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'stock', stocks: 3, timeLimit: 300 }, seed });
+function make(a: string, b: string, seed = 1, stageId = 'plain'): Sim {
+  const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: a, cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: b, cpu: false, cpuLevel: 1 }], stageId, rules: { mode: 'stock', stocks: 3, timeLimit: 300 }, seed });
   while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
   return sim;
 }
@@ -257,5 +258,61 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   v.lastHitBy = 0; v.lastHitFrame = sim.frame; v.x = 25;
   run(sim, 2);
   check('バズり：撃墜すると配信者の段階が上がる', sim.fighters[0].buzz === 1, `段階${sim.fighters[0].buzz}`);
+}
+// ---- 上下に動く足場（みはらし広場のエレベーター）
+{
+  const sim = make('guard', 'hacker', 1, 'tiers');
+  const f = sim.fighters[0];
+  sim.fighters[1].x = 12;
+  // 左のエレベーターの真上から落とす
+  f.x = -9.5; f.y = 9; f.vy = 0; f.grounded = false; f.groundRef = -1; f.state = 'air';
+  let landed = false;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < 400; i++) {
+    run(sim, 1);
+    if (f.grounded && f.groundRef === 0) {
+      landed = true;
+      minY = Math.min(minY, f.y);
+      maxY = Math.max(maxY, f.y);
+    }
+  }
+  check('上下に動く足場に乗ると、いっしょに上下する', landed && f.grounded && f.groundRef === 0 && maxY - minY > 4, `高さ ${minY.toFixed(2)}〜${maxY.toFixed(2)}`);
+}
+{
+  // 上がってくる足場に、落ちてきた人が着地できる（すり抜けて落ちない）
+  const sim = make('guard', 'hacker', 1, 'tiers');
+  const f = sim.fighters[0];
+  sim.fighters[1].x = 12;
+  let ok = 0;
+  let tries = 0;
+  for (let start = 0; start < 300; start += 37) {
+    const s2 = make('guard', 'hacker', 1, 'tiers');
+    s2.fighters[1].x = 12;
+    run(s2, start);
+    const g = s2.fighters[0];
+    g.x = -9.5; g.y = 7.5; g.vy = -2; g.grounded = false; g.groundRef = -1; g.state = 'air';
+    for (let i = 0; i < 120 && !g.grounded; i++) run(s2, 1);
+    tries++;
+    if (g.grounded && g.groundRef === 0) ok++;
+  }
+  check('上下に動く足場には、どのタイミングで落ちても着地できる', ok === tries, `${ok}/${tries}`);
+  void f;
+}
+{
+  // 浮島の床：台の外まで出ていく床に乗ったままでも落ちない
+  const sim = make('guard', 'hacker', 1, 'drift');
+  const f = sim.fighters[0];
+  sim.fighters[1].x = 5;
+  const pl = platformAt(sim.stage.platforms[0], sim.frame);
+  f.x = (pl.x1 + pl.x2) / 2; f.y = pl.y + 0.5; f.vy = 0; f.grounded = false; f.groundRef = -1; f.state = 'air';
+  let maxX = -Infinity;
+  let fell = false;
+  for (let i = 0; i < 600; i++) {
+    run(sim, 1);
+    if (f.groundRef === 0) maxX = Math.max(maxX, Math.abs(f.x));
+    if (i > 60 && !f.grounded) fell = true;
+  }
+  check('横に大きく動く床は台の外まで運んでくれる', !fell && maxX > 7, `いちばん外 |x|=${maxX.toFixed(1)}（台の端は6.5）`);
 }
 process.exit(fail ? 1 : 0);

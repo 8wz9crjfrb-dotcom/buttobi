@@ -1134,7 +1134,7 @@ export class Sim {
           }
           for (const sp of this.stage.platforms) {
             const p = platformAt(sp, this.frame);
-            if (e.x >= p.x1 && e.x <= p.x2 && prevY >= p.y && e.y <= p.y) {
+            if (e.x >= p.x1 && e.x <= p.x2 && prevY >= p.prevY - 0.001 && e.y <= p.y) {
               e.y = p.y;
               e.vy = 0;
             }
@@ -1361,7 +1361,8 @@ export class Sim {
     if (f.vy <= 0 && f.dropThrough <= 0 && !holdingDown) {
       for (let i = 0; i < this.stage.platforms.length; i++) {
         const p = platformAt(this.stage.platforms[i], this.frame);
-        if (prevY >= p.y - 0.001 && f.y <= p.y && f.x >= p.x1 && f.x <= p.x2) {
+        // 上下に動く足場もあるので、前のフレームの足場の高さと比べる
+        if (prevY >= p.prevY - 0.001 && f.y <= p.y && f.x >= p.x1 && f.x <= p.x2) {
           this.land(f, i, p.y);
           return;
         }

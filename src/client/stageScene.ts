@@ -95,6 +95,18 @@ function buildDayStage(stage: StageDef, th: DayTheme): BuiltStage {
     mesh.position.set((p.x1 + p.x2) / 2, p.y - 0.11, 0);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    if (p.island) {
+      // 浮島：草の上面と、下に垂れる岩（足場といっしょに動く）
+      const pw = p.x2 - p.x1;
+      const grass = new THREE.Mesh(track(new THREE.BoxGeometry(pw, 0.24, 2.4)), track(new THREE.MeshStandardMaterial({ color: th.ground, roughness: 0.8 })));
+      grass.position.y = 0.01;
+      mesh.add(grass);
+      const rk = new THREE.Mesh(track(new THREE.ConeGeometry(pw / 2, 2.2, 6)), sideMat);
+      rk.rotation.x = Math.PI;
+      rk.scale.z = 2.4 / pw;
+      rk.position.y = -1.2;
+      mesh.add(rk);
+    }
     group.add(mesh);
     platformMeshes.push(mesh);
   }
