@@ -544,7 +544,7 @@ function stageCards(selected: string): string {
     const bg = `linear-gradient(${hex(th.sky)}, ${hex(th.skyBottom)})`;
     return `<div class="stage-card ${st.id === selected ? 'on' : ''}" data-stage="${st.id}">
       <div class="thumb" style="background:${bg}"><img alt="" data-thumb="${st.id}"/></div>
-      <div class="nm">${st.name}</div></div>`;
+      <div class="nm">${st.name}</div><div class="who">${st.charId ? getCharacter(st.charId).name : 'デフォルト'}</div></div>`;
   }).join('')}</div>`;
 }
 

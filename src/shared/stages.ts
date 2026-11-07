@@ -10,34 +10,22 @@ export interface Platform {
   /** 動く足場：y方向の振れ幅と、x方向の動きとのずれ（ラジアン。π/2 で円を描く） */
   moveAmpY?: number;
   movePhaseY?: number;
-  /** 見た目：下に岩をつけた浮島にする（昼のステージ） */
-  island?: boolean;
 }
 
-/** 昼のステージ（最初からある3つ）の見た目 */
-export interface DayTheme {
-  kind: 'day';
-  sky: number;
-  skyBottom: number;
-  /** 台の上面・側面・すり抜け足場の色 */
-  ground: number;
-  side: number;
-  plat: number;
-}
+/** ステージの見た目の種類（キャラごとのステージ。sky はキャラに関係ないデフォルト） */
+export type StageKind = 'sky' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab';
 
-export type StageTheme = DayTheme | NightTheme;
-
-/** 夜のステージ（サイバーパンク風。追加の3つ）の見た目 */
-export interface NightTheme {
-  /** 見た目の種類 */
-  kind: 'rooftop' | 'arcade' | 'cyber';
-  /** 夜空の上と下の色 */
+export interface StageTheme {
+  kind: StageKind;
+  /** 明るい照明（昼・明るい室内）。false は夜・暗い室内で、光のにじみをかける */
+  bright: boolean;
+  /** 空（背景）の上と下の色、霞の色 */
   sky: number;
   skyBottom: number;
   fog: number;
-  /** ネオンの2色 */
-  neonA: number;
-  neonB: number;
+  /** アクセントの2色（ネオン・照明・飾り） */
+  accentA: number;
+  accentB: number;
 }
 
 export interface StageDef {
@@ -50,6 +38,8 @@ export interface StageDef {
   spawns: { x: number; y: number }[];
   respawnY: number;
   theme: StageTheme;
+  /** 関係するキャラ（デフォルトのステージは無し） */
+  charId?: string;
 }
 
 export const STAGES: StageDef[] = [
@@ -68,12 +58,13 @@ export const STAGES: StageDef[] = [
       { x: 4, y: 0 },
     ],
     respawnY: 8,
-    theme: { kind: 'day', sky: 0x7ec8ff, skyBottom: 0xdff3ff, ground: 0x6cc56c, side: 0x8a6a4a, plat: 0xffffff },
+    theme: { kind: 'sky', bright: true, sky: 0x5fb4ff, skyBottom: 0xe6f6ff, fog: 0xd6eeff, accentA: 0x7fd36a, accentB: 0x9a7350 },
   },
   {
-    // 広い台。左右のすり抜け床がエレベーターのように上下する
-    id: 'tiers',
-    name: 'みはらし広場',
+    // ガチャ会場：広い台。左右のすり抜け床（カプセル型のリフト）が上下する
+    id: 'gacha',
+    name: 'ガチャ会場',
+    charId: 'gacha',
     main: { x1: -13, x2: 13, top: 0, bottom: -3 },
     platforms: [
       { x1: -11.5, x2: -7.5, y: 4.2, moveAmpY: 2.6, movePeriod: 300 },
@@ -91,12 +82,13 @@ export const STAGES: StageDef[] = [
       { x: 11, y: 0 },
     ],
     respawnY: 11,
-    theme: { kind: 'day', sky: 0xffb47a, skyBottom: 0xffe9c9, ground: 0xc9a66b, side: 0x7a5a3a, plat: 0xfff2d6 },
+    theme: { kind: 'gacha', bright: true, sky: 0x3a1f6e, skyBottom: 0xff8fb8, fog: 0x7a3f8a, accentA: 0xffd23f, accentB: 0xff5ea8 },
   },
   {
-    // 小さな島と、まわりを漂う浮島。床は左右・上下・円を描いて動き、台の外まで出ていく
-    id: 'drift',
-    name: 'ただよう浮島',
+    // スマホのタイムライン：小さな台と、流れていく動画の画面（床は左右・上下・円を描いて動き、台の外まで出ていく）
+    id: 'timeline',
+    name: 'スマホのタイムライン',
+    charId: 'dopa',
     main: { x1: -6.5, x2: 6.5, top: 0, bottom: -4 },
     platforms: [
       // 島の上を大きく横切る床（台の外まで出るので、復帰の足場にもなる）
@@ -104,8 +96,8 @@ export const STAGES: StageDef[] = [
       // 上で円を描く床
       { x1: -1.6, x2: 1.6, y: 7.2, moveAmp: -3.5, moveAmpY: 1.5, movePhaseY: Math.PI / 2, movePeriod: 420 },
       // 島の左右の外で上下する浮島
-      { x1: -12, x2: -9, y: 0.5, moveAmpY: 2.5, movePeriod: 360, island: true },
-      { x1: 9, x2: 12, y: 0.5, moveAmpY: -2.5, movePeriod: 360, island: true },
+      { x1: -12, x2: -9, y: 0.5, moveAmpY: 2.5, movePeriod: 360 },
+      { x1: 9, x2: 12, y: 0.5, moveAmpY: -2.5, movePeriod: 360 },
     ],
     blast: { left: -23, right: 23, top: 19, bottom: -12 },
     spawns: [
@@ -117,17 +109,97 @@ export const STAGES: StageDef[] = [
       { x: 6, y: 0 },
     ],
     respawnY: 10,
-    theme: { kind: 'day', sky: 0x2b3a67, skyBottom: 0x7d5ba6, ground: 0x9ad1d4, side: 0x4a4e69, plat: 0xc9f2ff },
+    theme: { kind: 'timeline', bright: false, sky: 0x0d0f1a, skyBottom: 0x26163d, fog: 0x1a1430, accentA: 0xb6ff3a, accentB: 0xff7a1a },
   },
 ];
 
-// ---- 追加ステージ（サイバーパンク風）。見た目は夜の街
+// ---- キャラごとのステージ（並びはキャラの順。ガチャ会場とタイムラインは上で定義済み）
 const base = (id: string) => STAGES.find((s) => s.id === id)!;
+const plainShape = base('plain');
+const gachaStage = base('gacha');
+const timelineStage = base('timeline');
+STAGES.length = 1; // そらの台地だけ残して、キャラの順に並べ直す
 STAGES.push(
-  { ...base('plain'), id: 'rooftop', name: 'データセンター屋上', theme: { kind: 'rooftop', sky: 0x070a1f, skyBottom: 0x2a1850, fog: 0x1a1236, neonA: 0x39d0ff, neonB: 0xff3fa4 } },
+  {
+    ...plainShape,
+    id: 'rooftop',
+    name: 'データセンター屋上',
+    charId: 'guard',
+    theme: { kind: 'rooftop', bright: false, sky: 0x070a1f, skyBottom: 0x2a1850, fog: 0x1a1236, accentA: 0x39d0ff, accentB: 0xff3fa4 },
+  },
+  {
+    id: 'cyber',
+    name: '電脳空間',
+    charId: 'hacker',
+    main: { x1: -8, x2: 8, top: 0, bottom: -4 },
+    platforms: [
+      { x1: -2.5, x2: 2.5, y: 3.6, moveAmp: 5, movePeriod: 480 },
+      { x1: -2, x2: 2, y: 7.0, moveAmp: -3, movePeriod: 360 },
+    ],
+    blast: { left: -21, right: 21, top: 18, bottom: -11 },
+    spawns: [
+      { x: -5.5, y: 0 },
+      { x: 5.5, y: 0 },
+      { x: -2, y: 0 },
+      { x: 2, y: 0 },
+      { x: -7, y: 0 },
+      { x: 7, y: 0 },
+    ],
+    respawnY: 10,
+    theme: { kind: 'cyber', bright: false, sky: 0x000805, skyBottom: 0x002418, fog: 0x00140c, accentA: 0x39ff88, accentB: 0x2fd8ff },
+  },
+  {
+    // 深夜の金庫室：左右の足場と、上下にゆっくり動く上の足場
+    id: 'vault',
+    name: '深夜の金庫室',
+    charId: 'thief',
+    main: { x1: -9, x2: 9, top: 0, bottom: -3 },
+    platforms: [
+      { x1: -6.5, x2: -2.6, y: 3.0 },
+      { x1: 2.6, x2: 6.5, y: 3.0 },
+      { x1: -1.6, x2: 1.6, y: 6.0, moveAmpY: 1.2, movePeriod: 420 },
+    ],
+    blast: { left: -22, right: 22, top: 18, bottom: -11 },
+    spawns: [
+      { x: -6, y: 0 },
+      { x: 6, y: 0 },
+      { x: -2, y: 0 },
+      { x: 2, y: 0 },
+      { x: -4, y: 0 },
+      { x: 4, y: 0 },
+    ],
+    respawnY: 9,
+    theme: { kind: 'vault', bright: false, sky: 0x08080f, skyBottom: 0x1a0d14, fog: 0x120a10, accentA: 0xff2a3a, accentB: 0xffc845 },
+  },
+  {
+    // 配信スタジオ：広い台。左右のカメラクレーン（足場）が円を描いて動き、中央の上にリングライトの足場
+    id: 'studio',
+    name: '配信スタジオ',
+    charId: 'streamer',
+    main: { x1: -11, x2: 11, top: 0, bottom: -3 },
+    platforms: [
+      { x1: -8.5, x2: -5, y: 3.4, moveAmp: 1.5, moveAmpY: 1.0, movePhaseY: Math.PI / 2, movePeriod: 480 },
+      { x1: 5, x2: 8.5, y: 3.4, moveAmp: -1.5, moveAmpY: 1.0, movePhaseY: Math.PI / 2, movePeriod: 480 },
+      { x1: -2, x2: 2, y: 5.6 },
+    ],
+    blast: { left: -24, right: 24, top: 19, bottom: -11 },
+    spawns: [
+      { x: -7, y: 0 },
+      { x: 7, y: 0 },
+      { x: -2.5, y: 0 },
+      { x: 2.5, y: 0 },
+      { x: -9.5, y: 0 },
+      { x: 9.5, y: 0 },
+    ],
+    respawnY: 10,
+    theme: { kind: 'studio', bright: true, sky: 0xffc6e0, skyBottom: 0xfff1f7, fog: 0xffe0ee, accentA: 0xff5ea8, accentB: 0x8a5cff },
+  },
+  { ...timelineStage },
+  { ...gachaStage },
   {
     id: 'arcade',
     name: 'ネオン商店街',
+    charId: 'courier',
     main: { x1: -10, x2: 10, top: 0, bottom: -3 },
     platforms: [
       { x1: -7, x2: -2.5, y: 3.2 },
@@ -144,27 +216,30 @@ STAGES.push(
       { x: 2, y: 0 },
     ],
     respawnY: 10,
-    theme: { kind: 'arcade', sky: 0x10051c, skyBottom: 0x4a0f3a, fog: 0x2a0a2a, neonA: 0xff3fa4, neonB: 0xffd23f },
+    theme: { kind: 'arcade', bright: false, sky: 0x10051c, skyBottom: 0x4a0f3a, fog: 0x2a0a2a, accentA: 0xff3fa4, accentB: 0xffd23f },
   },
   {
-    id: 'cyber',
-    name: '電脳空間',
-    main: { x1: -8, x2: 8, top: 0, bottom: -4 },
+    // AIラボ：左右の足場が逆向きに横へ動き、上に動かない足場
+    id: 'lab',
+    name: 'AIラボ',
+    charId: 'ai',
+    main: { x1: -9, x2: 9, top: 0, bottom: -3 },
     platforms: [
-      { x1: -2.5, x2: 2.5, y: 3.6, moveAmp: 5, movePeriod: 480 },
-      { x1: -2, x2: 2, y: 7.0, moveAmp: -3, movePeriod: 360 },
+      { x1: -7, x2: -3.6, y: 2.8, moveAmp: 1.4, movePeriod: 300 },
+      { x1: 3.6, x2: 7, y: 2.8, moveAmp: -1.4, movePeriod: 300 },
+      { x1: -2, x2: 2, y: 5.6 },
     ],
-    blast: { left: -21, right: 21, top: 18, bottom: -11 },
+    blast: { left: -22, right: 22, top: 18, bottom: -11 },
     spawns: [
-      { x: -5.5, y: 0 },
-      { x: 5.5, y: 0 },
+      { x: -6, y: 0 },
+      { x: 6, y: 0 },
       { x: -2, y: 0 },
       { x: 2, y: 0 },
-      { x: -7, y: 0 },
-      { x: 7, y: 0 },
+      { x: -4, y: 0 },
+      { x: 4, y: 0 },
     ],
-    respawnY: 10,
-    theme: { kind: 'cyber', sky: 0x000814, skyBottom: 0x002a3a, fog: 0x001a26, neonA: 0x00ffc8, neonB: 0x4f7dff },
+    respawnY: 9,
+    theme: { kind: 'lab', bright: true, sky: 0xdfeefa, skyBottom: 0xf6fbff, fog: 0xe6f1fa, accentA: 0x2aa8ff, accentB: 0x7dffcf },
   },
 );
 

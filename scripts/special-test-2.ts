@@ -259,9 +259,9 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   run(sim, 2);
   check('バズり：撃墜すると配信者の段階が上がる', sim.fighters[0].buzz === 1, `段階${sim.fighters[0].buzz}`);
 }
-// ---- 上下に動く足場（みはらし広場のエレベーター）
+// ---- 上下に動く足場（ガチャ会場のリフト）
 {
-  const sim = make('guard', 'hacker', 1, 'tiers');
+  const sim = make('guard', 'hacker', 1, 'gacha');
   const f = sim.fighters[0];
   sim.fighters[1].x = 12;
   // 左のエレベーターの真上から落とす
@@ -281,13 +281,13 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
 }
 {
   // 上がってくる足場に、落ちてきた人が着地できる（すり抜けて落ちない）
-  const sim = make('guard', 'hacker', 1, 'tiers');
+  const sim = make('guard', 'hacker', 1, 'gacha');
   const f = sim.fighters[0];
   sim.fighters[1].x = 12;
   let ok = 0;
   let tries = 0;
   for (let start = 0; start < 300; start += 37) {
-    const s2 = make('guard', 'hacker', 1, 'tiers');
+    const s2 = make('guard', 'hacker', 1, 'gacha');
     s2.fighters[1].x = 12;
     run(s2, start);
     const g = s2.fighters[0];
@@ -301,7 +301,7 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
 }
 {
   // 浮島の床：台の外まで出ていく床に乗ったままでも落ちない
-  const sim = make('guard', 'hacker', 1, 'drift');
+  const sim = make('guard', 'hacker', 1, 'timeline');
   const f = sim.fighters[0];
   sim.fighters[1].x = 5;
   const pl = platformAt(sim.stage.platforms[0], sim.frame);

@@ -5,7 +5,7 @@ function client(name, create) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`${URL_BASE}/room/${code}`);
     const c = { ws, name, msgs: [], snaps: 0, lastSnap: null, results: null, slot: -1, lobby: null, errors: [] };
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 7, name, charId: create ? 'guard' : 'thief', create }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 8, name, charId: create ? 'guard' : 'thief', create }));
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
       if (m.t === 'welcome') { c.slot = m.slot; resolve(c); }
@@ -24,10 +24,10 @@ console.log('同じコードでもう一度作成 →', dup.errors);
 const guest = await client('ゲスト', false);
 await sleep(300);
 console.log('ホスト slot', host.slot, 'ゲスト slot', guest.slot, 'ロビー人数', host.lobby.players.length, 'ホスト', host.lobby.hostSlot);
-guest.ws.send(JSON.stringify({ t: 'config', rules: { mode: 'stock', stocks: 1, timeLimit: 60 }, stageId: 'tiers', cpuCount: 3, cpuLevel: 9 }));
+guest.ws.send(JSON.stringify({ t: 'config', rules: { mode: 'stock', stocks: 1, timeLimit: 60 }, stageId: 'gacha', cpuCount: 3, cpuLevel: 9 }));
 await sleep(200);
 console.log('ゲストが設定変更（無視されるはず）→ CPU数', host.lobby.players.filter(p => p.cpu).length);
-host.ws.send(JSON.stringify({ t: 'config', rules: { mode: 'stock', stocks: 1, timeLimit: 60 }, stageId: 'tiers', cpuCount: 3, cpuLevel: 9 }));
+host.ws.send(JSON.stringify({ t: 'config', rules: { mode: 'stock', stocks: 1, timeLimit: 60 }, stageId: 'gacha', cpuCount: 3, cpuLevel: 9 }));
 await sleep(200);
 console.log('ホストが設定変更 → 参加者', host.lobby.players.map(p => `${p.slot}:${p.name}`).join(', '), 'ステージ', host.lobby.stageId);
 const t0 = Date.now();
@@ -49,6 +49,6 @@ console.log('試合時間', ((Date.now() - t0) / 1000).toFixed(1), '秒 結果',
 const lobbyAfter = guest.lobby;
 console.log('試合後のロビー: ホスト=', lobbyAfter.hostSlot, '人間', lobbyAfter.players.filter(p => !p.cpu).map(p => p.name));
 guest.ws.close();
-const nf = await (async () => { const c2 = await new Promise((res) => { const ws = new WebSocket(`${URL_BASE}/room/0001`); ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 7, name: 'x', charId: 'streamer', create: false })); ws.onmessage = (e) => res(JSON.parse(e.data)); }); return c2; })();
+const nf = await (async () => { const c2 = await new Promise((res) => { const ws = new WebSocket(`${URL_BASE}/room/0001`); ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 8, name: 'x', charId: 'streamer', create: false })); ws.onmessage = (e) => res(JSON.parse(e.data)); }); return c2; })();
 console.log('存在しないルームに参加 →', nf.code);
 process.exit(0);

@@ -111,7 +111,7 @@ export class GameRenderer {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.85, 0.5, 0.86);
       this.composer.addPass(this.bloom);
       this.composer.addPass(new OutputPass());
-      if (this.stage) this.bloom.enabled = this.stage.theme.kind !== 'day';
+      if (this.stage) this.bloom.enabled = !this.stage.theme.bright;
     } else if (q !== 'high' && this.composer) {
       this.composer.dispose();
       this.composer = null;
@@ -213,9 +213,9 @@ export class GameRenderer {
   private buildStage(stage: StageDef): void {
     const th = stage.theme;
     this.scene.background = makeSkyTexture(th.sky, th.skyBottom);
-    if (th.kind === 'day') {
-      // 昼：元の明るい照明。光のにじみはかけない
-      this.scene.fog = new THREE.Fog(th.skyBottom, 40, 90);
+    if (th.bright) {
+      // 昼・明るい室内：明るい照明。光のにじみはかけない
+      this.scene.fog = new THREE.Fog(th.fog, 45, 130);
       this.hemi.color.setHex(0xffffff);
       this.hemi.groundColor.setHex(0x445566);
       this.hemi.intensity = 1.6;
@@ -230,7 +230,7 @@ export class GameRenderer {
       this.sun.color.setHex(0xfff2e6);
       this.sun.intensity = 2.3;
     }
-    if (this.bloom) this.bloom.enabled = th.kind !== 'day';
+    if (this.bloom) this.bloom.enabled = !th.bright;
     this.built = buildStageScene(stage, this.quality);
     this.stageGroup.add(this.built.group);
     this.platformMeshes = this.built.platformMeshes;
@@ -356,8 +356,8 @@ export class GameRenderer {
     const th = stage.theme;
     const sky = makeSkyTexture(th.sky, th.skyBottom);
     scene.background = sky;
-    const day = th.kind === 'day';
-    scene.fog = new THREE.Fog(day ? th.skyBottom : th.fog, day ? 40 : 30, day ? 90 : 120);
+    const day = th.bright;
+    scene.fog = new THREE.Fog(th.fog, day ? 45 : 30, day ? 130 : 120);
     scene.add(day ? new THREE.HemisphereLight(0xffffff, 0x445566, 1.6) : new THREE.HemisphereLight(0xd8dcff, 0x3a2a4a, 1.8));
     const sun = new THREE.DirectionalLight(day ? 0xffffff : 0xfff2e6, day ? 2.2 : 2.3);
     sun.position.set(-8, 20, 14);

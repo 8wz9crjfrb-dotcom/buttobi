@@ -1306,3 +1306,29 @@ input[inputmode='numeric'] {
   margin-top: 8px;
   font-size: 11px;
 }
+
+/* ステージは9つ：横1列に並べる（狭い画面では5列） */
+.stages {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.stage-card .who {
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1.2;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .stages {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-height: 480px) {
+  .stage-card .nm {
+    font-size: 10px;
+  }
+}

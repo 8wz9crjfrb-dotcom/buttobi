@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
