@@ -23,6 +23,12 @@ export interface Settings {
   cpuLevel: number;
   stageId: string;
   rules: MatchRules;
+  /** キャラごとに着ている衣装の id */
+  costumes: Record<string, string>;
+  /** 左利き：スティックを右、ボタンを左に置く */
+  leftHanded: boolean;
+  /** ボタンを動かした位置（画面の幅・高さに対する割合。ボタンの名前ごと） */
+  btnPos: Record<string, { x: number; y: number }>;
 }
 
 const KEY = 'buttobi-settings-v1';
@@ -57,6 +63,9 @@ export function loadSettings(): Settings {
     cpuLevel: 3,
     stageId: STAGES[0].id,
     rules: { ...DEFAULT_RULES },
+    costumes: {},
+    leftHanded: false,
+    btnPos: {},
   };
   try {
     const raw = localStorage.getItem(KEY);
@@ -65,6 +74,8 @@ export function loadSettings(): Settings {
       if (!s.serverUrl) s.serverUrl = def.serverUrl;
       // 前の版のキャラ（ミラなど）が保存されていたら、今のキャラに戻す
       if (!CHARACTERS.some((c) => c.id === s.charId)) s.charId = def.charId;
+      if (!s.costumes || typeof s.costumes !== 'object') s.costumes = {};
+      if (!s.btnPos || typeof s.btnPos !== 'object') s.btnPos = {};
       return s;
     }
   } catch {

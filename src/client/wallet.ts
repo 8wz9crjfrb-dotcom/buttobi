@@ -1,5 +1,7 @@
-// コイン（今後の着せ替えガチャで使う）。ログインボーナスと、勝利・通算勝利数の節目で増える。
+// コインと着せ替えガチャ。コインはログインボーナスと、勝利・通算勝利数の節目で増え、ガチャで衣装を引くのに使う。
 // アカウントがないので、この端末のブラウザに保存する（端末ごと・ブラウザごとに別になる）。
+
+import { GACHA_COSTUMES } from '../shared/costumes';
 
 const KEY = 'buttobi-wallet-v1';
 
@@ -13,6 +15,48 @@ export interface Wallet {
   streak: number;
   /** 受け取り済みの通算勝利ボーナスの勝利数 */
   milestone: number;
+  /** 持っている衣装の id */
+  owned: string[];
+  /** SSR が出ないまま引いた回数（天井用） */
+  pity: number;
+}
+
+// ---------------------------------------------------------------- 着せ替えガチャ
+/** 1回・10回の値段 */
+export const GACHA_COST = { one: 100, ten: 900 };
+/** SSR が出る確率（残りは SR） */
+export const SSR_RATE = 0.1;
+/** この回数 SSR が出なければ、次は必ず SSR（天井） */
+export const PITY_LIMIT = 50;
+/** すでに持っている衣装が出たら、代わりにもらえるコイン */
+export const DUP_REFUND: Record<number, number> = { 4: 20, 5: 100 };
+
+export interface PullResult {
+  id: string;
+  rarity: number;
+  /** すでに持っていた（コインに変わった） */
+  dup: boolean;
+  refund: number;
+}
+
+/** ガチャを引く。コインが足りなければ null */
+export function pullGacha(w: Wallet, count: 1 | 10, rng: () => number = Math.random): PullResult[] | null {
+  const cost = count === 10 ? GACHA_COST.ten : GACHA_COST.one;
+  if (w.coins < cost) return null;
+  w.coins -= cost;
+  const out: PullResult[] = [];
+  for (let i = 0; i < count; i++) {
+    const ssr = w.pity >= PITY_LIMIT - 1 || rng() < SSR_RATE;
+    w.pity = ssr ? 0 : w.pity + 1;
+    const pool = GACHA_COSTUMES.filter((c) => c.rarity === (ssr ? 5 : 4));
+    const pick = pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
+    const dup = w.owned.includes(pick.id) || out.some((o) => o.id === pick.id && !o.dup);
+    const refund = dup ? DUP_REFUND[pick.rarity] ?? 0 : 0;
+    if (dup) w.coins += refund;
+    else w.owned.push(pick.id);
+    out.push({ id: pick.id, rarity: pick.rarity, dup, refund });
+  }
+  return out;
 }
 
 /** ログインボーナス：連続1〜7日目のコイン（7日目は多め。8日目からまた1日目） */
@@ -34,7 +78,7 @@ export function milestoneReward(wins: number): number {
 }
 
 function fresh(): Wallet {
-  return { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0 };
+  return { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0 };
 }
 
 export function loadWallet(): Wallet {
@@ -49,6 +93,8 @@ export function loadWallet(): Wallet {
       lastLogin: typeof w.lastLogin === 'string' ? w.lastLogin : '',
       streak: Math.min(7, num(w.streak)),
       milestone: num(w.milestone),
+      owned: Array.isArray(w.owned) ? w.owned.filter((id): id is string => typeof id === 'string' && GACHA_COSTUMES.some((c) => c.id === id)) : [],
+      pity: num(w.pity),
     };
   } catch {
     return fresh();

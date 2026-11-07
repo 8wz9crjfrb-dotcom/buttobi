@@ -10,7 +10,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { FighterModel } from './fighterModel';
+import { FighterModel, fxTexture } from './fighterModel';
 import { buildStageScene, makeSkyTexture, type BuiltStage } from './stageScene';
 import { PropRenderer } from './props';
 
@@ -238,7 +238,7 @@ export class GameRenderer {
 
   // ---------------------------------------------------------------- キャラ選択の3D表示
   /** キャラ選択画面で、選んでいるキャラを左側に大きく表示する */
-  showPreview(charId: string, slot = 0): void {
+  showPreview(charId: string, slot = 0, costumeId?: string): void {
     if (!this.preview) {
       const scene = new THREE.Scene();
       const disposables: { dispose(): void }[] = [];
@@ -288,16 +288,17 @@ export class GameRenderer {
     }
     const pv = this.preview;
     (pv.ring.material as THREE.MeshBasicMaterial).color.setHex(SLOT_COLORS[slot % SLOT_COLORS.length]);
-    if (pv.charId === charId && pv.model) return;
+    const key = `${charId}/${costumeId ?? ''}`;
+    if (pv.charId === key && pv.model) return;
     if (pv.model) {
       pv.scene.remove(pv.model.root);
       pv.model.dispose();
     }
     const def = getCharacter(charId);
-    pv.model = new FighterModel(def, getCostume(undefined, charId), SLOT_COLORS[slot % SLOT_COLORS.length]);
+    pv.model = new FighterModel(def, getCostume(costumeId, charId), SLOT_COLORS[slot % SLOT_COLORS.length]);
     pv.model.previewTurn = 0.35;
     pv.scene.add(pv.model.root);
-    pv.charId = charId;
+    pv.charId = key;
     pv.spin = 0;
     pv.pop = 0;
   }
@@ -329,7 +330,7 @@ export class GameRenderer {
     cam.lookAt(offset, 1.25, 0);
     cam.updateProjectionMatrix();
     if (pv.model) {
-      const def = getCharacter(pv.charId);
+      const def = getCharacter(pv.charId.split('/')[0]);
       pv.pop = Math.min(1, pv.pop + dt * 5);
       // 選び直したときに、ぽんっと弾む
       const s = 1 + Math.sin(pv.pop * Math.PI) * 0.12;
@@ -739,6 +740,7 @@ export class GameRenderer {
       return;
     }
     if (e.k === 'hit') {
+      this.costumeHit(e);
       const power = Math.min(1, e.p / 16);
       const color = power > 0.6 ? 0xff7a2a : 0xffe066;
       const n = 6 + Math.round(power * 10);
@@ -761,6 +763,30 @@ export class GameRenderer {
       this.spawn(this.ringGeo, color, e.x, e.y, 0, 0, 1, 26, 0.3, true);
       this.koBeam(e.x, e.y, color);
       this.shake = 1.1;
+    }
+  }
+
+  /** SSR衣装の人が攻撃を当てたとき：衣装の粒（星・ハート・コインなど）がはじける */
+  private costumeHit(e: Extract<GameEvent, { k: 'hit' }>): void {
+    if (e.a === undefined || e.a === e.s) return;
+    const p = this.setup?.players.find((x) => x.slot === e.a);
+    if (!p) return;
+    const fx = getCostume(p.costume, p.charId).fx;
+    if (!fx) return;
+    const tex = fxTexture(fx.particle);
+    const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff];
+    const n = 7 + Math.min(6, Math.round(e.p / 3));
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+      const sp = 3 + Math.random() * 4;
+      // 3つに1つは白くして、どんな背景でも見えるようにする
+      const color = i % 3 === 0 ? 0xffffff : fx.hit < 0 ? rainbow[i % rainbow.length] : fx.hit;
+      const mat = new THREE.SpriteMaterial({ map: tex, color, transparent: true, depthWrite: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.set(e.x, e.y, 0.6);
+      sprite.scale.setScalar(0.7);
+      this.scene.add(sprite);
+      this.particles.push({ mesh: sprite as unknown as THREE.Mesh, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 1, life: 36, max: 36, grow: -0.006 });
     }
   }
 

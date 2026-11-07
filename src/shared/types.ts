@@ -130,7 +130,8 @@ export interface MatchSetup {
 
 /** 演出用のイベント（ヒット・撃墜など） */
 export type GameEvent =
-  | { k: 'hit'; x: number; y: number; p: number; s: number }
+  /** 当たった（s = 当たった人、a = 当てた人） */
+  | { k: 'hit'; x: number; y: number; p: number; s: number; a?: number }
   | { k: 'shield'; x: number; y: number }
   | { k: 'ko'; x: number; y: number; s: number }
   | { k: 'jump'; s: number }

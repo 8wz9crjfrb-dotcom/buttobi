@@ -18,7 +18,14 @@ export interface NetHandlers {
   onEnd(results: ResultEntry[]): void;
   onError(code: string, msg: string): void;
   onClose(): void;
+  /** 通信が切れて、つなぎ直している（attempt 回目） */
+  onReconnecting(attempt: number): void;
+  /** つなぎ直せた */
+  onReconnected(): void;
 }
+
+/** つなぎ直す間隔（ms）。これを全部試してだめならあきらめる（合計 約45秒） */
+const RECONNECT_DELAYS = [500, 1000, 2000, 3000, 4000, 5000, 6000, 8000, 8000, 8000];
 
 /** サーバーが本人の選手について返した、照合用の情報 */
 export interface Authority {
@@ -52,17 +59,32 @@ export class NetClient {
   rtt = 0;
   slot = -1;
   private closedByUser = false;
+  /** つなぎ直しに使う情報 */
+  private params: { baseUrl: string; code: string; name: string; charId: string; costume?: string } | null = null;
+  private token = '';
+  private attempt = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** つなぎ直している最中 */
+  reconnecting = false;
 
   constructor(private handlers: NetHandlers) {}
 
-  connect(baseUrl: string, code: string, create: boolean, name: string, charId: string): void {
+  connect(baseUrl: string, code: string, create: boolean, name: string, charId: string, costume?: string): void {
     this.close();
     this.closedByUser = false;
-    const url = `${baseUrl.replace(/\/$/, '')}/room/${code}`;
+    this.params = { baseUrl, code, name, charId, costume };
+    this.token = '';
+    this.open(create);
+  }
+
+  private open(create: boolean): void {
+    const p = this.params!;
+    const url = `${p.baseUrl.replace(/\/$/, '')}/room/${p.code}`;
     const ws = new WebSocket(url);
     this.ws = ws;
+    const rejoin = this.reconnecting && this.token ? { slot: this.slot, token: this.token } : undefined;
     ws.onopen = () => {
-      this.send({ t: 'hello', v: PROTOCOL_VERSION, name, charId, create });
+      this.send({ t: 'hello', v: PROTOCOL_VERSION, name: p.name, charId: p.charId, costume: p.costume, create: rejoin ? false : create, rejoin });
       this.pingTimer = setInterval(() => this.send({ t: 'ping', c: performance.now() }), 2000);
     };
     ws.onmessage = (ev) => {
@@ -78,7 +100,20 @@ export class NetClient {
       if (this.pingTimer) clearInterval(this.pingTimer);
       this.pingTimer = null;
       if (this.ws === ws) this.ws = null;
-      if (!this.closedByUser) this.handlers.onClose();
+      if (this.closedByUser) return;
+      // ルームに入っていたなら、同じ枠へのつなぎ直しを試す
+      if (this.token && this.slot >= 0 && this.attempt < RECONNECT_DELAYS.length) {
+        this.reconnecting = true;
+        const delay = RECONNECT_DELAYS[this.attempt++];
+        this.handlers.onReconnecting(this.attempt);
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null;
+          if (!this.closedByUser) this.open(false);
+        }, delay);
+        return;
+      }
+      this.reconnecting = false;
+      this.handlers.onClose();
     };
     ws.onerror = () => {
       /* onclose で処理する */
@@ -87,10 +122,16 @@ export class NetClient {
 
   private onMessage(m: ServerMsg): void {
     switch (m.t) {
-      case 'welcome':
+      case 'welcome': {
+        const wasReconnecting = this.reconnecting;
         this.slot = m.slot;
-        this.handlers.onWelcome(m.slot);
+        this.token = m.token;
+        this.attempt = 0;
+        this.reconnecting = false;
+        if (wasReconnecting) this.handlers.onReconnected();
+        else this.handlers.onWelcome(m.slot);
         break;
+      }
       case 'lobby':
         this.handlers.onLobby(m.lobby);
         break;
@@ -122,6 +163,9 @@ export class NetClient {
         this.rtt = performance.now() - m.c;
         break;
       case 'error':
+        // つなぎ直しに失敗した（猶予が過ぎた等）：これ以上は試さない
+        this.token = '';
+        this.reconnecting = false;
         this.handlers.onError(m.code, m.msg);
         break;
     }
@@ -193,8 +237,12 @@ export class NetClient {
     return e;
   }
 
-  setChar(charId: string): void {
-    this.send({ t: 'char', charId });
+  setChar(charId: string, costume?: string): void {
+    if (this.params) {
+      this.params.charId = charId;
+      this.params.costume = costume;
+    }
+    this.send({ t: 'char', charId, costume });
   }
 
   config(rules: MatchRules, stageId: string, cpuCount: number, cpuLevel: number): void {
@@ -207,6 +255,11 @@ export class NetClient {
 
   close(): void {
     this.closedByUser = true;
+    this.reconnecting = false;
+    this.token = '';
+    this.attempt = 0;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
     if (this.ws) {
       try {
         this.send({ t: 'leave' });

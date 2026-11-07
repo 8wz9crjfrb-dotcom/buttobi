@@ -783,7 +783,7 @@ export class Sim {
           const pm = this.powerMul(f);
           this.knock(v, v.x >= f.x ? 1 : -1, 18 * pm.dmg, 8, 14, 50, pm.kb, f.slot);
           v.hitlag = 8;
-          this.events.push({ k: 'hit', x: v.x, y: v.y + v.h / 2, p: 18, s: v.slot });
+          this.events.push({ k: 'hit', x: v.x, y: v.y + v.h / 2, p: 18, s: v.slot, a: f.slot });
         }
         break;
       }
@@ -885,7 +885,7 @@ export class Sim {
     this.setState(v, 'grabbed');
     this.placeGrabbed(a, v);
     a.hitlag = v.hitlag = 4;
-    this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: 1, s: v.slot });
+    this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: 1, s: v.slot, a: a.slot });
   }
 
   /** つかまれている人を、つかんでいる人の前に置く */
@@ -938,7 +938,7 @@ export class Sim {
       v.lastHitBy = a.slot;
       v.lastHitFrame = this.frame;
       a.hitlag = v.hitlag = 4;
-      this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: 3, s: v.slot });
+      this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: 3, s: v.slot, a: a.slot });
       return;
     }
     // 投げ：後ろ投げは振り向いてから投げる
@@ -951,7 +951,7 @@ export class Sim {
     this.knock(v, a.facing, md.dmg * pm.dmg, md.base, md.growth, md.angle, pm.kb, a.slot);
     this.lifesteal(a, v.damage - before);
     a.hitlag = v.hitlag = 5;
-    this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: md.dmg, s: v.slot });
+    this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: md.dmg, s: v.slot, a: a.slot });
   }
 
   /** 崖をつかむ（API呼び出しでも使う） */
@@ -1350,7 +1350,7 @@ export class Sim {
             this.knock(hit, dir, md.dmg * (owner?.def.dmgMul ?? 1), md.base, md.growth, md.angle, owner?.def.kbMul ?? 1, e.owner);
             hit.hitlag = 5;
             this.events.push({ k: 'boom', x: e.x, y: e.y + 0.3 });
-            this.events.push({ k: 'hit', x: e.x, y: e.y + 0.3, p: md.dmg, s: hit.slot });
+            this.events.push({ k: 'hit', x: e.x, y: e.y + 0.3, p: md.dmg, s: hit.slot, a: e.owner });
             continue;
           }
         }
@@ -1723,7 +1723,7 @@ export class Sim {
     const lag = Math.floor(3 + dmg / 3);
     a.hitlag = lag;
     v.hitlag = lag;
-    this.events.push({ k: 'hit', x: hx, y: hy, p: dmg, s: v.slot });
+    this.events.push({ k: 'hit', x: hx, y: hy, p: dmg, s: v.slot, a: a.slot });
   }
 
   /** 抜き取り（データ泥棒）：与えたダメージの1/4だけ回復 */
@@ -1759,7 +1759,7 @@ export class Sim {
       const back = Math.max(8, dmg * 1.3) * v.def.dmgMul;
       this.knock(a, v.facing, back, md.base, md.growth, md.angle, v.def.kbMul, v.slot);
       a.hitlag = v.hitlag = 8;
-      this.events.push({ k: 'hit', x: a.x, y: a.y + a.h * 0.5, p: back, s: a.slot });
+      this.events.push({ k: 'hit', x: a.x, y: a.y + a.h * 0.5, p: back, s: a.slot, a: v.slot });
     }
     return true;
   }
@@ -1947,7 +1947,7 @@ export class Sim {
               v.poisonFrom = p.owner;
             }
             v.hitlag = 3;
-            this.events.push({ k: 'hit', x: p.x, y: p.y, p: p.dmg, s: v.slot });
+            this.events.push({ k: 'hit', x: p.x, y: p.y, p: p.dmg, s: v.slot, a: p.owner });
           }
           // ブーメランは当たっても消えずに飛び続ける
           if (p.boomerang > 0) {

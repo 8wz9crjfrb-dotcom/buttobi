@@ -4,7 +4,7 @@
 
 import * as THREE from 'three';
 import type { CharacterDef } from '../shared/characters';
-import type { Costume } from '../shared/costumes';
+import type { Accessory, Costume, CostumeFx } from '../shared/costumes';
 import { moveOf } from '../shared/moves';
 import { FX_BIKE, FX_CHARGED, FX_POWER, FX_SPEED, type ViewFighter } from '../shared/types';
 
@@ -245,6 +245,85 @@ function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean)
   return t;
 }
 
+/** 頭のてっぺんの高さ（帽子・髪の上。王冠や天使の輪を置く位置） */
+const HEAD_TOP: Record<string, number> = { guard: 0.67, hacker: 0.7, thief: 0.67, streamer: 0.66, dopa: 0.72, gacha: 0.66, courier: 0.66, ai: 0.64 };
+
+/** SSR の粒の絵 */
+const fxTextures = new Map<string, THREE.Texture>();
+export function fxTexture(kind: string): THREE.Texture {
+  const hit = fxTextures.get(kind);
+  if (hit) return hit;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#ffffff';
+  g.textAlign = 'center';
+  const glyph = (t: string, size: number) => {
+    g.font = `900 ${size}px "Hiragino Sans","Noto Sans JP",sans-serif`;
+    g.fillText(t, 32, 32 + size * 0.36);
+  };
+  switch (kind) {
+    case 'sparkle':
+      g.beginPath();
+      g.moveTo(32, 2);
+      g.quadraticCurveTo(36, 28, 62, 32);
+      g.quadraticCurveTo(36, 36, 32, 62);
+      g.quadraticCurveTo(28, 36, 2, 32);
+      g.quadraticCurveTo(28, 28, 32, 2);
+      g.fill();
+      break;
+    case 'data':
+      g.font = `bold 40px monospace`;
+      g.fillText(Math.random() < 0.5 ? '01' : '10', 32, 46);
+      break;
+    case 'petal':
+      g.beginPath();
+      g.ellipse(32, 32, 14, 26, 0.6, 0, Math.PI * 2);
+      g.fill();
+      break;
+    case 'heart':
+      glyph('♥', 56);
+      break;
+    case 'star':
+      glyph('★', 56);
+      break;
+    case 'coin': {
+      g.beginPath();
+      g.arc(32, 32, 26, 0, Math.PI * 2);
+      g.fill();
+      g.globalCompositeOperation = 'destination-out';
+      g.font = `900 30px sans-serif`;
+      g.fillText('¥', 32, 43);
+      break;
+    }
+    case 'flame': {
+      const r = g.createRadialGradient(32, 40, 2, 32, 36, 28);
+      r.addColorStop(0, 'rgba(255,255,255,1)');
+      r.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = r;
+      g.beginPath();
+      g.moveTo(32, 4);
+      g.quadraticCurveTo(56, 40, 32, 60);
+      g.quadraticCurveTo(8, 40, 32, 4);
+      g.fill();
+      break;
+    }
+    case 'ring': {
+      const r = g.createRadialGradient(32, 32, 10, 32, 32, 32);
+      r.addColorStop(0, 'rgba(255,255,255,0)');
+      r.addColorStop(0.6, 'rgba(255,255,255,1)');
+      r.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = r;
+      g.fillRect(0, 0, 64, 64);
+      break;
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  fxTextures.set(kind, t);
+  return t;
+}
+
 /** 瞳の色（キャラごと） */
 const EYE_COLORS: Record<string, number> = {
   guard: 0x3a5aa0,
@@ -346,6 +425,8 @@ export class FighterModel {
     this.buildCharacter(def.id);
     this.buildCharacter2(def.id);
     this.buildAttackProps(def.id);
+    this.buildExtras(costume);
+    if (costume.fx) this.buildFx(costume.fx);
 
     // ガード（シールド）
     this.shieldMesh = new THREE.Mesh(
@@ -649,6 +730,180 @@ export class FighterModel {
     }
   }
 
+  // ---------------------------------------------------------------- 衣装の小物
+  private buildExtras(costume: Costume): void {
+    const list = costume.extras ?? [];
+    if (!list.length) return;
+    const col = costume.extraColor ?? this.c.accent;
+    const top = HEAD_TOP[this.def.id] ?? 0.66;
+    const h = this.head;
+    const b = this.body;
+    const wide = this.def.id === 'guard' ? 1.22 : this.def.id === 'thief' ? 0.95 : 1;
+    const gold = this.toon(col);
+    for (const a of list as Accessory[]) {
+      switch (a) {
+        case 'sunglasses': {
+          const glass = this.toon(0x121218);
+          for (const x of [0.11, -0.11]) this.part(h, new THREE.BoxGeometry(0.14, 0.08, 0.025), glass, [x, 0.275, 0.305], { outline: false });
+          this.part(h, new THREE.BoxGeometry(0.08, 0.018, 0.02), glass, [0, 0.29, 0.31], { outline: false });
+          for (const x of [0.2, -0.2]) this.part(h, new THREE.BoxGeometry(0.02, 0.018, 0.2), glass, [x, 0.29, 0.2], { rot: [0, x > 0 ? 0.5 : -0.5, 0], outline: false });
+          // レンズの反射
+          for (const x of [0.13, -0.09]) this.part(h, new THREE.BoxGeometry(0.03, 0.012, 0.005), this.glow(0xffffff), [x, 0.3, 0.32], { rot: [0, 0, -0.5], outline: false });
+          this.hideEyes = true;
+          break;
+        }
+        case 'sash':
+          this.part(b, new THREE.BoxGeometry(0.075, 0.56, 0.02), gold, [0, 0.92, 0.175], { rot: [0, 0, 0.75], outline: false });
+          break;
+        case 'cape': {
+          const sw = this.swingPivot(b, [0, 1.16, -0.17], 0.45);
+          const geo = new THREE.CylinderGeometry(0.22 * wide, 0.36 * wide, 0.8, 12, 1, true, Math.PI * 0.6, Math.PI * 0.8);
+          const mat = this.toon(col);
+          mat.side = THREE.DoubleSide;
+          this.part(sw, geo, mat, [0, -0.4, 0.08], { outline: false });
+          break;
+        }
+        case 'crown': {
+          const g = new THREE.Group();
+          g.position.set(0, top - 0.02, 0.02);
+          g.rotation.z = -0.12;
+          h.add(g);
+          const ring = this.toon(col);
+          ring.side = THREE.DoubleSide;
+          this.part(g, new THREE.CylinderGeometry(0.13, 0.12, 0.07, 16, 1, true), ring, [0, 0.035, 0]);
+          for (let k = 0; k < 5; k++) {
+            const ang = (k / 5) * Math.PI * 2;
+            this.part(g, new THREE.ConeGeometry(0.03, 0.08, 5), ring, [Math.cos(ang) * 0.12, 0.1, Math.sin(ang) * 0.12], { outline: false });
+          }
+          this.part(g, new THREE.SphereGeometry(0.025, 8, 6), this.glow(0xff3a5a), [0, 0.04, 0.125], { outline: false });
+          break;
+        }
+        case 'headphones': {
+          const hp = this.toon(col);
+          this.part(h, new THREE.TorusGeometry(0.34, 0.03, 8, 24, Math.PI), hp, [0, 0.3, 0]);
+          for (const x of [0.34, -0.34]) {
+            this.part(h, new THREE.CylinderGeometry(0.1, 0.1, 0.08, 18), hp, [x, 0.27, 0], { rot: [0, 0, Math.PI / 2] });
+            this.part(h, new THREE.CylinderGeometry(0.06, 0.06, 0.085, 14), this.glow(this.c.accent), [x * 1.02, 0.27, 0], { rot: [0, 0, Math.PI / 2], outline: false });
+          }
+          break;
+        }
+        case 'catEars':
+          for (const x of [0.17, -0.17]) {
+            this.part(h, new THREE.ConeGeometry(0.09, 0.17, 4), this.toon(col), [x, top - 0.02, 0.02], { rot: [0, Math.PI / 4, x > 0 ? -0.35 : 0.35] });
+            this.part(h, new THREE.ConeGeometry(0.05, 0.1, 4), this.toon(0xffd6e8), [x * 0.98, top - 0.03, 0.06], { rot: [0, Math.PI / 4, x > 0 ? -0.35 : 0.35], outline: false });
+          }
+          break;
+        case 'halo': {
+          const ringG = new THREE.Group();
+          ringG.position.set(0, top + 0.14, 0);
+          h.add(ringG);
+          this.part(ringG, new THREE.TorusGeometry(0.2, 0.022, 8, 32), this.glow(col), [0, 0, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+          this.halos.push(ringG);
+          break;
+        }
+        case 'scarf': {
+          this.part(b, new THREE.TorusGeometry(0.16, 0.06, 8, 20), this.toon(col), [0, 1.17, 0], { rot: [Math.PI / 2, 0, 0] });
+          const sw = this.swingPivot(b, [0.1, 1.13, -0.12], 1.0);
+          this.part(sw, new THREE.BoxGeometry(0.1, 0.36, 0.035), this.toon(col), [0, -0.17, -0.03], { rot: [0.3, 0, 0.1] });
+          break;
+        }
+        case 'starClip': {
+          const g = new THREE.Group();
+          g.position.set(0.25, top - 0.17, 0.14);
+          h.add(g);
+          for (const r of [0, Math.PI / 4]) this.part(g, new THREE.OctahedronGeometry(0.06, 0), this.toon(col), [0, 0, 0], { rot: [0, 0, r], scale: [1, 1, 0.35], outline: false });
+          break;
+        }
+        case 'bow': {
+          const g = new THREE.Group();
+          g.position.set(0.16, top - 0.06, 0.04);
+          g.rotation.z = -0.4;
+          h.add(g);
+          for (const x of [0.07, -0.07]) this.part(g, new THREE.ConeGeometry(0.06, 0.13, 8), this.toon(col), [x, 0, 0], { rot: [0, 0, x > 0 ? Math.PI / 2 : -Math.PI / 2] });
+          this.part(g, new THREE.SphereGeometry(0.035, 8, 6), this.toon(col), [0, 0, 0]);
+          break;
+        }
+        case 'wings':
+          for (const x of [1, -1]) {
+            const sw = new THREE.Group();
+            sw.position.set(x * 0.1, 1.02, -0.18);
+            b.add(sw);
+            this.part(sw, new THREE.SphereGeometry(0.2, 14, 10), this.toon(0xffffff), [x * 0.2, 0.08, -0.02], { scale: [1.1, 0.75, 0.22], rot: [0, 0, x * 0.5] });
+            this.part(sw, new THREE.SphereGeometry(0.14, 12, 8), this.toon(col), [x * 0.18, -0.08, -0.03], { scale: [1.0, 0.6, 0.2], rot: [0, 0, x * 0.9], outline: false });
+            this.wingGroups.push({ g: sw, side: x });
+          }
+          break;
+        case 'capBack': {
+          const cap = this.toon(col);
+          this.part(h, new THREE.SphereGeometry(0.335, 22, 12, 0, Math.PI * 2, 0, Math.PI * 0.42), cap, [0, 0.31, -0.01], { rot: [-0.15, 0, 0] });
+          this.part(h, new THREE.BoxGeometry(0.3, 0.025, 0.17), cap, [0, 0.47, -0.36], { rot: [-0.45, 0, 0] });
+          break;
+        }
+        case 'headband':
+          this.part(h, new THREE.TorusGeometry(0.318, 0.032, 6, 28), this.toon(col), [0, 0.42, 0], { rot: [Math.PI / 2 + 0.12, 0, 0], outline: false });
+          this.part(h, new THREE.BoxGeometry(0.08, 0.18, 0.02), this.toon(col), [0.12, 0.33, -0.3], { rot: [0.2, 0.3, -0.4], outline: false });
+          break;
+        case 'coat': {
+          const mat = this.toon(col);
+          mat.side = THREE.DoubleSide;
+          this.part(b, new THREE.CylinderGeometry(0.235 * wide, 0.29 * wide, 0.42, 16, 1, true, 0.35, Math.PI * 2 - 0.7), mat, [0, 0.58, 0]);
+          for (const x of [0.06, -0.06]) this.part(b, new THREE.BoxGeometry(0.05, 0.3, 0.02), mat, [x, 1.0, 0.175], { rot: [0, 0, x > 0 ? -0.25 : 0.25], outline: false });
+          break;
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- SSR のエフェクト（まわりに舞う粒と足元の光）
+  private buildFx(fx: CostumeFx): void {
+    const n = 14;
+    const pos = new Float32Array(n * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({ size: fx.particle === 'data' ? 0.26 : 0.22, map: fxTexture(fx.particle), color: fx.color, transparent: true, depthWrite: false, opacity: 0.9 });
+    const pts = new THREE.Points(geo, mat);
+    pts.frustumCulled = false;
+    this.root.add(pts);
+    const aura = new THREE.Mesh(
+      new THREE.RingGeometry(0.35, 0.62, 32),
+      new THREE.MeshBasicMaterial({ color: fx.color, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, map: fxTexture('ring') }),
+    );
+    aura.rotation.x = -Math.PI / 2;
+    aura.position.y = 0.02;
+    this.root.add(aura);
+    const seeds = Array.from({ length: n }, (_, i) => ({ a: (i / n) * Math.PI * 2, r: 0.35 + (i % 3) * 0.1, s: 0.6 + (i % 4) * 0.15, o: i / n }));
+    this.fxState = { pts, aura, seeds, kind: fx.particle };
+  }
+  private fxState: { pts: THREE.Points; aura: THREE.Mesh; seeds: { a: number; r: number; s: number; o: number }[]; kind: CostumeFx['particle'] } | null = null;
+  private hideEyes = false;
+  private halos: THREE.Group[] = [];
+  private wingGroups: { g: THREE.Group; side: number }[] = [];
+
+  private updateFx(time: number, visible: boolean): void {
+    for (const hg of this.halos) {
+      hg.position.y = (HEAD_TOP[this.def.id] ?? 0.66) + 0.14 + Math.sin(time * 2.4) * 0.02;
+      hg.rotation.y = time * 1.5;
+    }
+    for (const w of this.wingGroups) w.g.rotation.y = w.side * (0.25 + Math.sin(time * 3.2) * 0.25);
+    const st = this.fxState;
+    if (!st) return;
+    st.pts.visible = visible;
+    st.aura.visible = visible;
+    const a = st.pts.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const sc = this.def.scale;
+    st.seeds.forEach((sd, i) => {
+      const life = (time * sd.s * 0.35 + sd.o) % 1;
+      const ang = sd.a + time * (st.kind === 'flame' ? 0.4 : 1.1);
+      const r = sd.r * (st.kind === 'petal' ? 1.2 : 1) * sc;
+      const y = (st.kind === 'coin' || st.kind === 'petal' ? 2.1 - life * 2.1 : life * 2.1) * sc;
+      a.setXYZ(i, Math.cos(ang) * r, y, Math.sin(ang) * r * 0.6);
+    });
+    a.needsUpdate = true;
+    (st.pts.material as THREE.PointsMaterial).opacity = 0.75 + Math.sin(time * 4) * 0.15;
+    (st.aura.material as THREE.MeshBasicMaterial).opacity = 0.25 + Math.sin(time * 3) * 0.1;
+    st.aura.rotation.z = time * 0.8;
+  }
+
   /** 攻撃のときだけ手に持つ道具 */
   private buildAttackProps(id: string): void {
     const c = this.c;
@@ -915,6 +1170,8 @@ export class FighterModel {
     this.outlineMat.opacity = opacity;
     this.outlineMat.visible = opacity > 0.3;
     this.halo.visible = v.state === 'respawn';
+    this.updateFx(time, opacity > 0.5);
+    if (this.hideEyes) for (const e of this.eyePatches) e.mat.visible = false;
     this.marker.visible = !invisible && this.previewTurn === null && this.showMarker;
     this.marker.position.y = 2.25 * def.scale + Math.sin(time * 4) * 0.05;
   }
@@ -1686,6 +1943,10 @@ export class FighterModel {
     });
     for (const m of this.mats) m.dispose();
     for (const m of this.glowMats) m.dispose();
+    if (this.fxState) {
+      (this.fxState.pts.material as THREE.Material).dispose();
+      (this.fxState.aura.material as THREE.Material).dispose();
+    }
     this.outlineMat.dispose();
   }
 }

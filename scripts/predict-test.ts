@@ -25,7 +25,7 @@ function open(create: boolean, name: string): Promise<{ ws: WebSocket; slot: num
   return new Promise((resolve) => {
     const ws = new WebSocket(`${BASE}/room/${code}`);
     const c = { ws, slot: -1, inbox: [] as any[] };
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 8, name, charId: 'streamer', create }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 9, name, charId: 'streamer', create }));
     ws.onmessage = (ev) => {
       // 受信側の遅延
       later('in', () => {

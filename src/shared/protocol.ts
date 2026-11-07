@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -22,6 +22,8 @@ export interface LobbyPlayer {
   cpu: boolean;
   cpuLevel: number;
   connected: boolean;
+  /** 着ている衣装 */
+  costume?: string;
 }
 
 export interface LobbyInfo {
@@ -35,8 +37,9 @@ export interface LobbyInfo {
 
 /** 端末 → サーバー */
 export type ClientMsg =
-  | { t: 'hello'; v: number; name: string; charId: string; create: boolean }
-  | { t: 'char'; charId: string }
+  /** rejoin：通信が切れた後に、同じ枠に戻る（welcome で受け取った合言葉を使う） */
+  | { t: 'hello'; v: number; name: string; charId: string; create: boolean; costume?: string; rejoin?: { slot: number; token: string } }
+  | { t: 'char'; charId: string; costume?: string }
   | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number }
   | { t: 'start' }
   /** 入力。s = 最初の入力の通し番号、i = 1フレームごとの [mx, my, ボタン] */
@@ -46,7 +49,8 @@ export type ClientMsg =
 
 /** サーバー → 端末 */
 export type ServerMsg =
-  | { t: 'welcome'; slot: number }
+  /** token：通信が切れたときに同じ枠へ戻るための合言葉 */
+  | { t: 'welcome'; slot: number; token: string }
   | { t: 'lobby'; lobby: LobbyInfo }
   | { t: 'start'; setup: MatchSetup }
   /** me = 受け取った人の選手について、処理済みの入力番号(a)と完全な状態(st) */

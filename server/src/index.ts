@@ -4,6 +4,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CpuController } from '../../src/shared/ai';
 import { CHARACTERS } from '../../src/shared/characters';
+import { COSTUMES } from '../../src/shared/costumes';
 import {
   MAX_INPUTS_PER_MSG,
   MAX_PLAYERS,
@@ -44,10 +45,21 @@ interface Attachment {
   slot: number;
 }
 
+interface StoredHuman {
+  slot: number;
+  name: string;
+  charId: string;
+  costume?: string;
+  /** 通信が切れたときに同じ枠へ戻るための合言葉 */
+  token: string;
+  /** 通信が切れた時刻（つながっている間は 0）。猶予の間は枠を残す */
+  goneAt: number;
+}
+
 interface StoredLobby {
   code: string;
   hostSlot: number;
-  humans: { slot: number; name: string; charId: string }[];
+  humans: StoredHuman[];
   rules: MatchRules;
   stageId: string;
   cpuCount: number;
@@ -68,6 +80,19 @@ const QUEUE_SOFT = 6;
 /** これより長くなったら（通信が長く止まった等）、一気に QUEUE_SOFT まで捨てる */
 const QUEUE_HARD = 40;
 const SNAP_EVERY = 2; // 60fps のうち 2 フレームに 1 回送る = 30回/秒
+/** 通信が切れてから、同じ枠に戻れる時間（ms） */
+const REJOIN_GRACE = 60_000;
+
+/** そのキャラの衣装として正しければ id を、そうでなければ undefined を返す */
+function validCostume(charId: string, id: unknown): string | undefined {
+  return typeof id === 'string' && COSTUMES.some((c) => c.id === id && c.charId === charId) ? id : undefined;
+}
+
+function makeToken(): string {
+  const a = new Uint8Array(12);
+  crypto.getRandomValues(a);
+  return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 export class Room extends DurableObject<Env> {
   private lobby: StoredLobby | null = null;
@@ -79,6 +104,8 @@ export class Room extends DurableObject<Env> {
   private loop: ReturnType<typeof setInterval> | null = null;
   private lastTick = 0;
   private eventBuf: GameEvent[] = [];
+  /** 対戦中の設定（途中で戻ってきた人に送る） */
+  private setup: MatchSetup | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -137,7 +164,7 @@ export class Room extends DurableObject<Env> {
   private lobbyInfo(): LobbyInfo {
     const l = this.lobby!;
     const connected = this.connectedSlots();
-    const players: LobbyPlayer[] = l.humans.map((h) => ({ ...h, cpu: false, cpuLevel: 0, connected: connected.has(h.slot) }));
+    const players: LobbyPlayer[] = l.humans.map((h) => ({ slot: h.slot, name: h.name, charId: h.charId, costume: h.costume, cpu: false, cpuLevel: 0, connected: connected.has(h.slot) }));
     if (this.sim) {
       for (const [slot, level] of this.cpuSlots) {
         if (players.some((p) => p.slot === slot)) continue;
@@ -182,6 +209,26 @@ export class Room extends DurableObject<Env> {
         return ws.close(1000, 'version');
       }
       const connected = this.connectedSlots();
+      // 通信が切れた人が、同じ枠に戻ってきた
+      if (msg.rejoin && this.lobby) {
+        const r = msg.rejoin;
+        const h = this.lobby.humans.find((x) => x.slot === r.slot && x.token === r.token);
+        if (h && !connected.has(h.slot) && (h.goneAt === 0 || Date.now() - h.goneAt < REJOIN_GRACE)) {
+          h.goneAt = 0;
+          ws.serializeAttachment({ slot: h.slot, code: this.lobby.code });
+          if (this.sim) {
+            // CPU が代わりに動かしていたのをやめ、入力の番号を最初から数え直す
+            if (this.setup?.players.some((p) => p.slot === h.slot && !p.cpu)) this.cpuSlots.delete(h.slot);
+            this.queues.delete(h.slot);
+          }
+          await this.save();
+          this.send(ws, { t: 'welcome', slot: h.slot, token: h.token });
+          this.send(ws, { t: 'lobby', lobby: this.lobbyInfo() });
+          if (this.sim && this.setup) this.send(ws, { t: 'start', setup: this.setup });
+          this.pushLobby();
+          return;
+        }
+      }
       const active = this.lobby && this.lobby.humans.some((h) => connected.has(h.slot));
       if (msg.create && active) {
         this.send(ws, { t: 'error', code: 'taken', msg: 'このコードは使用中です。' });
@@ -208,7 +255,7 @@ export class Room extends DurableObject<Env> {
         this.send(ws, { t: 'error', code: 'inmatch', msg: '対戦中です。終わるまで待ってください。' });
         return ws.close(1000, 'inmatch');
       }
-      l.humans = l.humans.filter((h) => connected.has(h.slot));
+      l.humans = l.humans.filter((h) => connected.has(h.slot) || (h.goneAt > 0 && Date.now() - h.goneAt < REJOIN_GRACE));
       if (l.humans.length >= MAX_PLAYERS) {
         this.send(ws, { t: 'error', code: 'full', msg: 'ルームが満員です（最大6人）。' });
         return ws.close(1000, 'full');
@@ -216,12 +263,13 @@ export class Room extends DurableObject<Env> {
       let s = 0;
       while (l.humans.some((h) => h.slot === s)) s++;
       const charId = CHARACTERS.some((c) => c.id === msg.charId) ? msg.charId : CHARACTERS[0].id;
-      l.humans.push({ slot: s, name: sanitizeName(msg.name), charId });
+      const token = makeToken();
+      l.humans.push({ slot: s, name: sanitizeName(msg.name), charId, costume: validCostume(charId, msg.costume), token, goneAt: 0 });
       if (l.humans.length === 1 || !l.humans.some((h) => h.slot === l.hostSlot)) l.hostSlot = s;
       l.cpuCount = Math.min(l.cpuCount, MAX_PLAYERS - l.humans.length);
       ws.serializeAttachment({ slot: s, code: l.code });
       await this.save();
-      this.send(ws, { t: 'welcome', slot: s });
+      this.send(ws, { t: 'welcome', slot: s, token });
       this.pushLobby();
       return;
     }
@@ -246,7 +294,10 @@ export class Room extends DurableObject<Env> {
       case 'char': {
         if (this.sim) return;
         const h = l.humans.find((x) => x.slot === slot);
-        if (h && CHARACTERS.some((c) => c.id === msg.charId)) h.charId = msg.charId;
+        if (h && CHARACTERS.some((c) => c.id === msg.charId)) {
+          h.charId = msg.charId;
+          h.costume = validCostume(h.charId, msg.costume);
+        }
         await this.save();
         return this.pushLobby();
       }
@@ -270,7 +321,7 @@ export class Room extends DurableObject<Env> {
         const players = info.players.filter((p) => p.cpu || p.connected);
         if (players.length < 2) return;
         const setup: MatchSetup = {
-          players: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel })),
+          players: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel, costume: p.costume })),
           stageId: l.stageId,
           rules: l.rules,
           seed: (Math.random() * 2 ** 31) | 0,
@@ -279,8 +330,10 @@ export class Room extends DurableObject<Env> {
         return;
       }
       case 'leave':
+        // 自分で抜けた：枠は残さない
+        ws.serializeAttachment({ slot: -1 });
         ws.close(1000, 'leave');
-        await this.handleLeave(slot);
+        await this.handleLeave(slot, true);
         return;
     }
   }
@@ -297,21 +350,43 @@ export class Room extends DurableObject<Env> {
     await this.webSocketClose(ws);
   }
 
-  private async handleLeave(slot: number): Promise<void> {
+  /** 全員の通信が切れたまま猶予が過ぎたら、ルームを閉じる */
+  async alarm(): Promise<void> {
+    if (!this.lobby) return;
+    if (this.connectedSlots().size > 0) return;
+    this.stopMatch();
+    this.lobby = null;
+    await this.save();
+  }
+
+  /** 抜けた・通信が切れた。voluntary = 自分で抜けた（枠を残さない） */
+  private async handleLeave(slot: number, voluntary = false): Promise<void> {
     const l = this.lobby;
     if (!l) return;
     const connected = this.connectedSlots();
     connected.delete(slot);
     if (this.sim) {
-      // 対戦中に抜けた人は CPU が代わりに操作する
+      // 対戦中に抜けた人は CPU が代わりに操作する（戻ってきたら本人に戻す）
       const lv = Math.max(3, l.cpuLevel);
       this.cpuSlots.set(slot, lv);
       this.queues.delete(slot);
-    } else {
-      l.humans = l.humans.filter((h) => h.slot !== slot);
     }
-    const remaining = l.humans.filter((h) => connected.has(h.slot));
+    const h = l.humans.find((x) => x.slot === slot);
+    if (voluntary || !h) {
+      if (!this.sim) l.humans = l.humans.filter((x) => x.slot !== slot);
+      else if (h) h.token = makeToken(); // 抜けた人は戻れない
+    } else {
+      h.goneAt = Date.now();
+    }
+    const remaining = l.humans.filter((x) => connected.has(x.slot));
     if (remaining.length === 0) {
+      const waiting = l.humans.some((x) => x.goneAt > 0 && Date.now() - x.goneAt < REJOIN_GRACE);
+      if (waiting && !voluntary) {
+        // 全員の通信が切れた：しばらく待って、誰も戻らなければルームを閉じる
+        await this.save();
+        await this.ctx.storage.setAlarm(Date.now() + REJOIN_GRACE + 1000);
+        return;
+      }
       this.stopMatch();
       this.lobby = null;
       await this.save();
@@ -325,6 +400,7 @@ export class Room extends DurableObject<Env> {
 
   // ---------------------------------------------------------------
   private startMatch(setup: MatchSetup): void {
+    this.setup = setup;
     this.sim = new Sim(setup);
     this.cpu = new CpuController(setup.seed);
     this.cpuSlots.clear();
@@ -390,6 +466,7 @@ export class Room extends DurableObject<Env> {
     if (this.loop) clearInterval(this.loop);
     this.loop = null;
     this.sim = null;
+    this.setup = null;
     this.cpu = null;
     this.cpuSlots.clear();
   }
@@ -429,7 +506,7 @@ export class Room extends DurableObject<Env> {
         this.broadcast({ t: 'end', results });
         if (this.lobby) {
           const connected = this.connectedSlots();
-          this.lobby.humans = this.lobby.humans.filter((h) => connected.has(h.slot));
+          this.lobby.humans = this.lobby.humans.filter((h) => connected.has(h.slot) || (h.goneAt > 0 && Date.now() - h.goneAt < REJOIN_GRACE));
           this.ctx.waitUntil(this.save());
         }
         this.pushLobby();

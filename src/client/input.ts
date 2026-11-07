@@ -14,6 +14,8 @@ export class InputManager {
   private latched = 0;
   private lastButtons = 0;
   gamepadConnected = false;
+  /** ボタン配置の編集中（ボタンを押しても入力にしない） */
+  editing = false;
 
   private base: HTMLElement;
   private knob: HTMLElement;
@@ -74,6 +76,7 @@ export class InputManager {
       const bit = Number(el.dataset.btn);
       el.addEventListener('pointerdown', (e) => {
         e.preventDefault();
+        if (this.editing) return;
         try {
           el.setPointerCapture(e.pointerId);
         } catch {
