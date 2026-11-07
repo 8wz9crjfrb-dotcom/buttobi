@@ -310,9 +310,9 @@ const SPECIALS: Record<string, Specials> = {
       active: 9,
       end: 14,
       hitboxes: [{ x: 0.5, y: 0.8, r: 0.7 }],
-      dmg: 4,
-      base: 4,
-      growth: 4,
+      dmg: 5.5,
+      base: 4.5,
+      growth: 5.5,
       angle: 30,
       air: true,
       special: 'scroll',
@@ -340,9 +340,9 @@ const SPECIALS: Record<string, Specials> = {
         vy: Math.sin((deg * Math.PI) / 180) * 7,
         life: 22,
         r: 0.3,
-        dmg: 2,
+        dmg: 3,
         base: 3,
-        growth: 2,
+        growth: 3,
         angle: 50,
         confuse: 120,
       })),
@@ -353,9 +353,9 @@ const SPECIALS: Record<string, Specials> = {
       active: 26,
       end: 6,
       hitboxes: [{ x: 0, y: 0.9, r: 0.7 }],
-      dmg: 4,
-      base: 5,
-      growth: 4,
+      dmg: 6,
+      base: 5.5,
+      growth: 6,
       angle: 80,
       air: true,
       special: 'redirect',
@@ -491,8 +491,8 @@ export const TRAP = { life: 600, r: 0.6, armDelay: 30 };
 export const WALL = { life: 80, w: 0.35, h: 2.4, offset: 1.1 };
 /** 一時的な足場（ポップアップ広告）の設定 */
 export const POPUP = { life: 200, w: 2.4 };
-/** 倍速再生の効果時間と、次に使えるまでの時間（フレーム） */
-export const SPEEDUP = { duration: 300, cooldown: 480, speed: 1.35, frame: 0.75 };
+/** 倍速再生の効果時間（6秒）と、効果が切れてから次に使えるまでの時間（7秒）（フレーム） */
+export const SPEEDUP = { duration: 360, cooldown: 420, speed: 1.35, frame: 0.75 };
 /** 課金：増えるダメージ%、効果時間、攻撃力・ふっとばし力の倍率 */
 export const PAY = { cost: 8, duration: 360, dmg: 1.3, kb: 1.15 };
 /** 自転車：乗っていられる時間、速さ、ぶつかったときに同じ相手へ再び当たるまで */

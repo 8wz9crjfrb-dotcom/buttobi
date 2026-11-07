@@ -71,7 +71,7 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   check('次の動画へは途中で横に方向転換できる', f.redirected && f.x > 2, `x=${f.x.toFixed(2)} y=${f.y.toFixed(2)}`);
 }
 {
-  // 飽きっぽい：同じ技を続けると威力が下がる
+  // 飽き性：同じ技を続けると威力が下がる
   const dmgs: number[] = [];
   const sim = make('dopa', 'guard');
   for (let k = 0; k < 3; k++) {
@@ -81,7 +81,7 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
     run(sim, 30, at(0, { mx: 0, my: 0, buttons: BTN_A }));
     dmgs.push(v.damage);
   }
-  check('飽きっぽい：同じ技を続けると威力が下がる', dmgs[0] > dmgs[1] && dmgs[1] > dmgs[2], dmgs.map((d) => d.toFixed(2)).join(' → '));
+  check('飽き性：同じ技を続けると威力が下がる', dmgs[0] > dmgs[1] && dmgs[1] > dmgs[2], dmgs.map((d) => d.toFixed(2)).join(' → '));
 }
 // ---- ガチャ廃人
 {

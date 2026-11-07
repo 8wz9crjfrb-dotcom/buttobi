@@ -171,13 +171,13 @@ export class Fighter {
   absorbCharge = false;
   /** 今出している技が、吸収で強くなっているか */
   chargedMove = false;
-  /** 飽きっぽい：今の技の威力の倍率 */
+  /** 飽き性：今の技の威力の倍率 */
   stale = 1;
   /** 走り続けている時間（時間指定） */
   runTime = 0;
   /** バズり段階 */
   buzz = 0;
-  /** 最近出した技（飽きっぽい） */
+  /** 最近出した技（飽き性） */
   recentMoves: string[] = [];
   /** 相手ごとに攻撃を受けた回数（学習データ） */
   learnHits: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -689,7 +689,7 @@ export class Sim {
   }
 
   private startMove(f: Fighter, id: MoveId): void {
-    // 飽きっぽい（ドパガキ）：最近出した技ほど威力が下がる
+    // 飽き性（ドパガキ）：最近出した技ほど威力が下がる
     if (f.def.id === 'dopa') {
       const same = f.recentMoves.filter((m) => m === id).length;
       f.stale = Math.max(0.55, 1 - 0.12 * same);
@@ -714,7 +714,7 @@ export class Sim {
     this.setState(f, 'attack');
   }
 
-  /** 攻撃側の威力の倍率（課金・バズり・飽きっぽい・吸収・単発ガチャの大当たり） */
+  /** 攻撃側の威力の倍率（課金・バズり・飽き性・吸収・単発ガチャの大当たり） */
   private powerMul(a: Fighter): { dmg: number; kb: number } {
     let dmg = a.def.dmgMul * a.stale * (1 + 0.08 * a.buzz);
     let kb = a.def.kbMul * a.stale;

@@ -149,7 +149,7 @@ npx tsx scripts/predict-test.ts 60
 ## 7. 調整のしかた
 
 - 技の強さ・速さ（共通の通常技と、キャラごとの必殺技）：`src/shared/moves.ts`（倍速・課金・自転車・置き配などの数値もここ）
-- 特性：`src/shared/sim.ts`（「巡回中」「ゼロデイ」「抜き取り」「バズり」「飽きっぽい」「天井」「時間指定」「学習データ」で検索）
+- 特性：`src/shared/sim.ts`（「巡回中」「ゼロデイ」「抜き取り」「バズり」「飽き性」「天井」「時間指定」「学習データ」で検索）
 - キャラの性能：`src/shared/characters.ts`
 - ふっとびやすさ全体：`src/shared/sim.ts` の `KB_GROWTH_SCALE` と `HITSTUN_DRAG`
 

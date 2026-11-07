@@ -154,7 +154,7 @@ export const CHARACTERS: CharacterDef[] = [
     frameMul: 0.85,
     scale: 0.88,
     specialNames: { n: '倍速再生', s: '無限スクロール', d: '通知爆撃', u: '次の動画へ' },
-    trait: { name: '飽きっぽい', desc: '同じ技を続けて出すと、だんだん威力が下がる。' },
+    trait: { name: '飽き性', desc: '同じ技を続けて出すと、だんだん威力が下がる。そのかわり必殺技が強い。' },
   },
   {
     id: 'gacha',
