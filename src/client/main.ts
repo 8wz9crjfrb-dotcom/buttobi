@@ -526,21 +526,8 @@ function showCharSelect(o: CharSelectOptions): void {
         sfx.click();
       });
       bindMovePopups(root, () => picked);
-      // 左側をなぞるとキャラが回る
-      const drag = root.querySelector<HTMLElement>('.cs-drag')!;
-      let lastX: number | null = null;
-      drag.addEventListener('pointerdown', (e) => {
-        lastX = e.clientX;
-        drag.setPointerCapture(e.pointerId);
-      });
-      drag.addEventListener('pointermove', (e) => {
-        if (lastX === null) return;
-        renderer.spinPreview((e.clientX - lastX) * 0.012);
-        lastX = e.clientX;
-      });
-      const up = () => (lastX = null);
-      drag.addEventListener('pointerup', up);
-      drag.addEventListener('pointercancel', up);
+      // 左側をなぞるとキャラが回る。タップするとアクション
+      bindPreviewSpin(root);
       root.querySelector('#back')!.addEventListener('click', o.onBack);
       root.querySelector('#next')!.addEventListener('click', () => {
         settings.charId = picked;
@@ -887,9 +874,7 @@ function showSettings(): void {
   showScreen(
     `<h2>設定</h2>
      <div class="setup-grid">
-       <div class="opt">ボタンの大きさ ${seg('size', [['S', '小'], ['M', '中'], ['L', '大']], settings.btnSize)}</div>
-       <div class="opt">ボタンの濃さ ${seg('op', [['low', 'うすい'], ['mid', 'ふつう'], ['high', 'こい']], settings.btnOpacity)}</div>
-       <div class="opt">ボタンの配置 <button type="button" class="btn small" id="layout">${settings.leftHanded ? '左利き・' : ''}${Object.keys(settings.btnPos).length ? '自分で配置' : '標準'}（変える）</button></div>
+       <div class="opt">ボタン（配置・大きさ・濃さ） <button type="button" class="btn small" id="layout">${settings.leftHanded ? '左利き・' : ''}${Object.keys(settings.btnPos).length ? '自分で配置' : '標準の配置'}・大きさ${{ S: '小', M: '中', L: '大' }[settings.btnSize]}（変える）</button></div>
        <div class="opt">画質 ${seg('q', [['low', '軽さ優先'], ['high', 'きれい']], settings.quality)}</div>
        <div class="opt">スティック上でジャンプ ${seg('tj', [['on', 'する'], ['off', 'しない']], settings.tapJump ? 'on' : 'off')}</div>
        <div class="opt">振動（Androidのみ） ${seg('vib', [['on', 'する'], ['off', 'しない']], settings.vibration ? 'on' : 'off')}</div>
@@ -901,14 +886,6 @@ function showSettings(): void {
      <div class="footer"><button class="btn primary" id="back">保存してもどる</button></div>`,
     'overlay',
     (root) => {
-      bindSeg(root, 'size', (v) => {
-        settings.btnSize = v as Settings['btnSize'];
-        applyUiSettings(settings);
-      });
-      bindSeg(root, 'op', (v) => {
-        settings.btnOpacity = v as Settings['btnOpacity'];
-        applyUiSettings(settings);
-      });
       bindSeg(root, 'q', (v) => {
         settings.quality = v as Settings['quality'];
         renderer.setQuality(settings.quality);
@@ -958,6 +935,7 @@ function showGacha(): void {
      <div class="footer">
        <button class="btn" id="back">もどる</button>
        <div class="row" style="gap:8px">
+         <button class="btn" id="lineup">出る衣装</button>
          <button class="btn" id="list">衣装一覧</button>
          <button class="btn primary" id="one" ${wallet.coins < GACHA_COST.one ? 'disabled' : ''}>1回 <small>${GACHA_COST.one}</small></button>
          <button class="btn primary" id="ten" ${wallet.coins < GACHA_COST.ten ? 'disabled' : ''}>10回 <small>${GACHA_COST.ten}</small></button>
@@ -967,6 +945,7 @@ function showGacha(): void {
     (root) => {
       root.querySelector('#back')!.addEventListener('click', showMenu);
       root.querySelector('#list')!.addEventListener('click', () => showCollection(settings.charId));
+      root.querySelector('#lineup')!.addEventListener('click', showLineup);
       const pull = (n: 1 | 10) => {
         const res = pullGacha(wallet, n);
         if (!res) return toast('コインが足りません');
@@ -1041,7 +1020,7 @@ function showGachaResult(res: PullResult[], index: number): void {
       bindPreviewSpin(root);
     },
   );
-  renderer.showPreview(c.charId, 0, c.id);
+  renderer.showPreview(c.charId, 0, c.id, true);
 }
 
 /** 衣装一覧：キャラごとに、持っている衣装と持っていない衣装（？？？） */
@@ -1059,7 +1038,7 @@ function showCollection(charId: string): void {
   showScreen(
     `<div class="cs-drag" data-charsel></div>
      <div class="cs-nameplate"><div class="cs-role">${getCharacter(charId).name}</div><div class="cs-name" id="cname">${getCostume(cur, charId).name}</div></div>
-     <h2>衣装一覧</h2>
+     <h2>衣装一覧 <small class="h2-sub">キャラをタップするとアクション</small></h2>
      <div class="seg wrap" data-seg="ch">${tabs}</div>
      <div class="gcards">${items}</div>
      <div class="footer">
@@ -1077,7 +1056,7 @@ function showCollection(charId: string): void {
           shown = c.id;
           root.querySelectorAll('.gcard').forEach((x) => x.classList.toggle('on', x === el));
           root.querySelector('#cname')!.textContent = c.name;
-          renderer.showPreview(charId, 0, c.id);
+          renderer.showPreview(charId, 0, c.id, true);
           sfx.click();
         }),
       );
@@ -1091,16 +1070,60 @@ function showCollection(charId: string): void {
       bindPreviewSpin(root);
     },
   );
-  renderer.showPreview(charId, 0, cur);
+  renderer.showPreview(charId, 0, cur, true);
 }
 
-/** 左側をなぞってキャラを回す */
+/** ガチャで出る衣装の一覧（持っている衣装には印）。タップすると左に着た姿を表示 */
+function showLineup(): void {
+  const pool = COSTUMES.filter((c) => c.rarity >= 4);
+  let shown = pool[0];
+  const cards = CHARACTERS.map((ch) => {
+    const list = pool.filter((c) => c.charId === ch.id);
+    return `<div class="lu-char">${ch.name}</div>${list
+      .map((c) => {
+        const have = wallet.owned.includes(c.id);
+        return `<div class="gcard r${c.rarity} ${c === shown ? 'on' : ''}" data-id="${c.id}"><b>${rarityName(c.rarity)}</b><div class="gn">${c.name}</div>${have ? '<div class="have">✓ 持っている</div>' : ''}</div>`;
+      })
+      .join('')}`;
+  }).join('');
+  const have = pool.filter((c) => wallet.owned.includes(c.id)).length;
+  const label = (c: typeof shown) => `<div class="cs-role rr${c.rarity}">${rarityName(c.rarity)}${wallet.owned.includes(c.id) ? '（持っている）' : ''}</div><div class="cs-name">${c.name}</div><div class="cs-role" style="color:#fff">${getCharacter(c.charId).name}</div>`;
+  showScreen(
+    `<div class="cs-drag" data-charsel></div>
+     <div class="cs-nameplate">${label(shown)}</div>
+     <h2>ガチャで出る衣装 <small class="h2-sub">持っている ${have} / ${pool.length}・SSR はエフェクト付き</small></h2>
+     <div class="lineup">${cards}</div>
+     <div class="footer"><button class="btn primary" id="back">ガチャへ</button></div>`,
+    'overlay charsel-screen',
+    (root) => {
+      root.querySelectorAll<HTMLElement>('.gcard').forEach((el) =>
+        el.addEventListener('click', () => {
+          shown = pool.find((c) => c.id === el.dataset.id)!;
+          root.querySelectorAll('.gcard').forEach((x) => x.classList.toggle('on', x === el));
+          root.querySelector('.cs-nameplate')!.innerHTML = label(shown);
+          renderer.showPreview(shown.charId, 0, shown.id, true);
+          sfx.click();
+        }),
+      );
+      root.querySelector('#back')!.addEventListener('click', showGacha);
+      bindPreviewSpin(root);
+    },
+  );
+  renderer.showPreview(shown.charId, 0, shown.id, true);
+}
+
+/** 左側をなぞってキャラを回す。指をほとんど動かさずに離したら（タップ）、キャラがアクションする */
 function bindPreviewSpin(root: HTMLElement): void {
   const drag = root.querySelector<HTMLElement>('.cs-drag');
   if (!drag) return;
   let lastX: number | null = null;
+  let startX = 0;
+  let startY = 0;
+  let startT = 0;
   drag.addEventListener('pointerdown', (e) => {
-    lastX = e.clientX;
+    lastX = startX = e.clientX;
+    startY = e.clientY;
+    startT = performance.now();
     drag.setPointerCapture(e.pointerId);
   });
   drag.addEventListener('pointermove', (e) => {
@@ -1108,9 +1131,14 @@ function bindPreviewSpin(root: HTMLElement): void {
     renderer.spinPreview((e.clientX - lastX) * 0.012);
     lastX = e.clientX;
   });
-  const up = () => (lastX = null);
-  drag.addEventListener('pointerup', up);
-  drag.addEventListener('pointercancel', up);
+  drag.addEventListener('pointerup', (e) => {
+    lastX = null;
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) < 10 && performance.now() - startT < 500) {
+      renderer.previewAction();
+      sfx.jump();
+    }
+  });
+  drag.addEventListener('pointercancel', () => (lastX = null));
 }
 
 // ---------------------------------------------------------------------------
@@ -1377,16 +1405,24 @@ function showMoveList(charId: string, back: () => void): void {
 // ---------------------------------------------------------------------------
 // ボタン配置の編集：ボタンを指でドラッグして動かす。左利き（スティックが右）にも切り替えられる
 function showButtonEditor(): void {
-  const draft = { leftHanded: settings.leftHanded, btnPos: { ...settings.btnPos } };
+  const draft = { leftHanded: settings.leftHanded, btnPos: { ...settings.btnPos }, btnSize: settings.btnSize, btnOpacity: settings.btnOpacity };
+  const preview = () => {
+    applyUiSettings({ ...settings, btnSize: draft.btnSize, btnOpacity: draft.btnOpacity });
+    applyTouchLayout(draft);
+  };
   touchEl.classList.remove('hidden');
   touchEl.classList.add('editing');
   input.editing = true;
-  applyTouchLayout(draft);
+  preview();
   const el = showScreen(
     `<div class="edit-bar">
-       <div><b>ボタンの配置</b>：ボタンをドラッグして好きな位置に動かせます</div>
+       <div><b>ボタンの設定</b>：ボタンをドラッグして好きな位置に動かせます</div>
        <div class="row">
          <span>スティック</span>${seg('hand', [['right', '左側（右利き）'], ['left', '右側（左利き）']], draft.leftHanded ? 'left' : 'right')}
+       </div>
+       <div class="row">
+         <span>大きさ</span>${seg('size', [['S', '小'], ['M', '中'], ['L', '大']], draft.btnSize)}
+         <span>濃さ</span>${seg('op', [['low', 'うすい'], ['mid', 'ふつう'], ['high', 'こい']], draft.btnOpacity)}
        </div>
        <div class="row">
          <button class="btn small" id="reset">元に戻す</button>
@@ -1400,11 +1436,19 @@ function showButtonEditor(): void {
         draft.leftHanded = v === 'left';
         // 左右を変えたら、動かした位置は一度リセットして標準の並びにする
         draft.btnPos = {};
-        applyTouchLayout(draft);
+        preview();
+      });
+      bindSeg(root, 'size', (v) => {
+        draft.btnSize = v as Settings['btnSize'];
+        preview();
+      });
+      bindSeg(root, 'op', (v) => {
+        draft.btnOpacity = v as Settings['btnOpacity'];
+        preview();
       });
       root.querySelector('#reset')!.addEventListener('click', () => {
         draft.btnPos = {};
-        applyTouchLayout(draft);
+        preview();
       });
       root.querySelector('#cancel')!.addEventListener('click', () => exit(false));
       root.querySelector('#save')!.addEventListener('click', () => exit(true));
@@ -1445,9 +1489,12 @@ function showButtonEditor(): void {
     if (save) {
       settings.leftHanded = draft.leftHanded;
       settings.btnPos = draft.btnPos;
+      settings.btnSize = draft.btnSize;
+      settings.btnOpacity = draft.btnOpacity;
       saveSettings(settings);
       toast('ボタンの配置を保存しました');
     }
+    applyUiSettings(settings);
     applyTouchLayout(settings);
     updateTouchVisibility();
     showSettings();

@@ -401,6 +401,17 @@ export class FighterModel {
   ghost = 0;
   /** 頭上の目印を出すか（残像では出さない） */
   showMarker = true;
+  /** 衣装一覧などで、SSR衣装の特別な待機モーションにする */
+  fancyIdle = false;
+  /** タップしたときのアクションの残り時間（秒） */
+  private actionT = 0;
+  private actionKind = 0;
+
+  /** タップされたときのアクション（決めポーズで跳ねる） */
+  playAction(): void {
+    this.actionT = 1.4;
+    this.actionKind = (this.actionKind + 1) % 2;
+  }
   private c: Costume['colors'];
   private blinkSeed: number;
 
@@ -1070,7 +1081,15 @@ export class FighterModel {
     const target = this.victory ? 0 : this.previewTurn ?? v.facing * (Math.PI / 2 - 0.45);
     this.turn += (target - this.turn) * Math.min(1, dt * 18);
 
-    const target0 = this.victory ? this.victoryPose(def.id, time) : this.pose(v, def, time);
+    if (this.actionT > 0) this.actionT = Math.max(0, this.actionT - dt);
+    const acting = this.actionT > 0;
+    const target0 = acting
+      ? this.actionPose(def.id, time)
+      : this.victory
+        ? this.victoryPose(def.id, time)
+        : this.fancyIdle && (v.state === 'idle' || v.state === 'respawn')
+          ? this.fancyPose(def.id, time)
+          : this.pose(v, def, time);
     // キャラごとの姿勢のくせ（ドパガキ・ガチャ廃人は猫背、警備員は胸を張る）
     if (!this.victory && v.state !== 'hitstun' && v.state !== 'grabbed') {
       const lean = def.id === 'dopa' ? 0.07 : def.id === 'gacha' ? 0.06 : def.id === 'guard' ? -0.04 : 0;
@@ -1126,7 +1145,8 @@ export class FighterModel {
     const tired = def.id === 'gacha';
     const special = v.state === 'attack' && v.move ? moveOf(def.id, v.move).special : undefined;
     const smugType = def.id === 'guard' || def.id === 'hacker' || def.id === 'thief' || def.id === 'ai';
-    if (this.victory) this.setExpression(smugType ? 'smug' : 'happy', smugType ? 'smile' : 'open', false);
+    if (acting) this.setExpression('happy', 'open', false);
+    else if (this.victory || this.fancyIdle) this.setExpression(smugType ? 'smug' : 'happy', smugType ? 'smile' : 'open', false);
     else if (v.state === 'hitstun' || v.state === 'shieldbreak' || v.state === 'helpless' || v.state === 'grabbed') this.setExpression('hurt', 'open', false);
     else if (v.state === 'sleep' || blinking) this.setExpression('closed', 'line', false);
     // 課金・倍速・吸収などの「強化」はドヤ顔
@@ -1247,6 +1267,120 @@ export class FighterModel {
   /** 結果画面で勝ったときのポーズ */
   setVictory(on: boolean): void {
     this.victory = on;
+  }
+
+  /** タップしたときのアクション：前半はくるっと回って跳ね、後半はキャラごとの決めポーズ */
+  private actionPose(id: string, time: number): Pose {
+    const e = 1.4 - this.actionT; // 経過時間
+    if (e < 0.55) {
+      const k = e / 0.55;
+      const p = basePose();
+      p.bob = Math.sin(k * Math.PI) * 0.45;
+      p.squash = k < 0.15 ? 0.82 : 1.08;
+      p.armL = UP * 0.8;
+      p.armR = UP * 0.8;
+      p.armLz = 0.5;
+      p.armRz = -0.5;
+      p.legL = -0.4;
+      p.legR = 0.3;
+      if (this.actionKind === 0) p.spinY = k * Math.PI * 2;
+      else p.spinZ = Math.sin(k * Math.PI * 2) * 0.25;
+      return p;
+    }
+    const p = this.victoryPose(id, time);
+    if (e < 0.7) p.squash = 0.86; // 着地
+    return p;
+  }
+
+  /** SSR衣装の特別な待機モーション（衣装一覧で見せる） */
+  private fancyPose(id: string, time: number): Pose {
+    const p = basePose();
+    const b = Math.sin(time * 2.2);
+    const f = Math.sin(time * 6);
+    switch (id) {
+      case 'guard':
+        // 腰に手を当てて胸を張り、ゆっくり見回す
+        p.armL = 0.25;
+        p.armLz = 0.85;
+        p.armR = 0.25;
+        p.armRz = -0.85;
+        p.lean = -0.12;
+        p.headTilt = -0.12;
+        p.spinY = Math.sin(time * 0.7) * 0.35;
+        p.bob = Math.abs(b) * 0.02;
+        break;
+      case 'hacker':
+        // 宙に浮かび、両手を広げてデータを操る
+        p.bob = 0.25 + b * 0.08;
+        p.armL = FWD * 0.6 + f * 0.08;
+        p.armLz = 0.9;
+        p.armR = FWD * 0.6 - f * 0.08;
+        p.armRz = -0.9;
+        p.legL = -0.5;
+        p.legR = -0.7;
+        p.headTilt = 0.1;
+        break;
+      case 'thief':
+        // 怪盗の一礼
+        {
+          const k = (Math.sin(time * 1.6) + 1) / 2;
+          p.lean = k * 0.5;
+          p.armR = FWD * 0.3 * k;
+          p.armRz = 0.9 * k;
+          p.armL = 0.6 * k;
+          p.armLz = 0.4;
+          p.headTilt = 0.2 * k;
+          p.legL = -0.2 * k;
+        }
+        break;
+      case 'streamer':
+        // アイドルのダンス
+        p.bob = Math.abs(Math.sin(time * 4)) * 0.1;
+        p.armR = UP * 0.7 + Math.sin(time * 4) * 0.4;
+        p.armRz = -0.4;
+        p.armL = UP * 0.7 - Math.sin(time * 4) * 0.4;
+        p.armLz = 0.4;
+        p.spinY = Math.sin(time * 2) * 0.45;
+        p.legL = Math.max(0, Math.sin(time * 4)) * -0.4;
+        p.legR = Math.max(0, -Math.sin(time * 4)) * -0.4;
+        break;
+      case 'dopa':
+        // くるくる回って跳ねる
+        p.spinY = time * 3;
+        p.bob = Math.abs(Math.sin(time * 6)) * 0.14;
+        p.armR = UP * 0.8;
+        p.armL = UP * 0.5 + f * 0.2;
+        break;
+      case 'gacha':
+        // 金貨を投げ上げて喜ぶ
+        p.armR = UP * (0.6 + Math.max(0, Math.sin(time * 3)) * 0.35);
+        p.armL = UP * 0.4;
+        p.armLz = 0.5;
+        p.bob = Math.abs(Math.sin(time * 3)) * 0.08;
+        p.headTilt = -0.25;
+        break;
+      case 'courier':
+        // その場で全力ダッシュ
+        p.legL = Math.sin(time * 14) * 1.1;
+        p.legR = -Math.sin(time * 14) * 1.1;
+        p.armL = -Math.sin(time * 14) * 1.0;
+        p.armR = Math.sin(time * 14) * 1.0;
+        p.lean = 0.35;
+        p.bob = Math.abs(Math.cos(time * 14)) * 0.07;
+        break;
+      case 'ai':
+        // 浮かんで目を閉じ、手のひらを上に
+        p.bob = 0.3 + b * 0.06;
+        p.armL = FWD * 0.5;
+        p.armLz = 0.6;
+        p.armR = FWD * 0.5;
+        p.armRz = -0.6;
+        p.legL = -0.3;
+        p.legR = -0.3;
+        p.headTilt = -0.15;
+        break;
+    }
+    return p;
   }
 
   /** キャラごとの勝利ポーズ */

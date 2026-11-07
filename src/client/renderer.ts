@@ -238,7 +238,7 @@ export class GameRenderer {
 
   // ---------------------------------------------------------------- キャラ選択の3D表示
   /** キャラ選択画面で、選んでいるキャラを左側に大きく表示する */
-  showPreview(charId: string, slot = 0, costumeId?: string): void {
+  showPreview(charId: string, slot = 0, costumeId?: string, fancy = false): void {
     if (!this.preview) {
       const scene = new THREE.Scene();
       const disposables: { dispose(): void }[] = [];
@@ -289,7 +289,10 @@ export class GameRenderer {
     const pv = this.preview;
     (pv.ring.material as THREE.MeshBasicMaterial).color.setHex(SLOT_COLORS[slot % SLOT_COLORS.length]);
     const key = `${charId}/${costumeId ?? ''}`;
-    if (pv.charId === key && pv.model) return;
+    if (pv.charId === key && pv.model) {
+      pv.model.fancyIdle = fancy && getCostume(costumeId, charId).rarity >= 5;
+      return;
+    }
     if (pv.model) {
       pv.scene.remove(pv.model.root);
       pv.model.dispose();
@@ -297,10 +300,16 @@ export class GameRenderer {
     const def = getCharacter(charId);
     pv.model = new FighterModel(def, getCostume(costumeId, charId), SLOT_COLORS[slot % SLOT_COLORS.length]);
     pv.model.previewTurn = 0.35;
+    pv.model.fancyIdle = fancy && getCostume(costumeId, charId).rarity >= 5;
     pv.scene.add(pv.model.root);
     pv.charId = key;
     pv.spin = 0;
     pv.pop = 0;
+  }
+
+  /** 表示しているキャラにアクションをさせる（タップしたとき） */
+  previewAction(): void {
+    this.preview?.model?.playAction();
   }
 
   /** キャラ選択画面：指でなぞってキャラを回す */
