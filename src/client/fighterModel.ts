@@ -10,6 +10,8 @@ import { FX_BIKE, FX_CHARGED, FX_POWER, FX_SPEED, type ViewFighter } from '../sh
 
 const FWD = -Math.PI / 2; // 腕・脚を前に向ける回転（x軸まわり）
 const UP = -Math.PI;
+/** スマホを持つ角度（胸の前で持ったとき、画面が顔を向く） */
+const PHONE_TILT = -0.35;
 
 interface Pose {
   armL: number;
@@ -74,7 +76,7 @@ function capBrightness(m: THREE.Material, key: string, band = false): void {
 }
 
 // ---------------------------------------------------------------- 目（絵を描いた画像を顔の丸みに沿って貼る）
-type EyeKind = 'normal' | 'angry' | 'closed' | 'happy' | 'hurt' | 'panic' | 'smug' | 'tired';
+type EyeKind = 'normal' | 'angry' | 'closed' | 'happy' | 'hurt' | 'panic' | 'smug' | 'tired' | 'look' | 'lookTired';
 const eyeTextures = new Map<string, THREE.CanvasTexture>();
 
 /** アニメ調の目を描く。side = 1 は画面の右側に見える目（外側の目じりが右） */
@@ -108,7 +110,7 @@ function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean)
     g.lineTo(xo + outer * 8, y2 - 6);
     g.stroke();
   };
-  const drawOpenEye = (irisRx: number, irisRy: number, pupil: number) => {
+  const drawOpenEye = (irisRx: number, irisRy: number, pupil: number, dy = 0) => {
     // 白目
     g.fillStyle = '#ffffff';
     g.beginPath();
@@ -125,16 +127,16 @@ function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean)
     grad.addColorStop(1, css(0.75, 0.3));
     g.fillStyle = grad;
     g.beginPath();
-    g.ellipse(64 - outer * 2, 76, irisRx, irisRy, 0, 0, Math.PI * 2);
+    g.ellipse(64 - outer * 2, 76 + dy, irisRx, irisRy, 0, 0, Math.PI * 2);
     g.fill();
     g.fillStyle = ink;
     g.beginPath();
-    g.ellipse(64 - outer * 2, 78, pupil * 0.7, pupil, 0, 0, Math.PI * 2);
+    g.ellipse(64 - outer * 2, 78 + dy, pupil * 0.7, pupil, 0, 0, Math.PI * 2);
     g.fill();
     // ハイライト
     g.fillStyle = '#ffffff';
     g.beginPath();
-    g.arc(64 - outer * 12, 60, Math.max(4, irisRx * 0.38), 0, Math.PI * 2);
+    g.arc(64 - outer * 12, 60 + dy, Math.max(4, irisRx * 0.38), 0, Math.PI * 2);
     g.fill();
     g.beginPath();
     g.arc(64 + outer * 9, 96, Math.max(2, irisRx * 0.16), 0, Math.PI * 2);
@@ -197,6 +199,15 @@ function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean)
       g.globalCompositeOperation = 'destination-out';
       g.fillRect(0, 104, 128, 24);
       g.restore();
+      break;
+    case 'look':
+      // 下（手元のスマホ）を見ている：瞳を下げて、まぶたを少し下ろす
+      drawOpenEye(24, 32, 14, 12);
+      lid(54, 50);
+      break;
+    case 'lookTired':
+      drawOpenEye(24, 32, 14, 12);
+      lid(66, 64);
       break;
     case 'panic':
       drawOpenEye(13, 18, 7);
@@ -494,8 +505,8 @@ export class FighterModel {
   }
 
   /** 表情を切り替える */
-  private setExpression(kind: 'normal' | 'angry' | 'hurt' | 'closed' | 'happy' | 'panic' | 'smug', mouth: 'line' | 'open' | 'smile', tired: boolean): void {
-    const eye: EyeKind = kind === 'normal' && tired ? 'tired' : kind;
+  private setExpression(kind: 'normal' | 'angry' | 'hurt' | 'closed' | 'happy' | 'panic' | 'smug' | 'look', mouth: 'line' | 'open' | 'smile', tired: boolean): void {
+    const eye: EyeKind = kind === 'normal' && tired ? 'tired' : kind === 'look' && tired ? 'lookTired' : kind;
     if (eye !== this.eyeKind) {
       this.eyeKind = eye;
       const iris = EYE_COLORS[this.def.id] ?? 0x3a5aa0;
@@ -703,9 +714,12 @@ export class FighterModel {
       this.part(this.body, new THREE.CylinderGeometry(0.045, 0.045, 0.14, 12), this.toon(c.accent), [-0.27, 0.72, 0.05]);
       this.part(this.body, new THREE.CylinderGeometry(0.046, 0.046, 0.03, 12), this.toon(0x222222), [-0.27, 0.74, 0.05], { outline: false });
       // スマホ（右手）
-      const phone = this.hand(this.armR);
-      this.part(phone, new THREE.BoxGeometry(0.1, 0.18, 0.02), this.toon(0x222233), [0, -0.05, 0.08]);
-      this.part(phone, new THREE.BoxGeometry(0.085, 0.16, 0.005), this.glow(0x8ef0ff), [0, -0.05, 0.092], { outline: false });
+      // 画面が顔のほうを向くように傾けて持つ
+      const phone = new THREE.Group();
+      phone.rotation.x = PHONE_TILT;
+      this.hand(this.armR).add(phone);
+      this.part(phone, new THREE.BoxGeometry(0.12, 0.21, 0.02), this.toon(0x222233), [0, -0.11, 0.095]);
+      this.part(phone, new THREE.BoxGeometry(0.104, 0.19, 0.005), this.glow(0x8ef0ff), [0, -0.11, 0.107], { outline: false });
     } else if (id === 'gacha') {
       // ガチャ廃人：目の下のクマ・ぼさぼさの長い髪・ジャージ・光るスマホ
       this.mouth();
@@ -729,9 +743,11 @@ export class FighterModel {
       this.part(this.body, new THREE.BoxGeometry(0.02, 0.38, 0.01), this.toon(c.accent), [0, 0.94, 0.168], { outline: false });
       this.part(this.body, new THREE.TorusGeometry(0.15, 0.04, 8, 20), this.toon(c.sub), [0, 1.18, 0], { rot: [Math.PI / 2, 0, 0] });
       // 光るスマホ（右手）
-      const phone = this.hand(this.armR);
-      this.part(phone, new THREE.BoxGeometry(0.1, 0.18, 0.02), this.toon(0x222233), [0, -0.05, 0.08]);
-      this.part(phone, new THREE.BoxGeometry(0.085, 0.16, 0.005), this.glow(c.accent), [0, -0.05, 0.092], { outline: false });
+      const phone = new THREE.Group();
+      phone.rotation.x = PHONE_TILT;
+      this.hand(this.armR).add(phone);
+      this.part(phone, new THREE.BoxGeometry(0.12, 0.21, 0.02), this.toon(0x222233), [0, -0.11, 0.095]);
+      this.part(phone, new THREE.BoxGeometry(0.104, 0.19, 0.005), this.glow(c.accent), [0, -0.11, 0.107], { outline: false });
     } else if (id === 'courier') {
       // 配達員：ヘルメット・四角い配達バッグ・自転車
       this.mouth();
@@ -861,6 +877,8 @@ export class FighterModel {
     else if (v.state === 'attack') this.setExpression('angry', v.move === 'smash' || v.move === 'charge' || (v.move ?? '').endsWith('special') || (v.move ?? '').endsWith('throw') ? 'open' : 'line', false);
     // ピンチ（崖につかまっている・%が高い）は焦り顔と汗
     else if (v.state === 'ledge' || v.damage >= 100) this.setExpression('panic', 'open', false);
+    // スマホを見ている待機（ドパガキ・ガチャ廃人）は、目線を手元に
+    else if ((v.state === 'idle' || v.state === 'respawn') && (def.id === 'dopa' || def.id === 'gacha')) this.setExpression('look', 'line', tired);
     else this.setExpression('normal', 'line', tired);
 
     // ガード
@@ -1216,22 +1234,25 @@ export class FighterModel {
         p.armL = 0.15;
         p.bob = Math.abs(b) * 0.03;
         break;
-      case 'dopa':
-        // 顔の前でスマホ、足でリズム
-        p.armR = FWD * 1.25;
-        p.armRz = 0.45;
-        p.armL = 0.1;
-        p.headTilt = 0.3;
+      case 'dopa': {
+        // 胸の前のスマホを見下ろして、親指でスクロール。片手はだらんと下げて、足でリズム
+        const scroll = Math.max(0, Math.sin(time * 4)) ** 3;
+        p.armR = FWD * 0.78 - scroll * 0.06;
+        p.armRz = 0.42;
+        p.armL = 0.08;
+        p.armLz = 0.12;
+        p.headTilt = 0.22;
         p.legL = Math.max(0, Math.sin(time * 10)) * -0.2;
         break;
+      }
       case 'gacha':
-        // スマホを連打。ふらふら
-        p.armR = FWD * 1.1;
-        p.armRz = 0.4 + Math.sin(time * 30) * 0.05;
-        p.armL = FWD * 0.9;
-        p.armLz = -0.4;
-        p.headTilt = 0.3;
-        p.lean = Math.sin(time * 1.1) * 0.06;
+        // 両手でスマホを持って画面を連打。眠そうにふらふら
+        p.armR = FWD * 0.8 + Math.sin(time * 30) * 0.025;
+        p.armRz = 0.45;
+        p.armL = FWD * 0.74;
+        p.armLz = -0.42;
+        p.headTilt = 0.24;
+        p.lean = Math.sin(time * 1.1) * 0.05;
         break;
       case 'courier':
         // 腰に手、足踏み
@@ -1345,8 +1366,10 @@ export class FighterModel {
       case 'gacha10':
       case 'pay':
         // スマホをのぞきこむ
-        p.armR = FWD * 1.15;
-        p.armL = FWD * 0.6;
+        p.armR = FWD * 0.85;
+        p.armRz = 0.4;
+        p.armL = FWD * 0.75;
+        p.armLz = -0.4;
         p.headTilt = 0.25;
         if (md.special === 'gacha10' && f >= s) p.bob = Math.abs(Math.sin(f * 0.5)) * 0.08;
         return;
