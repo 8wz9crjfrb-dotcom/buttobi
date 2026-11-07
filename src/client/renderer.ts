@@ -10,7 +10,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { FighterModel, setRimColor } from './fighterModel';
+import { FighterModel } from './fighterModel';
 import { buildStageScene, makeSkyTexture, type BuiltStage } from './stageScene';
 import { PropRenderer } from './props';
 
@@ -89,7 +89,8 @@ export class GameRenderer {
       this.composer = new EffectComposer(this.renderer);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
       // 明るいところ（ネオン・光る物）だけをにじませる
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.85, 0.5, 0.72);
+      // キャラは明るさの上限（0.8）で抑えているので、しきい値をそれより上にしてにじませない
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.85, 0.5, 0.86);
       this.composer.addPass(this.bloom);
       this.composer.addPass(new OutputPass());
     } else if (q !== 'high' && this.composer) {
@@ -187,7 +188,6 @@ export class GameRenderer {
     this.built = buildStageScene(stage, this.quality);
     this.stageGroup.add(this.built.group);
     this.platformMeshes = this.built.platformMeshes;
-    setRimColor(th.rim);
   }
 
   render(view: ViewState | null, dt: number, newEvents: GameEvent[]): void {
@@ -367,8 +367,8 @@ export class GameRenderer {
     if (e.k === 'buff') {
       const f = view.fighters.find((x) => x.slot === e.s);
       if (f) {
-        this.spawn(this.ringGeo, 0xffd23f, f.x, f.y + 0.9, 0, 0, 0.5, 18, 0.12);
-        this.spawn(this.ringGeo, 0xffffff, f.x, f.y + 0.9, 0, 0, 0.3, 14, 0.1);
+        this.spawn(this.ringGeo, 0xffd23f, f.x, f.y + 0.9, 0, 0, 0.5, 18, 0.04);
+        this.spawn(this.ringGeo, 0xffffff, f.x, f.y + 0.9, 0, 0, 0.3, 14, 0.035);
       }
       return;
     }
@@ -378,8 +378,8 @@ export class GameRenderer {
     }
     if (e.k === 'counter') {
       // クレーム対応：金色の輪
-      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.4, 18, 0.35);
-      this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.2, 12, 0.25);
+      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.4, 18, 0.08);
+      this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.2, 12, 0.07);
       this.shake = Math.max(this.shake, 0.5);
       return;
     }
@@ -389,7 +389,7 @@ export class GameRenderer {
         const sp = 3 + Math.random() * 7;
         this.spawn(this.sparkGeo, i % 2 ? 0xff7a1a : 0x39ff88, e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.25, 22, -0.005);
       }
-      this.spawn(this.ringGeo, 0xff7a1a, e.x, e.y, 0, 0, 0.5, 18, 0.5);
+      this.spawn(this.ringGeo, 0xff7a1a, e.x, e.y, 0, 0, 0.5, 18, 0.12);
       this.shake = Math.max(this.shake, 0.6);
       return;
     }
@@ -405,7 +405,7 @@ export class GameRenderer {
       return;
     }
     if (e.k === 'sleep') {
-      this.spawn(this.ringGeo, 0x7ef0d0, e.x, e.y, 0, 0, 0.3, 16, 0.2);
+      this.spawn(this.ringGeo, 0x7ef0d0, e.x, e.y, 0, 0, 0.3, 16, 0.05);
       return;
     }
     if (e.k === 'hit') {
@@ -417,10 +417,10 @@ export class GameRenderer {
         const sp = 4 + Math.random() * 8 * (0.5 + power);
         this.spawn(this.sparkGeo, color, e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.18 + Math.random() * 0.12, 14 + Math.random() * 8, -0.01);
       }
-      this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.3, 10, 0.25 + power * 0.25);
+      this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.3, 10, 0.05 + power * 0.07);
       this.shake = Math.max(this.shake, 0.15 + power * 0.45);
     } else if (e.k === 'shield') {
-      this.spawn(this.ringGeo, 0x9fd0ff, e.x, e.y, 0, 0, 0.3, 8, 0.15);
+      this.spawn(this.ringGeo, 0x9fd0ff, e.x, e.y, 0, 0, 0.3, 8, 0.05);
     } else if (e.k === 'ko') {
       const color = SLOT_COLORS[e.s % SLOT_COLORS.length];
       for (let i = 0; i < 30; i++) {
@@ -428,7 +428,7 @@ export class GameRenderer {
         const sp = 6 + Math.random() * 16;
         this.spawn(this.sparkGeo, i % 3 ? color : 0xffffff, e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.35 + Math.random() * 0.3, 30 + Math.random() * 20, -0.005);
       }
-      this.spawn(this.ringGeo, color, e.x, e.y, 0, 0, 1, 26, 0.9);
+      this.spawn(this.ringGeo, color, e.x, e.y, 0, 0, 1, 26, 0.3, true);
       this.koBeam(e.x, e.y, color);
       this.shake = 1.1;
     }
@@ -455,8 +455,19 @@ export class GameRenderer {
   }
   private beams: { mesh: THREE.Mesh; life: number; max: number }[] = [];
 
-  private spawn(geo: THREE.BufferGeometry, color: number, x: number, y: number, vx: number, vy: number, size: number, life: number, grow: number): void {
-    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+  /**
+   * 演出（火花・輪など）を出す。glow = false のものは明るさを抑えて光のにじみをかけない
+   * （キャラが見えにくくならないように。撃墜の演出だけ glow = true）
+   */
+  private spawn(geo: THREE.BufferGeometry, color: number, x: number, y: number, vx: number, vy: number, size: number, life: number, grow: number, glow = false): void {
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    if (!glow) {
+      mat.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', '#include <opaque_fragment>\n gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(0.8));');
+      };
+      mat.customProgramCacheKey = () => 'fx-cap';
+    }
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, 0.5);
     mesh.scale.setScalar(size);
     this.scene.add(mesh);

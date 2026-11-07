@@ -20,8 +20,6 @@ export interface StageTheme {
   /** ネオンの2色 */
   neonA: number;
   neonB: number;
-  /** キャラの縁に当たる光の色 */
-  rim: number;
 }
 
 export interface StageDef {
@@ -52,7 +50,7 @@ export const STAGES: StageDef[] = [
       { x: 4, y: 0 },
     ],
     respawnY: 8,
-    theme: { kind: 'rooftop', sky: 0x070a1f, skyBottom: 0x2a1850, fog: 0x1a1236, neonA: 0x39d0ff, neonB: 0xff3fa4, rim: 0x6fd6ff },
+    theme: { kind: 'rooftop', sky: 0x070a1f, skyBottom: 0x2a1850, fog: 0x1a1236, neonA: 0x39d0ff, neonB: 0xff3fa4 },
   },
   {
     id: 'tiers',
@@ -73,7 +71,7 @@ export const STAGES: StageDef[] = [
       { x: 2, y: 0 },
     ],
     respawnY: 10,
-    theme: { kind: 'arcade', sky: 0x10051c, skyBottom: 0x4a0f3a, fog: 0x2a0a2a, neonA: 0xff3fa4, neonB: 0xffd23f, rim: 0xff7ac8 },
+    theme: { kind: 'arcade', sky: 0x10051c, skyBottom: 0x4a0f3a, fog: 0x2a0a2a, neonA: 0xff3fa4, neonB: 0xffd23f },
   },
   {
     id: 'drift',
@@ -93,7 +91,7 @@ export const STAGES: StageDef[] = [
       { x: 7, y: 0 },
     ],
     respawnY: 10,
-    theme: { kind: 'cyber', sky: 0x000814, skyBottom: 0x002a3a, fog: 0x001a26, neonA: 0x00ffc8, neonB: 0x4f7dff, rim: 0x5fffe0 },
+    theme: { kind: 'cyber', sky: 0x000814, skyBottom: 0x002a3a, fog: 0x001a26, neonA: 0x00ffc8, neonB: 0x4f7dff },
   },
 ];
 

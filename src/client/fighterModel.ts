@@ -47,10 +47,21 @@ function toonGradient(): THREE.DataTexture {
   return gradient;
 }
 
-/** キャラの縁に当たる光（ステージのネオンの色）。全キャラで共有する */
-const RIM = { color: { value: new THREE.Color(0x6fd6ff) }, strength: { value: 0.42 } };
-export function setRimColor(color: number): void {
-  RIM.color.value.setHex(color);
+/**
+ * キャラの明るさの上限（光のにじみ＝ブルームがかかる明るさより下に抑える）。
+ * 背景やステージは光らせても、キャラは光って見えないようにするため。
+ */
+const CHAR_MAX = '0.8';
+
+/** 材質の色をキャラの明るさの上限で抑える */
+function capBrightness(m: THREE.Material, key: string): void {
+  m.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <opaque_fragment>',
+      `#include <opaque_fragment>\n gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(${CHAR_MAX}));`,
+    );
+  };
+  m.customProgramCacheKey = () => key;
 }
 
 /** 瞳の色（キャラごと） */
@@ -157,26 +168,14 @@ export class FighterModel {
   // ---------------------------------------------------------------- 部品づくり
   private toon(color: number): THREE.MeshToonMaterial {
     const m = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
-    // 縁の光：視線に対して横を向いている面ほど、ステージのネオンの色で明るくする
-    m.onBeforeCompile = (shader) => {
-      shader.uniforms.rimColor = RIM.color;
-      shader.uniforms.rimStrength = RIM.strength;
-      shader.fragmentShader = shader.fragmentShader
-        .replace('void main() {', 'uniform vec3 rimColor;\nuniform float rimStrength;\nvoid main() {')
-        .replace(
-          '#include <opaque_fragment>',
-          `#include <opaque_fragment>
-          float facing = clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
-          gl_FragColor.rgb += rimColor * rimStrength * smoothstep(0.55, 1.0, 1.0 - facing);`,
-        );
-    };
-    m.customProgramCacheKey = () => 'toon-rim';
+    capBrightness(m, 'toon-cap');
     this.mats.push(m);
     return m;
   }
 
   private glow(color: number): THREE.MeshBasicMaterial {
     const m = new THREE.MeshBasicMaterial({ color });
+    capBrightness(m, 'basic-cap');
     this.glowMats.push(m);
     return m;
   }
