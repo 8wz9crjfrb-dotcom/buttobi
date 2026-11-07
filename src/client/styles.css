@@ -1675,3 +1675,31 @@ input[inputmode='numeric'] {
   font-weight: 900;
   color: #4fd18b;
 }
+
+/* キャラ選択：衣装の切り替えは、左半分（3Dのキャラ側）の右上に縦に並べる */
+.charsel-screen .costume-row {
+  position: absolute;
+  top: calc(12px + var(--safe-t));
+  right: 56%;
+  margin: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  z-index: 2;
+  max-width: 38%;
+}
+
+.charsel-screen .costume-row .cr-label {
+  margin: 0 2px 0 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.charsel-screen .costume-row .cchip {
+  background: rgba(10, 12, 30, 0.6);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.charsel-screen .costume-row .cchip.on {
+  background: rgba(255, 207, 63, 0.3);
+}
