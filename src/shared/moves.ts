@@ -67,7 +67,9 @@ export type SpecialKind =
   | 'swap'
   | 'drone'
   | 'pull'
-  | 'charge';
+  | 'charge'
+  | 'pummel'
+  | 'throw';
 
 export interface MoveDef {
   startup: number;
@@ -140,6 +142,12 @@ const NORMALS: Record<string, MoveDef> = {
     air: false,
     special: 'charge',
   },
+  // つかんでいる間：Aでつかみ攻撃、スティックの方向へ投げる（当たり判定は使わず、投げる瞬間に飛ばす）
+  pummel: { startup: 4, active: 1, end: 10, hitboxes: [], dmg: 1.5, base: 0, growth: 0, angle: 0, air: false, special: 'pummel' },
+  fthrow: { startup: 8, active: 1, end: 16, hitboxes: [], dmg: 8, base: 7, growth: 8.5, angle: 40, air: false, special: 'throw' },
+  bthrow: { startup: 12, active: 1, end: 16, hitboxes: [], dmg: 10, base: 7.5, growth: 10, angle: 40, air: false, special: 'throw' },
+  uthrow: { startup: 10, active: 1, end: 16, hitboxes: [], dmg: 7, base: 7, growth: 8.5, angle: 88, air: false, special: 'throw' },
+  dthrow: { startup: 10, active: 1, end: 18, hitboxes: [], dmg: 6, base: 5.5, growth: 5, angle: 70, air: false, special: 'throw' },
   grab: { startup: 6, active: 3, end: 24, hitboxes: [{ x: 0.9, y: 0.95, r: 0.55 }], dmg: 9, base: 6.5, growth: 9.5, angle: 40, air: false, special: 'grab' },
 };
 
@@ -508,3 +516,6 @@ export const PITY = 6;
 
 /** 溜め攻撃：溜められる最大フレームと、最大まで溜めたときの威力の倍率 */
 export const CHARGE = { max: 90, mul: 1.75 };
+
+/** つかみ：つかんでいられる時間（基本＋相手の%に比例、上限）、もがいたときに減る時間、つかみ攻撃の間隔 */
+export const GRAB = { base: 50, perDamage: 0.5, max: 150, mash: 3, pummelGap: 6 };

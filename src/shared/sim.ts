@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, type CharacterDef } from './characters';
-import { BIKE, CHARGE, DECOY, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { BIKE, CHARGE, DECOY, GRAB, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -88,7 +88,7 @@ const SNAPSHOT_KEYS = [
   'ledgeSide', 'ledgeCooldown', 'dropThrough', 'respawnTimer', 'dodgeDir', 'prevButtons', 'prevMx', 'prevMy',
   'flickX', 'flickY', 'neutralXAge', 'neutralYAge', 'poison', 'poisonFrom',
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHitCd', 'confused', 'chain', 'redirected', 'pity', 'crit',
-  'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'tetherOn', 'tetherX', 'tetherY',
+  'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'tetherOn', 'tetherX', 'tetherY',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -173,6 +173,12 @@ export class Fighter {
   chargedMove = false;
   /** 弱攻撃を出してからAを押し続けている（溜め攻撃に移る） */
   holdA = false;
+  /** つかんでいる相手の slot（-1 = つかんでいない） */
+  grabbing = -1;
+  /** つかまれている相手の slot（-1 = つかまれていない） */
+  grabbedBy = -1;
+  /** つかんでいられる残り時間 */
+  grabTimer = 0;
   /** 飽き性：今の技の威力の倍率 */
   stale = 1;
   /** 走り続けている時間（時間指定） */
@@ -257,7 +263,11 @@ export class Sim {
    * onlySlot を指定すると、その選手だけを動かす（オンライン対戦の先行表示用）。
    * 出現位置・復活位置は全員がいる場合と同じになるよう、setup の並び順で決める。
    */
+  /** 先行表示用に自分だけを動かしている（ほかの選手はいない） */
+  private solo = false;
+
   constructor(setup: MatchSetup, onlySlot?: number) {
+    this.solo = onlySlot !== undefined;
     this.setup = setup;
     this.stage = getStage(setup.stageId);
     this.rng = new Rng(setup.seed ^ 0x5bd1e995);
@@ -309,6 +319,7 @@ export class Sim {
       const inp = playing ? inputs.get(f.slot) ?? EMPTY_INPUT : EMPTY_INPUT;
       this.readInput(f, inp);
     }
+    this.fixGrabs();
     const frozen = new Set<Fighter>();
     for (const f of this.fighters) {
       if (f.hitlag > 0) {
@@ -405,6 +416,10 @@ export class Sim {
       this.updateLedge(f);
       return;
     }
+    if (f.state === 'grabbed') {
+      this.updateGrabbed(f);
+      return;
+    }
 
     const inp = f.input;
     const d = f.def;
@@ -427,6 +442,9 @@ export class Sim {
         break;
       case 'attack':
         this.updateMove(f);
+        break;
+      case 'grab':
+        this.updateGrab(f);
         break;
       case 'hitstun':
         f.hitstun--;
@@ -793,6 +811,149 @@ export class Sim {
     }
   }
 
+  // ------------------------------------------------------------------ つかみ
+  /** つかみの関係が崩れていたら（撃墜・被弾・眠りなど）両方を自由にする */
+  private fixGrabs(): void {
+    for (const a of this.fighters) {
+      if (a.grabbing < 0) continue;
+      const v = this.fighter(a.grabbing);
+      const holding = a.alive && (a.state === 'grab' || (a.state === 'attack' && (a.move === 'pummel' || this.isThrow(a.move))));
+      if (!v) {
+        // 先行表示では相手がいないので、つかんでいるつもりのまま進める
+        if (this.solo && holding) continue;
+        a.grabbing = -1;
+        if (a.state === 'grab') this.setState(a, 'idle');
+        continue;
+      }
+      if (holding && v.alive && v.grabbedBy === a.slot && v.state === 'grabbed') continue;
+      this.endGrab(a, v);
+    }
+    for (const v of this.fighters) {
+      if (v.grabbedBy < 0) continue;
+      const a = this.fighter(v.grabbedBy);
+      if (!a) {
+        if (this.solo && v.state === 'grabbed') continue;
+        v.grabbedBy = -1;
+        if (v.state === 'grabbed') this.setState(v, v.grounded ? 'idle' : 'air');
+        continue;
+      }
+      if (a.grabbing !== v.slot) {
+        v.grabbedBy = -1;
+        if (v.state === 'grabbed') this.setState(v, v.grounded ? 'idle' : 'air');
+      }
+    }
+  }
+
+  private isThrow(m: MoveId | null): boolean {
+    return m === 'fthrow' || m === 'bthrow' || m === 'uthrow' || m === 'dthrow';
+  }
+
+  /** つかみを終える（相手を少し押し離す） */
+  private endGrab(a: Fighter, v: Fighter | undefined, push = false): void {
+    a.grabbing = -1;
+    if (a.state === 'grab') this.setState(a, 'idle');
+    if (!v) return;
+    if (v.grabbedBy === a.slot) v.grabbedBy = -1;
+    if (v.state === 'grabbed') {
+      this.setState(v, v.grounded ? 'idle' : 'air');
+      if (push) {
+        v.vx = a.facing * 6;
+        a.vx = -a.facing * 3;
+        v.invuln = Math.max(v.invuln, 10);
+      }
+    }
+  }
+
+  /** つかみが当たった：相手をつかむ */
+  private startGrab(a: Fighter, v: Fighter): void {
+    if (v.grabbing >= 0) this.endGrab(v, this.fighter(v.grabbing));
+    a.move = null;
+    a.grabbing = v.slot;
+    a.grabTimer = Math.min(GRAB.max, Math.round(GRAB.base + v.damage * GRAB.perDamage));
+    a.vx = 0;
+    this.setState(a, 'grab');
+    v.grabbedBy = a.slot;
+    v.move = null;
+    v.bike = 0;
+    v.charge = 0;
+    v.hitstun = 0;
+    v.vx = 0;
+    v.vy = 0;
+    v.facing = -a.facing;
+    v.lastHitBy = a.slot;
+    v.lastHitFrame = this.frame;
+    this.setState(v, 'grabbed');
+    this.placeGrabbed(a, v);
+    a.hitlag = v.hitlag = 4;
+    this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: 1, s: v.slot });
+  }
+
+  /** つかまれている人を、つかんでいる人の前に置く */
+  private placeGrabbed(a: Fighter, v: Fighter): void {
+    v.x = a.x + a.facing * 0.85 * a.def.scale;
+    v.y = a.y;
+    v.vx = 0;
+    v.vy = 0;
+    v.grounded = a.grounded;
+    v.groundRef = a.groundRef;
+  }
+
+  /** つかんでいる間：Aでつかみ攻撃、スティックの方向へ投げる */
+  private updateGrab(a: Fighter): void {
+    const v = a.grabbing >= 0 ? this.fighter(a.grabbing) : undefined;
+    a.vx *= 0.7;
+    if (!a.grounded) return this.endGrab(a, v);
+    a.grabTimer--;
+    if (a.grabTimer <= 0) return this.endGrab(a, v, true);
+    const inp = a.input;
+    const ax = Math.abs(inp.mx);
+    const ay = Math.abs(inp.my);
+    // つかんだ瞬間にスティックが倒れていても、少しだけ待ってから投げる（つかみ攻撃をする余裕を作る）
+    if (a.stateTime >= 6 && (ax > 0.6 || ay > 0.6)) {
+      const id: MoveId = ay > ax ? (inp.my > 0 ? 'uthrow' : 'dthrow') : inp.mx * a.facing > 0 ? 'fthrow' : 'bthrow';
+      return this.startMove(a, id);
+    }
+    if (this.pressed(a, BTN_A) && a.stateTime >= GRAB.pummelGap) return this.startMove(a, 'pummel');
+  }
+
+  /** つかまれている間：ボタンやスティックでもがくと早く抜けられる */
+  private updateGrabbed(v: Fighter): void {
+    const a = v.grabbedBy >= 0 ? this.fighter(v.grabbedBy) : undefined;
+    if (!a) return; // 先行表示（相手がいない）
+    this.placeGrabbed(a, v);
+    if (v.input.buttons & ~v.prevButtons || v.flickX === 0 || v.flickY === 0) a.grabTimer -= GRAB.mash;
+  }
+
+  /** つかみ攻撃・投げの、技が出る瞬間の処理 */
+  private grabMoveHit(a: Fighter, md: MoveDef): void {
+    const v = a.grabbing >= 0 ? this.fighter(a.grabbing) : undefined;
+    const pm = this.powerMul(a);
+    if (md.special === 'pummel') {
+      if (!v) return;
+      const before = v.damage;
+      let dmg = md.dmg * pm.dmg;
+      if (v.def.id === 'ai' && a.slot < v.learnHits.length) dmg *= 1 - 0.05 * Math.min(5, v.learnHits[a.slot]);
+      v.damage = Math.min(999, v.damage + dmg);
+      this.lifesteal(a, v.damage - before);
+      v.lastHitBy = a.slot;
+      v.lastHitFrame = this.frame;
+      a.hitlag = v.hitlag = 4;
+      this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: 3, s: v.slot });
+      return;
+    }
+    // 投げ：後ろ投げは振り向いてから投げる
+    if (a.move === 'bthrow') a.facing = -a.facing;
+    a.grabbing = -1;
+    if (!v) return;
+    v.grabbedBy = -1;
+    this.placeGrabbed(a, v);
+    const before = v.damage;
+    this.knock(v, a.facing, md.dmg * pm.dmg, md.base, md.growth, md.angle, pm.kb, a.slot);
+    this.lifesteal(a, v.damage - before);
+    a.hitlag = v.hitlag = 5;
+    this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: md.dmg, s: v.slot });
+  }
+
   /** 崖をつかむ（API呼び出しでも使う） */
   private grabLedge(f: Fighter, side: number): void {
     const m = this.stage.main;
@@ -1073,7 +1234,24 @@ export class Sim {
     }
     if (!f.grounded && f.flickY <= 2 && inp.my < -0.7 && f.vy < 3 && md.air && !md.helpless) f.fastFall = true;
 
+    // つかみ攻撃・投げ
+    if (md.special === 'pummel' || md.special === 'throw') {
+      if (md.special === 'pummel') f.grabTimer--;
+      if (mf === t.s) this.grabMoveHit(f, md);
+      if (f.grabbing >= 0) {
+        const v = this.fighter(f.grabbing);
+        if (v) this.placeGrabbed(f, v);
+      }
+    }
     if (mf >= t.s + t.a + t.e) {
+      // つかみ攻撃のあとは、まだつかんでいる
+      if (md.special === 'pummel' && f.grabbing >= 0) {
+        f.move = null;
+        this.setState(f, 'grab');
+        f.stateTime = GRAB.pummelGap;
+        if (f.grabTimer <= 0) this.endGrab(f, this.fighter(f.grabbing), true);
+        return;
+      }
       // 弱攻撃のあともAを押し続けていたら、溜め攻撃に移る
       if (f.move === 'jab' && f.holdA && f.grounded && f.state === 'attack') {
         this.startMove(f, 'charge');
@@ -1471,6 +1649,7 @@ export class Sim {
           if (md.special === 'grab' && !v.grounded) continue;
           a.moveHit.add(v.slot);
           this.applyHit(a, v, md, cx, cy);
+          if (a.state !== 'attack') break; // つかんだら、ほかの人には当たらない
         }
         // ハルシネーション：分身を攻撃した相手は目を回す
         for (const e of this.entities) {
@@ -1501,21 +1680,9 @@ export class Sim {
 
   private applyHit(a: Fighter, v: Fighter, md: MoveDef, hx: number, hy: number): void {
     if (md.special === 'grab') {
-      const inp = a.input;
-      let angle = 40;
-      let dir = a.facing;
-      if (inp.mx * a.facing < -0.5) {
-        angle = 40;
-        dir = -a.facing;
-        a.facing = dir;
-      } else if (inp.my > 0.5) angle = 88;
-      else if (inp.my < -0.5) angle = 75;
-      const before = v.damage;
-      const pm = this.powerMul(a);
-      this.knock(v, dir, md.dmg * pm.dmg, md.base, md.growth, angle, pm.kb, a.slot);
-      this.lifesteal(a, v.damage - before);
-      a.hitlag = v.hitlag = 6;
-      this.events.push({ k: 'hit', x: hx, y: hy, p: md.dmg, s: v.slot });
+      // つかみ：ガードしていてもつかめる。すでに誰かにつかまれている人はつかめない
+      if (v.grabbedBy >= 0) return;
+      this.startGrab(a, v);
       return;
     }
     const chargeMul = md.special === 'charge' ? 1 + (a.charge / CHARGE.max) * (CHARGE.mul - 1) : 1 + (a.charge / 60) * 0.4;
@@ -1604,6 +1771,14 @@ export class Sim {
       v.learnHits[from]++;
     }
     v.bike = 0;
+    // つかんでいる人・つかまれている人が攻撃されたら、つかみは解ける
+    if (v.grabbing >= 0) this.endGrab(v, this.fighter(v.grabbing));
+    if (v.grabbedBy >= 0) {
+      const g = this.fighter(v.grabbedBy);
+      if (g && g.grabbing === v.slot) g.grabbing = -1;
+      if (g && g.state === 'grab') this.setState(g, 'idle');
+      v.grabbedBy = -1;
+    }
     v.damage = Math.min(999, v.damage + dmg);
     const speed = ((base + (growth * KB_GROWTH_SCALE * v.damage) / 100) * kbMul) / v.def.weight;
     const rad = (angle * Math.PI) / 180;

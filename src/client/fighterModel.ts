@@ -594,7 +594,7 @@ export class FighterModel {
     const blinking = (time + this.blinkSeed) % 3.7 < 0.12;
     const tired = def.id === 'gacha';
     if (this.victory) this.setExpression('happy', 'smile', false);
-    else if (v.state === 'hitstun' || v.state === 'shieldbreak' || v.state === 'helpless') this.setExpression('hurt', 'open', false);
+    else if (v.state === 'hitstun' || v.state === 'shieldbreak' || v.state === 'helpless' || v.state === 'grabbed') this.setExpression('hurt', 'open', false);
     else if (v.state === 'sleep' || blinking) this.setExpression('closed', 'line', false);
     else if (v.state === 'attack') this.setExpression('angry', v.move === 'smash' || (v.move ?? '').endsWith('special') ? 'open' : 'line', false);
     else this.setExpression('normal', 'line', tired);
@@ -730,6 +730,26 @@ export class FighterModel {
         p.legL = 0.3;
         p.legR = -0.3;
         p.spinZ = Math.sin(time * 6) * 0.2;
+        break;
+      case 'grab':
+        // つかんでいる：両手を前に出して相手を押さえる
+        p.armR = FWD * 0.95;
+        p.armL = FWD * 0.95;
+        p.armLz = 0.25;
+        p.armRz = -0.25;
+        p.lean = 0.15;
+        p.legL = -0.25;
+        p.legR = 0.25;
+        break;
+      case 'grabbed':
+        // つかまれている：じたばたする
+        p.armL = UP * 0.45 + Math.sin(time * 22) * 0.35;
+        p.armR = UP * 0.4 - Math.sin(time * 22) * 0.35;
+        p.legL = Math.sin(time * 18) * 0.4;
+        p.legR = -Math.sin(time * 18) * 0.4;
+        p.lean = -0.25;
+        p.headTilt = -0.2;
+        p.bob = 0.12;
         break;
       case 'attack':
         this.attackPose(v, def, p);
@@ -1022,6 +1042,43 @@ export class FighterModel {
         p.armR = lerp(0, FWD, k);
         p.armL = lerp(0, FWD, k);
         p.lean = 0.2 * k;
+        break;
+      case 'pummel':
+        // つかみ攻撃：つかんだまま頭突き
+        p.armR = FWD * 0.95;
+        p.armL = FWD * 0.95;
+        p.lean = 0.15 + 0.35 * k;
+        p.headTilt = 0.3 * k;
+        break;
+      case 'fthrow':
+        // 前投げ：両手で突き飛ばす
+        p.armR = lerp(FWD * 0.6, FWD * 1.15, k);
+        p.armL = lerp(FWD * 0.6, FWD * 1.15, k);
+        p.lean = lerp(-0.2, 0.45, k);
+        p.legL = -0.5 * k;
+        p.legR = 0.4 * k;
+        break;
+      case 'bthrow':
+        // 後ろ投げ：ぐるっと回って後ろへ投げる
+        p.armR = FWD * 0.9;
+        p.armL = FWD * 0.9;
+        // （向きは投げる瞬間に反転するので、ここでは振りかぶりのひねりだけ）
+        p.spinY = f < s ? -Math.sin((f / s) * Math.PI) * 0.9 * v.facing : 0;
+        p.lean = 0.2;
+        break;
+      case 'uthrow':
+        // 上投げ：持ち上げて放り投げる
+        p.armR = lerp(FWD * 0.8, UP, k);
+        p.armL = lerp(FWD * 0.8, UP, k);
+        p.lean = -0.2 * k;
+        p.squash = f < s ? 1 - wind * 0.1 : 1;
+        break;
+      case 'dthrow':
+        // 下投げ：地面にたたきつける
+        p.armR = lerp(UP * 0.7, FWD * 0.3, k);
+        p.armL = lerp(UP * 0.7, FWD * 0.3, k);
+        p.lean = 0.5 * k;
+        p.squash = 1 - 0.12 * k;
         break;
     }
   }

@@ -366,6 +366,7 @@ function charCards(selected: string): string {
 }
 
 /** 全キャラ共通の溜め攻撃の説明（キャラ選択の長押しで出す） */
+const GRAB_DESC = 'ガード中にAで目の前の相手をつかむ（ガードしている相手もつかめる）。つかんでいる間はAでつかみ攻撃、スティックを倒した方向（前・後ろ・上・下）へ投げる。後ろ投げがいちばん遠くへ飛ぶ。つかまれた側はボタンを連打すると早く抜けられる。';
 const CHARGE_DESC = 'Aを押し続けると、弱攻撃のあと溜めに入り、離すと大きく殴る。最大1.5秒溜められ、威力は最大1.75倍。溜めている間はスティックで振り向ける。';
 
 /** キャラ選択画面の説明欄。技は長押しで説明が出る */
@@ -376,7 +377,7 @@ function charDetail(id: string): string {
   return `<div class="cd-desc">${c.desc}</div>
     <div class="cd-trait"><span class="tag">特性</span><b>${c.trait.name}</b>：${c.trait.desc}</div>
     <div class="cd-moves">
-      ${row('n', 'B', n.n)}${row('s', '横B', n.s)}${row('d', '下B', n.d)}${row('u', '上B', n.u)}${row('charge', '共通', '溜め攻撃（A長押し）')}
+      ${row('n', 'B', n.n)}${row('s', '横B', n.s)}${row('d', '下B', n.d)}${row('u', '上B', n.u)}${row('charge', '共通', '溜め攻撃（A長押し）')}${row('grab', '共通', 'つかみ（ガード＋A）')}
     </div>
     <div class="cd-hint">技を長押しすると説明が出ます</div>`;
 }
@@ -395,8 +396,8 @@ function bindMovePopups(root: HTMLElement, charId: () => string): void {
     const key = el.dataset.mv!;
     const c = getCharacter(charId());
     const descs = SPECIAL_DESCS[c.id] ?? SPECIAL_DESCS.guard;
-    const name = key === 'charge' ? '溜め攻撃' : c.specialNames[key as 'n' | 's' | 'd' | 'u'];
-    const text = key === 'charge' ? CHARGE_DESC : descs[key as 'n' | 's' | 'd' | 'u'];
+    const name = key === 'charge' ? '溜め攻撃' : key === 'grab' ? 'つかみ・投げ' : c.specialNames[key as 'n' | 's' | 'd' | 'u'];
+    const text = key === 'charge' ? CHARGE_DESC : key === 'grab' ? GRAB_DESC : descs[key as 'n' | 's' | 'd' | 'u'];
     pop = document.createElement('div');
     pop.className = 'mv-pop';
     pop.innerHTML = `<b>${name}</b><div>${text}</div>`;
@@ -748,7 +749,8 @@ function showHowTo(): void {
        <p><b>ガチャ廃人：</b>B 10連ガチャ（毎回ランダムで大当たり〜大外れ）／横B 単発ガチャ（ときどき超強力な一撃）／下B 課金（自分のダメージ%が増える代わりに、しばらく攻撃力アップ）／上B 無償石を配る（上昇しながら石を降らせる）</p>
        <p><b>フードデリバリー配達員：</b>B 配達バッグ投げ（投げると戻ってくる）／横B 自転車（乗ったまま走り回る。ジャンプで降りる）／下B 置き配（拾うと回復する料理を置く。相手も拾える）／上B 立ちこぎジャンプ（自転車ごと大ジャンプ）</p>
        <p><b>AIエンジニア：</b>B 推論（近くの相手を追いかける弾）／横B 学習（構え中に飛び道具を吸収し、次の攻撃を強化）／下B エージェント起動（AIドローンがそばを飛び、近くの相手を自動で撃つ。攻撃を当てると壊れる）／上B API呼び出し（ワイヤーで崖をつかんで復帰）</p>
-       <p><b>ガード：</b>押している間ガード。ガード中にスティックをはじくと回避、ガード中にAでつかみ投げ（ガードを崩せます）。空中で押すと空中回避。</p>
+       <p><b>ガード：</b>押している間ガード。ガード中にスティックをはじくと回避。空中で押すと空中回避。</p>
+       <p><b>つかみ：</b>ガード中にAで目の前の相手をつかみます（ガードを崩せます）。つかんでいる間はAでつかみ攻撃、スティックを倒した方向（前・後ろ・上・下）へ投げます。つかまれたらボタン連打で早く抜けられます。</p>
        <p><b>崖：</b>ステージの端に近づくと自動でつかまります。スティック上かジャンプで上がります。</p>
        <p><b>クレジット：</b>キャラクター・BGM・効果音はすべてこのゲームのプログラムで作っています。</p>
        <p><b>キーボード：</b>矢印/WASD＝移動、J＝A、K＝B、スペース＝ジャンプ、L＝ガード、Esc＝メニュー。<b>ゲームパッド：</b>左＝A、右＝B、下・上＝ジャンプ、肩＝ガード。</p>

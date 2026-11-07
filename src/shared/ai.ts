@@ -47,6 +47,22 @@ export class CpuController {
     const lv = Math.max(1, Math.min(9, level));
     const m = sim.stage.main;
     if (!f.alive) return { mx: 0, my: 0, buttons: 0 };
+    // つかまれている：ボタンを連打してもがく（強いほど速い）
+    if (f.state === 'grabbed') return this.rng.chance(0.1 + lv * 0.06) ? { mx: 0, my: 0, buttons: BTN_A } : { mx: 0, my: 0, buttons: 0 };
+    // つかんでいる：何回かつかみ攻撃をしてから投げる
+    if (f.state === 'grab') {
+      if (f.stateTime < 6) return { mx: 0, my: 0, buttons: 0 };
+      if (this.rng.chance(0.1 + lv * 0.01)) {
+        const v = sim.fighter(f.grabbing);
+        if (v && v.damage > 90) {
+          // %が高い相手は、近いほうの崖に向かって投げる
+          const towardRight = m.x2 - f.x < f.x - m.x1 ? 1 : -1;
+          return { mx: towardRight, my: 0, buttons: 0 };
+        }
+        return this.rng.chance(0.5) ? { mx: 0, my: -1, buttons: 0 } : { mx: f.facing, my: 0, buttons: 0 };
+      }
+      return this.rng.chance(0.2) ? { mx: 0, my: 0, buttons: BTN_A } : { mx: 0, my: 0, buttons: 0 };
+    }
 
     // 崖につかまっている：少し待ってから上がる
     if (f.state === 'ledge') {

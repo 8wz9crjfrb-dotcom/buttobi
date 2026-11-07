@@ -29,7 +29,9 @@ export type FighterStateName =
   | 'helpless'
   | 'dead'
   | 'respawn'
-  | 'sleep';
+  | 'sleep'
+  | 'grab'
+  | 'grabbed';
 
 export const STATE_NAMES: FighterStateName[] = [
   'idle',
@@ -47,6 +49,8 @@ export const STATE_NAMES: FighterStateName[] = [
   'dead',
   'respawn',
   'sleep',
+  'grab',
+  'grabbed',
 ];
 
 export type MoveId =
@@ -65,7 +69,12 @@ export type MoveId =
   | 'uspecial'
   | 'dspecial'
   | 'grab'
-  | 'charge';
+  | 'charge'
+  | 'pummel'
+  | 'fthrow'
+  | 'bthrow'
+  | 'uthrow'
+  | 'dthrow';
 
 export const MOVE_IDS: MoveId[] = [
   'jab',
@@ -84,6 +93,11 @@ export const MOVE_IDS: MoveId[] = [
   'dspecial',
   'grab',
   'charge',
+  'pummel',
+  'fthrow',
+  'bthrow',
+  'uthrow',
+  'dthrow',
 ];
 
 export type RuleMode = 'stock' | 'time';

@@ -335,4 +335,53 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   check('Aを押し続けると溜め攻撃が出る', short.charged && long.charged);
   check('長く溜めるほど威力が上がる', long.dmg > short.dmg * 1.3, `少し溜め${short.dmg.toFixed(1)}% / 最大溜め${long.dmg.toFixed(1)}%`);
 }
+// ---- つかみ・つかみ攻撃・投げ（全キャラ共通）
+{
+  const GRAB_IN: InputState = { mx: 0, my: 0, buttons: BTN_SHIELD | BTN_A };
+  const setupGrab = () => {
+    const sim = make('guard', 'hacker');
+    sim.fighters[0].x = 0; sim.fighters[0].facing = 1; sim.fighters[1].x = 1.0; sim.fighters[1].damage = 30;
+    run(sim, 1, () => ({ mx: 0, my: 0, buttons: BTN_SHIELD }));
+    run(sim, 14, at(0, GRAB_IN));
+    return sim;
+  };
+  const sim = setupGrab();
+  check('ガード＋Aで相手をつかむ', sim.fighters[0].state === 'grab' && sim.fighters[1].state === 'grabbed', `${sim.fighters[0].state} / ${sim.fighters[1].state}`);
+  const d0 = sim.fighters[1].damage;
+  run(sim, 30, at(8, { mx: 0, my: 0, buttons: BTN_A }));
+  check('つかんでいる間にAでつかみ攻撃（まだつかんだまま）', sim.fighters[1].damage > d0 && sim.fighters[1].state === 'grabbed', `${d0}% → ${sim.fighters[1].damage.toFixed(1)}%`);
+  run(sim, 3, () => ({ mx: -1, my: 0, buttons: 0 }));
+  run(sim, 20);
+  check('スティックを後ろに倒すと後ろへ投げる', sim.fighters[1].state === 'hitstun' && sim.fighters[1].x < -1 && sim.fighters[0].facing === -1, `相手x=${sim.fighters[1].x.toFixed(2)}`);
+
+  const up = setupGrab();
+  run(up, 8, () => ({ mx: 0, my: 1, buttons: 0 }));
+  let vx = 0, vy = 0;
+  for (let i = 0; i < 30; i++) {
+    run(up, 1);
+    if (up.fighters[1].vy > vy) { vy = up.fighters[1].vy; vx = up.fighters[1].vx; }
+  }
+  check('スティックを上に倒すと上へ投げる', vy > 5 && Math.abs(vx) < vy * 0.3, `vx=${vx.toFixed(1)} vy=${vy.toFixed(1)}`);
+
+  const idle = setupGrab();
+  let frames = 0;
+  while (idle.fighters[1].state === 'grabbed' && frames < 400) { run(idle, 1); frames++; }
+  const mash = setupGrab();
+  let frames2 = 0;
+  while (mash.fighters[1].state === 'grabbed' && frames2 < 400) { run(mash, 1, () => N, (i) => (frames2 % 2 === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N)); frames2++; }
+  check('何もしなければ時間で抜け出せる', idle.fighters[1].state !== 'grabbed' && frames < 200, `${frames}フレーム`);
+  check('ボタンを連打してもがくと早く抜けられる', frames2 < frames * 0.75, `連打${frames2}フレーム / 何もしない${frames}フレーム`);
+}
+{
+  // つかまれている人が別の人に攻撃されると、つかみは解ける
+  const sim = new Sim({ players: [0, 1, 2].map((i) => ({ slot: i, name: 'x', charId: ['guard', 'hacker', 'streamer'][i], cpu: false, cpuLevel: 1 })), stageId: 'plain', rules: { mode: 'stock', stocks: 3, timeLimit: 300 }, seed: 1 });
+  while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+  const [g, h, s3] = sim.fighters;
+  g.x = 0; g.facing = 1; h.x = 1.0; s3.x = 2.4; s3.facing = -1;
+  sim.step(new Map([[0, { mx: 0, my: 0, buttons: BTN_SHIELD }]]));
+  for (let i = 0; i < 14; i++) sim.step(new Map([[0, i === 0 ? { mx: 0, my: 0, buttons: BTN_SHIELD | BTN_A } : N]]));
+  const grabbed = h.state === 'grabbed';
+  for (let i = 0; i < 20; i++) sim.step(new Map([[2, i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N]]));
+  check('つかまれている人が攻撃されると、つかみが解ける', grabbed && h.state !== 'grabbed' && g.grabbing === -1 && h.grabbedBy === -1, `${h.state}`);
+}
 process.exit(fail ? 1 : 0);
