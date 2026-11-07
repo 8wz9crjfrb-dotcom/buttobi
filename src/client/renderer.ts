@@ -1,7 +1,7 @@
 // three.js による描画：ステージ、キャラクター、カメラ、エフェクト
 
 import * as THREE from 'three';
-import { getCharacter, SLOT_COLORS } from '../shared/characters';
+import { getCharacter, ITEM_NAMES, SLOT_COLORS, TAUNT_LINES } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
 import { FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
@@ -358,6 +358,53 @@ export class GameRenderer {
     this.renderer.render(pv.scene, cam);
   }
 
+  private portraits = new Map<string, string>();
+  /** HUD用の顔アイコン（キャラの顔を正面から描いた小さな画像。衣装ごとに使い回す） */
+  portrait(charId: string, costumeId?: string): string {
+    const key = `${charId}/${costumeId ?? ''}`;
+    const hit = this.portraits.get(key);
+    if (hit) return hit;
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x556070, 1.8));
+    const key2 = new THREE.DirectionalLight(0xffffff, 2);
+    key2.position.set(1, 3, 5);
+    scene.add(key2);
+    const def = getCharacter(charId);
+    const model = new FighterModel(def, getCostume(costumeId, charId), 0xffffff);
+    model.previewTurn = 0.25;
+    model.showMarker = false;
+    scene.add(model.root);
+    const fake: ViewFighter = {
+      slot: 0, x: 0, y: 0, facing: 1, state: 'idle', stateTime: 0, move: null, moveFrame: 0,
+      damage: 0, stocks: 0, invuln: false, shield: 1, charge: 0, kos: 0, falls: 0, out: false, poison: false, fx: 0,
+    };
+    model.update(fake, def, 0.5, 1);
+    const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+    const hy = 1.62 * def.scale;
+    cam.position.set(0.25, hy + 0.05, 2.1 * def.scale);
+    cam.lookAt(0, hy, 0);
+    const S = 96;
+    const pr = this.renderer.getPixelRatio();
+    const size = this.renderer.getSize(new THREE.Vector2());
+    const prevClear = this.renderer.getClearAlpha();
+    this.renderer.setClearAlpha(0);
+    this.renderer.setViewport(0, 0, S, S);
+    this.renderer.setScissor(0, 0, S, S);
+    this.renderer.setScissorTest(true);
+    this.renderer.render(scene, cam);
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const gl = this.renderer.domElement;
+    c.getContext('2d')!.drawImage(gl, 0, gl.height - S * pr, S * pr, S * pr, 0, 0, S, S);
+    this.renderer.setScissorTest(false);
+    this.renderer.setViewport(0, 0, size.x, size.y);
+    this.renderer.setClearAlpha(prevClear);
+    model.dispose();
+    const url = c.toDataURL('image/png');
+    this.portraits.set(key, url);
+    return url;
+  }
+
   /** ステージ選択用の小さな画像（実際のステージを描いて作る。一度作ったら使い回す） */
   stageThumbnail(stage: StageDef): string {
     const cached = this.thumbs.get(stage.id);
@@ -709,6 +756,26 @@ export class GameRenderer {
       }
       return;
     }
+    if (e.k === 'taunt') {
+      const f = view.fighters.find((x) => x.slot === e.s);
+      const p = this.setup?.players.find((x) => x.slot === e.s);
+      if (f && p) {
+        const t = TAUNT_LINES[p.charId];
+        const line = t ? (getCostume(p.costume, p.charId).rarity >= 5 ? t.ssr : t.lines[e.i % t.lines.length]) : '！';
+        this.props.showBubble(line, f.x, f.y + 2.9 * getCharacter(p.charId).scale);
+      }
+      return;
+    }
+    if (e.k === 'item') {
+      this.props.showText(ITEM_NAMES[e.t] ?? 'アイテム', ['#4fd18b', '#b6ff3a', '#ff5a5a', '#6ab8ff'][e.t] ?? '#fff', e.x, e.y + 1.4);
+      this.spawn(this.ringGeo, [0x4fd18b, 0xb6ff3a, 0xff3b3b, 0x4f9dff][e.t] ?? 0xffffff, e.x, e.y, 0, 0, 0.4, 20, 0.06);
+      if (e.t === 2) this.shake = Math.max(this.shake, 0.6);
+      return;
+    }
+    if (e.k === 'warn') {
+      this.gimmickWarn(e);
+      return;
+    }
     if (e.k === 'finish') {
       // 撃墜確定：スローにして寄る。白い閃光と、光る輪
       const v = view.fighters.find((f) => f.slot === e.s);
@@ -772,6 +839,32 @@ export class GameRenderer {
       this.spawn(this.ringGeo, color, e.x, e.y, 0, 0, 1, 26, 0.3, true);
       this.koBeam(e.x, e.y, color);
       this.shake = 1.1;
+    }
+  }
+
+  /** ステージギミックの予告：何が来るかの文字と、来る場所の印 */
+  private gimmickWarn(e: Extract<GameEvent, { k: 'warn' }>): void {
+    const st = this.stage;
+    if (!st) return;
+    const m = st.main;
+    const labels: Record<string, string> = {
+      rooftop: e.d > 0 ? '強風注意 →→' : '←← 強風注意',
+      vault: '警報！レーザー（ジャンプでよけろ）',
+      arcade: 'スクーターが来る！（ジャンプでよけろ）',
+      studio: 'コメントの弾幕！',
+      cyber: 'データが降ってくる！',
+      timeline: '通知の嵐！',
+      gacha: 'カプセルの雨！',
+      lab: 'AIの光線が来る！',
+    };
+    this.props.showText(`⚠ ${labels[e.h] ?? '注意！'}`, '#ffd23f', (m.x1 + m.x2) / 2, m.top + 6.5, true, 110);
+    if (e.h === 'lab') {
+      // 光線が落ちる場所に赤い印
+      for (let i = 0; i < 3; i++) this.spawn(this.ringGeo, 0xff3b3b, e.x, m.top + 0.1, 0, 0, 0.9, 40 + i * 25, -0.004);
+    } else if (e.h === 'vault' || e.h === 'arcade' || e.h === 'studio') {
+      // 来る側の端に「！」
+      const x = e.d > 0 ? m.x1 - 0.5 : m.x2 + 0.5;
+      this.props.showText('！', '#ff5a5a', x, e.y + 0.6, true, 110);
     }
   }
 

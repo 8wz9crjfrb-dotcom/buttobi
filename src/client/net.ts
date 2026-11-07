@@ -60,19 +60,21 @@ export class NetClient {
   slot = -1;
   private closedByUser = false;
   /** つなぎ直しに使う情報 */
-  private params: { baseUrl: string; code: string; name: string; charId: string; costume?: string } | null = null;
+  private params: { baseUrl: string; code: string; name: string; charId: string; costume?: string; spectate?: boolean } | null = null;
   private token = '';
   private attempt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   /** つなぎ直している最中 */
   reconnecting = false;
+  private errored = false;
 
   constructor(private handlers: NetHandlers) {}
 
-  connect(baseUrl: string, code: string, create: boolean, name: string, charId: string, costume?: string): void {
+  connect(baseUrl: string, code: string, create: boolean, name: string, charId: string, costume?: string, spectate = false): void {
     this.close();
     this.closedByUser = false;
-    this.params = { baseUrl, code, name, charId, costume };
+    this.errored = false;
+    this.params = { baseUrl, code, name, charId, costume, spectate };
     this.token = '';
     this.open(create);
   }
@@ -84,7 +86,7 @@ export class NetClient {
     this.ws = ws;
     const rejoin = this.reconnecting && this.token ? { slot: this.slot, token: this.token } : undefined;
     ws.onopen = () => {
-      this.send({ t: 'hello', v: PROTOCOL_VERSION, name: p.name, charId: p.charId, costume: p.costume, create: rejoin ? false : create, rejoin });
+      this.send({ t: 'hello', v: PROTOCOL_VERSION, name: p.name, charId: p.charId, costume: p.costume, create: rejoin ? false : create, rejoin, spectate: p.spectate || undefined });
       this.pingTimer = setInterval(() => this.send({ t: 'ping', c: performance.now() }), 2000);
     };
     ws.onmessage = (ev) => {
@@ -101,6 +103,11 @@ export class NetClient {
       this.pingTimer = null;
       if (this.ws === ws) this.ws = null;
       if (this.closedByUser) return;
+      // エラーを受け取ったあとの切断は、onError で処理済み
+      if (this.errored) {
+        this.errored = false;
+        return;
+      }
       // ルームに入っていたなら、同じ枠へのつなぎ直しを試す
       if (this.token && this.slot >= 0 && this.attempt < RECONNECT_DELAYS.length) {
         this.reconnecting = true;
@@ -164,6 +171,7 @@ export class NetClient {
         break;
       case 'error':
         // つなぎ直しに失敗した（猶予が過ぎた等）：これ以上は試さない
+        this.errored = true;
         this.token = '';
         this.reconnecting = false;
         this.handlers.onError(m.code, m.msg);
@@ -272,6 +280,16 @@ export class NetClient {
     if (this.pingTimer) clearInterval(this.pingTimer);
     this.pingTimer = null;
     this.slot = -1;
+  }
+
+  /** 観戦している */
+  get spectating(): boolean {
+    return !!this.params?.spectate;
+  }
+
+  /** 入っているルームのコード */
+  get code(): string {
+    return this.params?.code ?? '';
   }
 
   get connected(): boolean {

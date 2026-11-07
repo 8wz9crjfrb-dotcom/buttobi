@@ -26,7 +26,7 @@ export class PropRenderer {
   private qTex: THREE.CanvasTexture;
   private question = new Map<number, THREE.Sprite>();
   private bubbles: { mesh: THREE.Mesh; life: number }[] = [];
-  private texts: { sprite: THREE.Sprite; life: number; max: number }[] = [];
+  private texts: { sprite: THREE.Sprite; life: number; max: number; still?: boolean }[] = [];
 
   constructor(private scene: THREE.Scene) {
     this.zzzTex = canvasTexture(128, 64, (g) => {
@@ -48,8 +48,43 @@ export class PropRenderer {
     this.textures.push(this.zzzTex, this.qTex);
   }
 
+  /** 吹き出し（アピールのセリフ）。キャラの頭の上に出て、しばらくして消える */
+  showBubble(text: string, x: number, y: number): void {
+    const size = 40;
+    const W = Math.max(256, Math.ceil((text.length * size + 60) / 64) * 64);
+    const tex = canvasTexture(W, 112, (g) => {
+      g.fillStyle = '#ffffff';
+      g.strokeStyle = '#1b1b28';
+      g.lineWidth = 6;
+      g.beginPath();
+      g.roundRect(6, 6, W - 12, 78, 30);
+      g.fill();
+      g.stroke();
+      g.beginPath();
+      g.moveTo(W / 2 - 14, 82);
+      g.lineTo(W / 2, 104);
+      g.lineTo(W / 2 + 14, 82);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.fillRect(W / 2 - 12, 76, 24, 8);
+      g.fillStyle = '#1b1b28';
+      g.font = `900 ${size}px ${FONT}`;
+      g.textAlign = 'center';
+      g.fillText(text, W / 2, 60);
+    });
+    // 白を少し暗くして、夜のステージで光のにじみがかからないようにする（読めるように）
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, depthTest: false, transparent: true, color: 0xcfcfcf }));
+    const h = 0.95;
+    sprite.scale.set((h * W) / 112, h, 1);
+    sprite.position.set(x, y, 1);
+    sprite.renderOrder = 10; // ほかの物より手前に描く
+    this.scene.add(sprite);
+    this.texts.push({ sprite, life: 100, max: 100, still: true });
+  }
+
   /** 浮かんで消える文字（ガチャの結果など） */
-  showText(text: string, color: string, x: number, y: number, big = false): void {
+  showText(text: string, color: string, x: number, y: number, big = false, life = 70): void {
     const size = big ? 64 : 48;
     // 文字数に合わせて横幅を決める（長い文字が切れないように）
     const W = Math.max(256, Math.ceil((text.length * size + 30) / 64) * 64);
@@ -66,12 +101,13 @@ export class PropRenderer {
       } else g.fillStyle = color;
       g.fillText(text, W / 2, 70);
     });
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, depthTest: false, transparent: true, color: 0xd6d6d6 }));
     const h = big ? 1.12 : 0.82;
     sprite.scale.set((h * W) / 96, h, 1);
+    sprite.renderOrder = 10;
     sprite.position.set(x, y, 1);
     this.scene.add(sprite);
-    this.texts.push({ sprite, life: 70, max: 70 });
+    this.texts.push({ sprite, life, max: life });
   }
 
   // ---------------------------------------------------------------- 部品の作り方
@@ -162,6 +198,119 @@ export class PropRenderer {
         const g = new THREE.Group();
         g.add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 10), basic(0x4fd8ff, { transparent: true, opacity: 0.55 })));
         g.add(new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), basic(0xffffff)));
+        return g;
+      }
+      case 'packet': {
+        // データの小包（ステージギミック）
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), basic(0x39ff88, { wireframe: true })));
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), basic(0x39ff88)));
+        return g;
+      }
+      case 'laser':
+        return new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.12, 0.12), basic(0xff2a3a));
+      case 'beam':
+        return new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.05, 16, 1, true), basic(0x2fe8ff, { transparent: true, opacity: 0.75, side: THREE.DoubleSide }));
+      case 'comment': {
+        const words = ['草', 'それな', '神', '888', 'うますぎ', 'ナイス'];
+        const word = words[Math.floor(Math.random() * words.length)];
+        const tex = canvasTexture(256, 72, (g) => {
+          g.fillStyle = 'rgba(255,255,255,0.95)';
+          g.beginPath();
+          g.roundRect(4, 4, 248, 64, 20);
+          g.fill();
+          g.fillStyle = '#ff5ea8';
+          g.font = `900 40px ${FONT}`;
+          g.textAlign = 'center';
+          g.fillText(word, 128, 50);
+        });
+        this.textures.push(tex);
+        return new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.62), basic(0xffffff, { map: tex, transparent: true, side: THREE.DoubleSide }));
+      }
+      case 'notif': {
+        const tex = canvasTexture(64, 64, (g) => {
+          g.fillStyle = '#ff3b3b';
+          g.beginPath();
+          g.arc(32, 32, 28, 0, Math.PI * 2);
+          g.fill();
+          g.fillStyle = '#fff';
+          g.font = `bold 26px ${FONT}`;
+          g.textAlign = 'center';
+          g.fillText('99+', 32, 42);
+        });
+        this.textures.push(tex);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
+        sp.scale.setScalar(0.8);
+        return sp;
+      }
+      case 'capsule': {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshToonMaterial({ color: [0xff4a6a, 0x4ad8ff, 0xffd23f, 0xc77dff][owner & 3] })));
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 14, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), new THREE.MeshToonMaterial({ color: 0xffffff })));
+        return g;
+      }
+      case 'scooter': {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.5, 0.55), new THREE.MeshToonMaterial({ color: 0xff5a3a })));
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.5), new THREE.MeshToonMaterial({ color: 0x2fbf71 }));
+        seat.position.set(-0.3, 0.45, 0);
+        g.add(seat);
+        for (const x of [-0.45, 0.45]) {
+          const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.15, 12), new THREE.MeshToonMaterial({ color: 0x111111 }));
+          wheel.rotation.x = Math.PI / 2;
+          wheel.position.set(x, -0.3, 0);
+          g.add(wheel);
+        }
+        const light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), basic(0xfff1c8));
+        light.position.set(0.68, 0.1, 0);
+        light.name = 'front';
+        g.add(light);
+        return g;
+      }
+      case 'item0':
+      case 'item1':
+      case 'item2':
+      case 'item3': {
+        // アイテム：光る台座の上に、種類ごとの形
+        const g = new THREE.Group();
+        const k = Number(kind.slice(4));
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.32, 0.45, 24), basic([0x4fd18b, 0xb6ff3a, 0xff3b3b, 0x4f9dff][k], { transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.02;
+        g.add(ring);
+        const body = new THREE.Group();
+        body.name = 'body';
+        body.position.y = 0.45;
+        g.add(body);
+        const toon = (c: number) => new THREE.MeshToonMaterial({ color: c });
+        if (k === 0) {
+          // バグ修正パッチ：緑の十字の箱
+          body.add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), toon(0xffffff)));
+          for (const [sx, sy] of [[0.3, 0.09], [0.09, 0.3]]) {
+            const cr = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, 0.44), basic(0x2fbf71));
+            body.add(cr);
+          }
+        } else if (k === 1) {
+          // エナドリの缶
+          body.add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.48, 14), toon(0xb6ff3a)));
+          const band = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.12, 14), toon(0x1a1a28));
+          body.add(band);
+        } else if (k === 2) {
+          // サーバーダウン：赤い×のついたサーバー
+          body.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.3), toon(0x2a2c36)));
+          for (const r of [0.7, -0.7]) {
+            const x = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 0.32), basic(0xff3b3b));
+            x.rotation.z = r;
+            body.add(x);
+          }
+        } else {
+          // ファイアウォール：盾
+          const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.2, 0.1, 6), toon(0x4f9dff));
+          sh.rotation.x = Math.PI / 2;
+          body.add(sh);
+          const em = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.12), basic(0xffd23f));
+          body.add(em);
+        }
         return g;
       }
       case 'spark': {
@@ -299,8 +448,27 @@ export class PropRenderer {
       else if (p.kind === 'bag') o.rotation.z = time * 14;
       else if (p.kind === 'orb') o.scale.setScalar(1 + Math.sin(time * 20) * 0.1);
       else if (p.kind === 'spark') o.scale.setScalar(1 + Math.sin(time * 40) * 0.2);
+      else if (p.kind === 'packet' || p.kind === 'capsule') o.rotation.set(time * 3, time * 4, 0);
+      else if (p.kind === 'laser') (o as THREE.Mesh).scale.y = 1 + Math.sin(time * 50) * 0.3;
+      else if (p.kind === 'scooter' || p.kind === 'comment') {
+        // 進む向きに合わせる（前のフレームの位置と比べる）
+        const px = o.userData.px as number | undefined;
+        if (px !== undefined && Math.abs(p.x - px) > 0.01 && p.kind === 'scooter') o.rotation.y = p.x > px ? 0 : Math.PI;
+        o.userData.px = p.x;
+      }
     }
     for (const e of view.entities) {
+      if (e.kind === 'item') {
+        const o = this.take(`item${e.dir}`, 0, used);
+        o.position.set(e.x, e.y, 0.3);
+        const body = o.getObjectByName('body');
+        if (body) {
+          body.rotation.y = time * 2;
+          body.position.y = 0.45 + Math.sin(time * 4) * 0.06;
+        }
+        o.visible = e.life > 120 || Math.floor(time * 8) % 2 === 0;
+        continue;
+      }
       const o = this.take(e.kind, e.owner, used);
       if (e.kind === 'wall') {
         o.position.set(e.x, e.y + WALL.h / 2, 0);
@@ -368,7 +536,7 @@ export class PropRenderer {
     }
     this.texts = this.texts.filter((t) => {
       t.life -= dt * 60;
-      t.sprite.position.y += dt * 0.8;
+      if (!t.still) t.sprite.position.y += dt * 0.8;
       (t.sprite.material as THREE.SpriteMaterial).opacity = Math.min(1, t.life / 20);
       if (t.life <= 0) {
         this.scene.remove(t.sprite);

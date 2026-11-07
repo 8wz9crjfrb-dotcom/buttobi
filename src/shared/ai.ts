@@ -114,6 +114,10 @@ export class CpuController {
       return b.hold;
     }
 
+    // キャラごとの必殺技の使い方
+    const special = this.characterSpecial(f, t, adx, dy, dir, lv, b);
+    if (special) return special;
+
     // 近い：攻撃
     if (adx < 1.9 && Math.abs(dy) < 1.6) {
       if (!f.grounded) {
@@ -169,6 +173,41 @@ export class CpuController {
     }
     b.cooldown = Math.min(b.cooldown, 4);
     return { mx: dir, my: 0, buttons: 0 };
+  }
+
+  /** キャラごとに得意な必殺技を、合う場面で使う */
+  private characterSpecial(f: Fighter, t: Target, adx: number, dy: number, dir: number, lv: number, b: Brain): InputState | null {
+    if (!f.grounded) return null;
+    const near = Math.abs(dy) < 1.4;
+    const skill = 0.25 + lv * 0.06;
+    switch (f.def.id) {
+      case 'dopa':
+        // 倍速再生は使えるならすぐ使う。通知爆撃で引き寄せてから殴る。無限スクロールは押し直して続ける
+        if (f.speedBuff === 0 && f.speedCd === 0 && this.rng.chance(skill)) return { mx: 0, my: 0, buttons: BTN_B };
+        if (near && adx > 2 && adx < 4.3 && this.rng.chance(skill * 0.6)) return { mx: 0, my: -1, buttons: BTN_B };
+        if (near && adx > 3 && adx < 8 && this.rng.chance(skill * 0.4)) {
+          b.hold = { mx: dir, my: 0, buttons: 0 };
+          b.holdFrames = 0;
+          return { mx: dir, my: 0, buttons: BTN_B };
+        }
+        break;
+      case 'gacha':
+        // 課金は効果が切れていて、%が低いうちに使う。離れていたら10連
+        if (f.powerBuff === 0 && f.damage < 90 && adx > 3 && this.rng.chance(skill * 0.5)) return { mx: 0, my: -1, buttons: BTN_B };
+        if (near && adx > 2.5 && adx < 7 && this.rng.chance(skill * 0.35)) return { mx: 0, my: 0, buttons: BTN_B };
+        if (near && adx < 2.2 && t.damage > 60 && this.rng.chance(skill * 0.3)) return { mx: dir, my: 0, buttons: BTN_B };
+        break;
+      case 'streamer':
+        // 強制アップデートは近くの地上の相手に。眠らせたらスマッシュ
+        if (near && adx < 1.8 && t.grounded && t.state !== 'sleep' && this.rng.chance(skill * 0.3)) return { mx: 0, my: -1, buttons: BTN_B };
+        if (t.state === 'sleep' && adx < 1.9 && near && Math.abs(f.input.mx) < 0.3) {
+          b.hold = { mx: dir, my: 0, buttons: BTN_A };
+          b.holdFrames = 20;
+          return b.hold;
+        }
+        break;
+    }
+    return null;
   }
 
   /** いちばん近い相手。分身（ハルシネーション）にもだまされる */

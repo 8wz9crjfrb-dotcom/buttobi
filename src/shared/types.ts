@@ -74,7 +74,8 @@ export type MoveId =
   | 'fthrow'
   | 'bthrow'
   | 'uthrow'
-  | 'dthrow';
+  | 'dthrow'
+  | 'taunt';
 
 export const MOVE_IDS: MoveId[] = [
   'jab',
@@ -98,6 +99,7 @@ export const MOVE_IDS: MoveId[] = [
   'bthrow',
   'uthrow',
   'dthrow',
+  'taunt',
 ];
 
 export type RuleMode = 'stock' | 'time';
@@ -107,9 +109,13 @@ export interface MatchRules {
   stocks: number;
   /** 制限時間（秒） */
   timeLimit: number;
+  /** アイテムが出る */
+  items?: boolean;
+  /** ステージギミックが動く */
+  gimmicks?: boolean;
 }
 
-export const DEFAULT_RULES: MatchRules = { mode: 'stock', stocks: 3, timeLimit: 180 };
+export const DEFAULT_RULES: MatchRules = { mode: 'stock', stocks: 3, timeLimit: 180, items: false, gimmicks: false };
 
 export interface PlayerSetup {
   slot: number;
@@ -149,6 +155,12 @@ export type GameEvent =
   | { k: 'swap'; x: number; y: number; x2: number; y2: number; s: number }
   | { k: 'pull'; x: number; y: number; tx: number; ty: number }
   | { k: 'shot'; s: number }
+  /** アピール（i = セリフの番号） */
+  | { k: 'taunt'; s: number; i: number }
+  /** アイテムを拾った（t = 種類） */
+  | { k: 'item'; s: number; t: number; x: number; y: number }
+  /** ステージギミックの予告（h = 種類、x/y = 位置、d = 向き） */
+  | { k: 'warn'; h: string; x: number; y: number; d: number }
   /** 撃墜が確定するほどの一撃（演出：スロー＆ズーム） */
   | { k: 'finish'; x: number; y: number; s: number };
 
@@ -192,7 +204,7 @@ export interface ViewProjectile {
 
 /** ステージに置かれる物（壁・罠・一時的な足場） */
 export interface ViewEntity {
-  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy' | 'drone';
+  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy' | 'drone' | 'item';
   x: number;
   y: number;
   owner: number;
@@ -218,4 +230,8 @@ export interface ResultEntry {
   kos: number;
   falls: number;
   score: number;
+  /** 与えたダメージ（%） */
+  dealt?: number;
+  /** 投げた回数 */
+  throws?: number;
 }

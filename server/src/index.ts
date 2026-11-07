@@ -82,6 +82,10 @@ const QUEUE_HARD = 40;
 const SNAP_EVERY = 2; // 60fps のうち 2 フレームに 1 回送る = 30回/秒
 /** 通信が切れてから、同じ枠に戻れる時間（ms） */
 const REJOIN_GRACE = 60_000;
+/** 観戦できる人数 */
+const MAX_SPECTATORS = 8;
+/** 観戦している人の印（slot の代わり） */
+const SPECTATOR = -2;
 
 /** そのキャラの衣装として正しければ id を、そうでなければ undefined を返す */
 function validCostume(charId: string, id: unknown): string | undefined {
@@ -138,7 +142,7 @@ export class Room extends DurableObject<Env> {
     const data = JSON.stringify(msg);
     for (const ws of this.ctx.getWebSockets()) {
       const a = ws.deserializeAttachment() as Attachment | null;
-      if (!a || a.slot < 0) continue;
+      if (!a || (a.slot < 0 && a.slot !== SPECTATOR)) continue;
       try {
         ws.send(data);
       } catch {
@@ -154,6 +158,15 @@ export class Room extends DurableObject<Env> {
       if (a && a.slot >= 0) s.add(a.slot);
     }
     return s;
+  }
+
+  private spectatorCount(): number {
+    let n = 0;
+    for (const ws of this.ctx.getWebSockets()) {
+      const a = ws.deserializeAttachment() as Attachment | null;
+      if (a && a.slot === SPECTATOR) n++;
+    }
+    return n;
   }
 
   private async save(): Promise<void> {
@@ -181,7 +194,7 @@ export class Room extends DurableObject<Env> {
       }
     }
     players.sort((a, b) => a.slot - b.slot);
-    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim };
+    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount() };
   }
 
   private pushLobby(): void {
@@ -230,6 +243,23 @@ export class Room extends DurableObject<Env> {
         }
       }
       const active = this.lobby && this.lobby.humans.some((h) => connected.has(h.slot));
+      // 観戦：満員でも対戦中でも、見るだけなら入れる
+      if (msg.spectate) {
+        if (!active || !this.lobby) {
+          this.send(ws, { t: 'error', code: 'notfound', msg: 'ルームが見つかりません。コードを確認してください。' });
+          return ws.close(1000, 'notfound');
+        }
+        if (this.spectatorCount() >= MAX_SPECTATORS) {
+          this.send(ws, { t: 'error', code: 'full', msg: '観戦の人数がいっぱいです。' });
+          return ws.close(1000, 'full');
+        }
+        ws.serializeAttachment({ slot: SPECTATOR, code: this.lobby.code });
+        this.send(ws, { t: 'welcome', slot: -1, token: '' });
+        this.send(ws, { t: 'lobby', lobby: this.lobbyInfo() });
+        if (this.sim && this.setup) this.send(ws, { t: 'start', setup: this.setup });
+        this.pushLobby();
+        return;
+      }
       if (msg.create && active) {
         this.send(ws, { t: 'error', code: 'taken', msg: 'このコードは使用中です。' });
         return ws.close(1000, 'taken');
@@ -274,7 +304,15 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
-    if (slot < 0 || !this.lobby) return;
+    if (slot < 0 || !this.lobby) {
+      // 観戦している人が抜けた
+      if (slot === SPECTATOR && msg.t === 'leave') {
+        ws.serializeAttachment({ slot: -1 });
+        ws.close(1000, 'leave');
+        this.pushLobby();
+      }
+      return;
+    }
     const l = this.lobby;
 
     switch (msg.t) {
@@ -308,6 +346,8 @@ export class Room extends DurableObject<Env> {
           mode: r?.mode === 'time' ? 'time' : 'stock',
           stocks: Math.max(1, Math.min(5, r?.stocks | 0 || 3)),
           timeLimit: Math.max(60, Math.min(600, r?.timeLimit | 0 || 180)),
+          items: r?.items === true,
+          gimmicks: r?.gimmicks === true,
         };
         if (STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;
         l.cpuCount = Math.max(0, Math.min(MAX_PLAYERS - l.humans.length, msg.cpuCount | 0));
@@ -340,6 +380,11 @@ export class Room extends DurableObject<Env> {
 
   async webSocketClose(ws: WebSocket): Promise<void> {
     const a = ws.deserializeAttachment() as Attachment | null;
+    if (a && a.slot === SPECTATOR) {
+      ws.serializeAttachment({ slot: -1 });
+      this.pushLobby();
+      return;
+    }
     if (a && a.slot >= 0) {
       ws.serializeAttachment({ slot: -1 });
       await this.handleLeave(a.slot);
@@ -450,7 +495,7 @@ export class Room extends DurableObject<Env> {
     const base = JSON.stringify(encodeState(sim.toView(), this.eventBuf));
     for (const ws of this.ctx.getWebSockets()) {
       const a = ws.deserializeAttachment() as Attachment | null;
-      if (!a || a.slot < 0) continue;
+      if (!a || (a.slot < 0 && a.slot !== SPECTATOR)) continue;
       const f = this.cpuSlots.has(a.slot) ? undefined : sim.fighter(a.slot);
       const q = this.queues.get(a.slot);
       const me = f && q ? `,"me":${JSON.stringify({ a: q.ack, st: f.serialize() })}` : '';

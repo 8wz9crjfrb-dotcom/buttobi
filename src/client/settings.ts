@@ -25,6 +25,8 @@ export interface Settings {
   rules: MatchRules;
   /** キャラごとに着ている衣装の id */
   costumes: Record<string, string>;
+  /** 動作が重いとき、自動で画質を「軽さ優先」にする */
+  autoQuality: boolean;
   /** 左利き：スティックを右、ボタンを左に置く */
   leftHanded: boolean;
   /** ボタンを動かした位置（画面の幅・高さに対する割合。ボタンの名前ごと） */
@@ -64,6 +66,7 @@ export function loadSettings(): Settings {
     stageId: STAGES[0].id,
     rules: { ...DEFAULT_RULES },
     costumes: {},
+    autoQuality: true,
     leftHanded: false,
     btnPos: {},
   };

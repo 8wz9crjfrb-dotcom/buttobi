@@ -115,6 +115,22 @@ export class Sfx {
   absorb(): void {
     this.tone(1200, 0.2, 'sine', 0.15, 300);
   }
+  /** キャラごとの短いジングル（選んだとき・勝ったとき） */
+  jingle(charId: string): void {
+    const J: Record<string, [number[], OscillatorType, number]> = {
+      guard: [[392, 523, 659, 784], 'square', 140],
+      hacker: [[440, 660, 587, 880, 1175], 'sawtooth', 70],
+      thief: [[659, 622, 659, 784, 988], 'triangle', 90],
+      streamer: [[784, 988, 1175, 1568], 'triangle', 90],
+      dopa: [[880, 1175, 880, 1319, 1568, 1760], 'square', 55],
+      gacha: [[523, 659, 784, 1047, 1319], 'square', 80],
+      courier: [[587, 740, 880, 1175], 'triangle', 75],
+      ai: [[440, 554, 659, 880, 1109], 'sine', 95],
+    };
+    const [notes, type, gap] = J[charId] ?? J.guard;
+    notes.forEach((f, i) => setTimeout(() => this.tone(f, i === notes.length - 1 ? 0.35 : 0.12, type, 0.12), i * gap));
+  }
+
   /** 撃墜確定：重い一撃と、高く鳴り響く音 */
   finish(): void {
     this.burst(0.5, 0.9, 220);
@@ -219,7 +235,14 @@ export class Music {
     if (this.out) this.out.gain.value = v * 0.35;
   }
 
+  /** ピンチ（残り30秒・最後の1機）：テンポを上げて音を足す */
+  private pinch = false;
+  setPinch(on: boolean): void {
+    this.pinch = on;
+  }
+
   play(id: TrackId): void {
+    this.pinch = false;
     if (!TRACKS[id]) id = 'plain'; // 曲のないステージは標準の曲
     if (this.trackId === id) return;
     this.stop();
@@ -243,7 +266,7 @@ export class Music {
     const ctx = this.ctx;
     const tr = this.track;
     if (!ctx || !tr) return;
-    const stepDur = 60 / tr.bpm / 4; // 16分音符
+    const stepDur = 60 / (tr.bpm * (this.pinch ? 1.14 : 1)) / 4; // 16分音符（ピンチのときは速く）
     while (this.nextTime < ctx.currentTime + 0.15) {
       this.playStep(this.step, this.nextTime, stepDur, tr);
       this.step = (this.step + 1) % 64;
@@ -268,6 +291,11 @@ export class Music {
     // メロディ
     const m = this.melody[step];
     if (m !== null && m !== undefined) this.note(tr.root + 24 + m, t, dur * 1.7, tr.lead, tr.lead === 'sawtooth' ? 0.09 : 0.13);
+    // ピンチ：細かいハイハットと、小節の頭に高い音を足して盛り上げる
+    if (this.pinch) {
+      this.hat(t, 0.07);
+      if (s === 0) this.note(tr.root + 36 + chord[0], t, dur * 3, 'square', 0.05);
+    }
     // ドラム
     if (tr.drums === 'soft') {
       if (s === 0 || s === 8) this.kick(t, 0.5);

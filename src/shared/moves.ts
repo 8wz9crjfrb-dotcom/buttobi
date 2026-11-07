@@ -8,7 +8,27 @@ export interface Hitbox {
 }
 
 /** 飛び道具の見た目の種類 */
-export type ShotKind = 'text' | 'bullet' | 'mail' | 'malware' | 'coin' | 'thanks' | 'badge' | 'stone' | 'bag' | 'orb' | 'gold' | 'spark';
+export type ShotKind =
+  | 'text'
+  | 'bullet'
+  | 'mail'
+  | 'malware'
+  | 'coin'
+  | 'thanks'
+  | 'badge'
+  | 'stone'
+  | 'bag'
+  | 'orb'
+  | 'gold'
+  | 'spark'
+  // ステージギミック
+  | 'packet'
+  | 'laser'
+  | 'comment'
+  | 'notif'
+  | 'capsule'
+  | 'scooter'
+  | 'beam';
 
 export interface ShotSpec {
   /** 技が出てから何フレーム後に出すか */
@@ -69,7 +89,8 @@ export type SpecialKind =
   | 'pull'
   | 'charge'
   | 'pummel'
-  | 'throw';
+  | 'throw'
+  | 'taunt';
 
 export interface MoveDef {
   startup: number;
@@ -143,6 +164,8 @@ const NORMALS: Record<string, MoveDef> = {
     special: 'charge',
   },
   // つかんでいる間：Aでつかみ攻撃、スティックの方向へ投げる（当たり判定は使わず、投げる瞬間に飛ばす）
+  // アピール：ガード中にスティックを上にはじく。キャラごとの一言（当たり判定なし）
+  taunt: { startup: 2, active: 1, end: 64, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: false, special: 'taunt' },
   pummel: { startup: 4, active: 1, end: 10, hitboxes: [], dmg: 1.5, base: 0, growth: 0, angle: 0, air: false, special: 'pummel' },
   fthrow: { startup: 8, active: 1, end: 16, hitboxes: [], dmg: 8, base: 7, growth: 8.5, angle: 40, air: false, special: 'throw' },
   bthrow: { startup: 12, active: 1, end: 16, hitboxes: [], dmg: 10, base: 7.5, growth: 10, angle: 40, air: false, special: 'throw' },
@@ -519,3 +542,8 @@ export const CHARGE = { max: 90, mul: 1.75 };
 
 /** つかみ：つかんでいられる時間（基本＋相手の%に比例、上限）、もがいたときに減る時間、つかみ攻撃の間隔 */
 export const GRAB = { base: 50, perDamage: 0.5, max: 150, mash: 3, pummelGap: 6 };
+
+/** アイテム：出る間隔、同時に出る最大数、置いてある時間、種類（0=バグ修正パッチ 1=エナドリ 2=サーバーダウン 3=ファイアウォール） */
+export const ITEMS = { interval: 600, max: 2, life: 900, kinds: 4, heal: 20, freeze: 60, invuln: 240 };
+/** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
+export const GIMMICK = { interval: 780, warn: 90 };

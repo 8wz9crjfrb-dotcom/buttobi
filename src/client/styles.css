@@ -1703,3 +1703,235 @@ input[inputmode='numeric'] {
 .charsel-screen .costume-row .cchip.on {
   background: rgba(255, 207, 63, 0.3);
 }
+
+/* ---------- 戦績・ミッション・称号 ---------- */
+.menu-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(720px, 100%);
+}
+
+.reward-sub {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  margin: -4px 0 8px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.rec-body {
+  margin-top: 10px;
+}
+
+.missions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mission {
+  background: var(--panel-2);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.mission.done {
+  box-shadow: inset 0 0 0 2px #4fd18b;
+}
+
+.mission .mt {
+  font-weight: 800;
+  font-size: 14px;
+  min-height: 2.6em;
+}
+
+.mission .bar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  margin: 6px 0 4px;
+}
+
+.mission .bar div {
+  height: 100%;
+  background: linear-gradient(90deg, #4fd18b, #b6ff3a);
+}
+
+.mission .mp {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+table.rec {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+table.rec th,
+table.rec td {
+  padding: 4px 6px;
+  text-align: right;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+table.rec th:first-child,
+table.rec td:first-child {
+  text-align: left;
+}
+
+.titles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.title-card {
+  background: var(--panel-2);
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.title-card.have {
+  opacity: 1;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.title-card b {
+  display: block;
+  font-size: 12px;
+}
+
+@media (max-height: 480px) {
+  .menu-grid .btn {
+    padding: 8px 8px;
+    font-size: 14px;
+  }
+  .menu-grid {
+    gap: 8px;
+  }
+}
+
+/* ---------- チュートリアル ---------- */
+#tutorial {
+  position: absolute;
+  top: calc(44px + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, 70vw);
+  background: rgba(20, 24, 52, 0.88);
+  border-radius: 14px;
+  padding: 8px 14px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 6;
+  box-shadow: 0 0 0 2px rgba(255, 207, 63, 0.5);
+}
+
+#tutorial.ok {
+  box-shadow: 0 0 0 3px #4fd18b;
+}
+
+.tu-step {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.tu-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--accent);
+}
+
+#tutorial.ok .tu-title {
+  color: #4fd18b;
+}
+
+.tu-text {
+  font-size: 13px;
+}
+
+/* ---------- HUD：顔アイコンと、撃墜で割れる演出 ---------- */
+.hud-p {
+  position: relative;
+}
+
+.hud-p .face {
+  position: absolute;
+  left: -14px;
+  top: -18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(10, 12, 30, 0.75);
+  box-shadow: 0 0 0 2px currentColor;
+  object-fit: cover;
+}
+
+.hud-p.broken {
+  animation: hud-break 0.9s ease-out;
+}
+
+.hud-p.broken::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, transparent 46%, rgba(255, 255, 255, 0.95) 47%, transparent 49%),
+    linear-gradient(62deg, transparent 52%, rgba(255, 255, 255, 0.85) 53%, transparent 55%),
+    linear-gradient(160deg, transparent 30%, rgba(255, 255, 255, 0.8) 31%, transparent 33%);
+  animation: hud-crack 0.9s ease-out forwards;
+}
+
+@keyframes hud-break {
+  0% {
+    transform: scale(1.18) rotate(-4deg);
+    filter: brightness(2);
+  }
+  20% {
+    transform: scale(0.94) rotate(3deg);
+  }
+  40% {
+    transform: translateX(-4px) rotate(-2deg);
+  }
+  60% {
+    transform: translateX(4px);
+  }
+  100% {
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes hud-crack {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 結果画面の表彰 */
+.awards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.award {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}

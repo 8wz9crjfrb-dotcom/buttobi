@@ -1,6 +1,7 @@
 // コイン（ログインボーナス・勝利・通算勝利の節目）の計算が仕様どおりか確かめる
 import { claimLogin, GACHA_COST, PITY_LIMIT, pullGacha, recordWin, type Wallet } from '../src/client/wallet';
 import { GACHA_COSTUMES } from '../src/shared/costumes';
+import { MISSION_BONUS, MISSION_REWARD, recordMatch, refreshMissions, type Progress } from '../src/client/progress';
 
 let fail = 0;
 function check(name: string, ok: boolean, info = '') {
@@ -53,5 +54,28 @@ check('通算100勝でも節目のボーナス（30・50・100勝）を受け取
   const dr = pullGacha(d, 1, () => 0.5 * 0 + 0.2)!; // SR・一覧の先頭を引く乱数
   check('持っている衣装が出たらコインに変わる', dr[0].dup ? d.coins === 100 + 20 : true, `${dr[0].id} dup=${dr[0].dup} 残り${d.coins}`);
   check('衣装はキャラごとにSR2着・SSR1着', ['guard', 'hacker', 'thief', 'streamer', 'dopa', 'gacha', 'courier', 'ai'].every((id) => GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 4).length === 2 && GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 5 && c.fx).length === 1));
+}
+// ---- 戦績・ミッション・称号
+{
+  const p: Progress = { records: {}, totals: { matches: 0, wins: 0, kos: 0, throws: 0, taunts: 0, specials: 0, items: 0 }, titles: [], missions: { day: '', list: [], bonus: false }, tutorialDone: false };
+  const w: Wallet = { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0 };
+  const day = new Date(2026, 10, 7, 12);
+  refreshMissions(p, day);
+  check('ミッションは毎日3つ', p.missions.list.length === 3 && new Set(p.missions.list.map((m) => m.id)).size === 3);
+  const p2 = { ...p, missions: { day: '', list: [], bonus: false } } as Progress;
+  refreshMissions(p2, day);
+  check('同じ日なら同じミッション', p2.missions.list.map((m) => m.id).join() === p.missions.list.map((m) => m.id).join());
+  // どのミッションも一気に達成できる大きな成績
+  const big = { charId: 'guard', won: true, kos: 9, falls: 0, dealt: 300, throws: 9, taunts: 9, specials: 30, smashes: 9, items: 9 };
+  let got = recordMatch(p, w, big, day);
+  if (p.missions.list.some((m) => m.id === 'play2' || m.id === 'char1')) got = recordMatch(p, w, { ...big, charId: 'ai' }, day);
+  const charM = p.missions.list.find((m) => m.id === 'char1');
+  if (charM && !charM.done) {
+    for (const c of ['guard', 'hacker', 'thief', 'streamer', 'dopa', 'gacha', 'courier', 'ai']) recordMatch(p, w, { ...big, charId: c }, day);
+  }
+  check('ミッションを全部達成するとボーナス', p.missions.list.every((m) => m.done) && p.missions.bonus, `${p.missions.list.map((m) => m.id + ':' + m.progress).join(' ')}`);
+  check('称号「はじめての勝利」を手に入れてコインがもらえる', p.titles.includes('win1') && w.coins >= MISSION_REWARD * 3 + MISSION_BONUS + 50, `コイン${w.coins}`);
+  check('キャラ別の戦績が記録される', (p.records.guard?.wins ?? 0) >= 1 && p.totals.matches >= 1);
+  void got;
 }
 process.exit(fail ? 1 : 0);

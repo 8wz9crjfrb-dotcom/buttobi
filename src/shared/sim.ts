@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, type CharacterDef } from './characters';
-import { BIKE, CHARGE, DECOY, GRAB, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { BIKE, CHARGE, DECOY, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -60,12 +60,14 @@ export interface Projectile {
   returning: boolean;
   /** 貫通する飛び道具（ブーメラン）が当てた相手 */
   hits: number[];
+  /** 当たっても消えずに進む（ステージギミック） */
+  pierce?: boolean;
 }
 
 /** ステージに置かれる物（壁・罠・一時的な足場） */
 export interface Entity {
   id: number;
-  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy' | 'drone';
+  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy' | 'drone' | 'item';
   owner: number;
   x: number;
   y: number;
@@ -88,7 +90,7 @@ const SNAPSHOT_KEYS = [
   'ledgeSide', 'ledgeCooldown', 'dropThrough', 'respawnTimer', 'dodgeDir', 'prevButtons', 'prevMx', 'prevMy',
   'flickX', 'flickY', 'neutralXAge', 'neutralYAge', 'poison', 'poisonFrom',
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHitCd', 'confused', 'chain', 'redirected', 'pity', 'crit',
-  'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'tetherOn', 'tetherX', 'tetherY',
+  'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -179,6 +181,9 @@ export class Fighter {
   grabbedBy = -1;
   /** つかんでいられる残り時間 */
   grabTimer = 0;
+  /** 成績：与えたダメージ・投げた回数 */
+  dealt = 0;
+  throws = 0;
   /** 飽き性：今の技の威力の倍率 */
   stale = 1;
   /** 走り続けている時間（時間指定） */
@@ -328,6 +333,10 @@ export class Sim {
         continue;
       }
       this.updateFighter(f);
+    }
+    if (playing && !this.solo) {
+      this.updateItems();
+      this.updateGimmick();
     }
     this.updateEntities();
     this.updateProjectiles();
@@ -545,6 +554,7 @@ export class Sim {
     if (f.bike > 0 && this.bikeActions(f)) return;
     if (this.held(f, BTN_SHIELD)) {
       if (this.pressed(f, BTN_A)) return this.startMove(f, 'grab');
+      if (this.tryTaunt(f)) return;
       if (this.tryDodge(f)) return;
       this.setState(f, 'shield');
       return;
@@ -574,6 +584,15 @@ export class Sim {
     else if (!moving && f.state !== 'idle') this.setState(f, 'idle');
   }
 
+  /** アピール：ガード中にスティックを上にはじく */
+  private tryTaunt(f: Fighter): boolean {
+    if (f.flickY <= 2 && f.input.my > 0.7 && Math.abs(f.input.mx) < 0.5) {
+      this.startMove(f, 'taunt');
+      return true;
+    }
+    return false;
+  }
+
   private tryDodge(f: Fighter): boolean {
     const inp = f.input;
     if (f.flickX <= 3 && Math.abs(inp.mx) > 0.7) {
@@ -600,6 +619,7 @@ export class Sim {
       this.jump(f);
       return;
     }
+    if (this.tryTaunt(f)) return;
     if (this.tryDodge(f)) return;
     f.shield -= 0.14;
     if (f.shield <= 0) this.breakShield(f);
@@ -712,7 +732,7 @@ export class Sim {
     // 飽き性（ドパガキ）：最近出した技ほど威力が下がる
     if (f.def.id === 'dopa') {
       const same = f.recentMoves.filter((m) => m === id).length;
-      f.stale = Math.max(0.55, 1 - 0.12 * same);
+      f.stale = Math.max(0.7, 1 - 0.08 * same);
       f.recentMoves.push(id);
       if (f.recentMoves.length > 5) f.recentMoves.shift();
     } else f.stale = 1;
@@ -738,7 +758,7 @@ export class Sim {
   /** 攻撃側の威力の倍率（課金・バズり・飽き性・吸収・単発ガチャの大当たり） */
   private powerMul(a: Fighter): { dmg: number; kb: number } {
     let dmg = a.def.dmgMul * a.stale * (1 + 0.08 * a.buzz);
-    let kb = a.def.kbMul * a.stale;
+    let kb = a.def.kbMul * (1 - (1 - a.stale) * 0.5);
     if (a.powerBuff > 0) {
       dmg *= PAY.dmg;
       kb *= PAY.kb;
@@ -807,6 +827,110 @@ export class Sim {
         f.move = null;
         f.stun = 24;
         this.setState(f, 'sleep');
+        break;
+    }
+  }
+
+  // ------------------------------------------------------------------ アイテム（ルールでオン・オフ）
+  private updateItems(): void {
+    if (!this.setup.rules.items) return;
+    const t = this.frame - COUNTDOWN_FRAMES;
+    if (t <= 0 || t % ITEMS.interval !== 0) return;
+    if (this.entities.filter((e) => e.kind === 'item').length >= ITEMS.max) return;
+    const m = this.stage.main;
+    const x = m.x1 + 1 + this.rng.next() * (m.x2 - m.x1 - 2);
+    const kind = Math.floor(this.rng.next() * ITEMS.kinds);
+    this.addEntity('item', -1, x, m.top + 9, ITEMS.life, kind);
+  }
+
+  /** アイテムの効果（0=バグ修正パッチ：回復 1=エナドリ：倍速 2=サーバーダウン：ほかの人が止まる 3=ファイアウォール：無敵） */
+  private useItem(f: Fighter, kind: number): void {
+    switch (kind) {
+      case 0:
+        f.damage = Math.max(0, f.damage - ITEMS.heal);
+        break;
+      case 1:
+        f.speedBuff = SPEEDUP.duration;
+        break;
+      case 2:
+        for (const v of this.fighters) if (v !== f && v.alive) v.hitlag = Math.max(v.hitlag, ITEMS.freeze);
+        break;
+      case 3:
+        f.invuln = Math.max(f.invuln, ITEMS.invuln);
+        break;
+    }
+  }
+
+  // ------------------------------------------------------------------ ステージギミック（ルールでオン・オフ）
+  private gimmickDir = 1;
+  private gimmickX = 0;
+  private updateGimmick(): void {
+    if (!this.setup.rules.gimmicks) return;
+    const kind = this.stage.theme.kind;
+    if (kind === 'sky') return;
+    const t = this.frame - COUNTDOWN_FRAMES - 300; // 始まって5秒後から
+    if (t < 0) return;
+    const ph = t % GIMMICK.interval;
+    const m = this.stage.main;
+    const cx = (m.x1 + m.x2) / 2;
+    const w = m.x2 - m.x1;
+    if (ph === 0) {
+      // 予告
+      this.gimmickDir = this.rng.next() < 0.5 ? 1 : -1;
+      const alive = this.fighters.filter((f) => f.alive);
+      const target = alive[Math.floor(this.rng.next() * alive.length)];
+      this.gimmickX = kind === 'lab' && target ? target.x : cx;
+      const y = kind === 'vault' || kind === 'arcade' ? m.top + 0.6 : kind === 'studio' ? m.top + 2.2 : m.top + 8;
+      this.events.push({ k: 'warn', h: kind, x: this.gimmickX, y, d: this.gimmickDir });
+      return;
+    }
+    if (ph < GIMMICK.warn) return;
+    const shot = (kind2: ShotKind, x: number, y: number, vx: number, vy: number, gravity: number, life: number, r: number, dmg: number, base: number, growth: number, angle: number, pierce: boolean) => {
+      this.projectiles.push({
+        owner: -1, kind: kind2, x, y, vx, vy, gravity, life, dmg, base, growth, angle, r,
+        hitstunMul: 1, poison: 0, confuse: 0, homing: 0, boomerang: 0, age: 0, returning: false, hits: [], pierce,
+      });
+    };
+    const d = this.gimmickDir;
+    const at = ph - GIMMICK.warn;
+    switch (kind) {
+      case 'rooftop':
+        // 強風：3秒間、全員が横へ流される
+        if (at < 180) {
+          for (const f of this.fighters) {
+            if (!f.alive || f.state === 'ledge' || f.state === 'grabbed') continue;
+            f.x += d * (f.grounded ? 0.045 : 0.06);
+          }
+        }
+        break;
+      case 'vault':
+        // 床の近くを横切るレーザー（ジャンプでよける）
+        if (at === 0) shot('laser', d > 0 ? m.x1 - 6 : m.x2 + 6, m.top + 0.55, d * 15, 0, 0, 160, 0.35, 8, 6, 6, 70, true);
+        break;
+      case 'arcade':
+        // 床を走り抜けるスクーター
+        if (at === 0) shot('scooter', d > 0 ? m.x1 - 6 : m.x2 + 6, m.top + 0.55, d * 17, 0, 0, 160, 0.6, 10, 7, 8, 45, true);
+        break;
+      case 'studio':
+        // 横切るコメントの弾幕（2本）
+        if (at === 0) {
+          shot('comment', d > 0 ? m.x1 - 6 : m.x2 + 6, m.top + 2.2, d * 11, 0, 0, 220, 0.45, 5, 5, 4, 40, true);
+          shot('comment', d > 0 ? m.x1 - 12 : m.x2 + 12, m.top + 0.7, d * 11, 0, 0, 260, 0.45, 5, 5, 4, 40, true);
+        }
+        break;
+      case 'cyber':
+      case 'timeline':
+      case 'gacha':
+        // 上から降ってくる（データ・通知・カプセル）
+        if (at % 12 === 0 && at < 72) {
+          const x = m.x1 + this.rng.next() * w;
+          const k: ShotKind = kind === 'cyber' ? 'packet' : kind === 'timeline' ? 'notif' : 'capsule';
+          shot(k, x, m.top + 14, 0, -6, kind === 'gacha' ? 14 : 0, 200, 0.4, 5, 4, 4, 80, false);
+        }
+        break;
+      case 'lab':
+        // 予告した場所に、上から光線
+        if (at === 0) for (const y of [0.6, 1.6, 2.6, 3.6]) shot('beam', this.gimmickX, m.top + y, 0, 0, 0, 22, 0.75, 8, 6, 7, 80, true);
         break;
     }
   }
@@ -945,6 +1069,7 @@ export class Sim {
     if (a.move === 'bthrow') a.facing = -a.facing;
     a.grabbing = -1;
     if (!v) return;
+    a.throws++;
     v.grabbedBy = -1;
     this.placeGrabbed(a, v);
     const before = v.damage;
@@ -1234,6 +1359,7 @@ export class Sim {
     }
     if (!f.grounded && f.flickY <= 2 && inp.my < -0.7 && f.vy < 3 && md.air && !md.helpless) f.fastFall = true;
 
+    if (md.special === 'taunt' && mf === t.s) this.events.push({ k: 'taunt', s: f.slot, i: this.frame % 3 });
     // つかみ攻撃・投げ
     if (md.special === 'pummel' || md.special === 'throw') {
       if (md.special === 'pummel') f.grabTimer--;
@@ -1311,6 +1437,32 @@ export class Sim {
       e.life--;
       e.age++;
       if (e.life <= 0) continue;
+      if (e.kind === 'item') {
+        // アイテム：落ちてきて床に止まり、触れた人が拾う
+        const prevY = e.y;
+        e.vy = Math.max(-12, e.vy - 25 * DT);
+        e.y += e.vy * DT;
+        if (e.x >= m.x1 && e.x <= m.x2 && prevY >= m.top && e.y <= m.top) {
+          e.y = m.top;
+          e.vy = 0;
+        }
+        for (const sp of this.stage.platforms) {
+          const p = platformAt(sp, this.frame);
+          if (e.x >= p.x1 && e.x <= p.x2 && prevY >= p.prevY - 0.001 && e.y <= p.y) {
+            e.y = p.y;
+            e.vy = 0;
+          }
+        }
+        if (e.y < this.stage.blast.bottom) continue;
+        const taker = this.fighters.find((v) => v.alive && v.state !== 'grabbed' && circleHitsBox(e.x, e.y + 0.35, 0.55, v));
+        if (taker) {
+          this.useItem(taker, e.dir);
+          this.events.push({ k: 'item', s: taker.slot, t: e.dir, x: e.x, y: e.y + 0.4 });
+          continue;
+        }
+        keep.push(e);
+        continue;
+      }
       if (e.kind === 'trap' || e.kind === 'food' || e.kind === 'decoy') {
         // 罠・料理・分身：地面まで落ちる
         const onMain = e.x >= m.x1 && e.x <= m.x2 && Math.abs(e.y - m.top) < 0.01;
@@ -1780,6 +1932,10 @@ export class Sim {
       v.grabbedBy = -1;
     }
     v.damage = Math.min(999, v.damage + dmg);
+    if (from >= 0 && from !== v.slot) {
+      const att = this.fighter(from);
+      if (att) att.dealt += dmg;
+    }
     const speed = ((base + (growth * KB_GROWTH_SCALE * v.damage) / 100) * kbMul) / v.def.weight;
     const rad = (angle * Math.PI) / 180;
     const ax = Math.cos(rad) * dir;
@@ -1949,8 +2105,8 @@ export class Sim {
             v.hitlag = 3;
             this.events.push({ k: 'hit', x: p.x, y: p.y, p: p.dmg, s: v.slot, a: p.owner });
           }
-          // ブーメランは当たっても消えずに飛び続ける
-          if (p.boomerang > 0) {
+          // ブーメランとステージギミックは当たっても消えずに進む
+          if (p.boomerang > 0 || p.pierce) {
             p.hits.push(v.slot);
             continue;
           }
@@ -2022,7 +2178,7 @@ export class Sim {
     return entries.map((e, i) => {
       if (e.score !== prevScore) rank = i + 1;
       prevScore = e.score;
-      return { slot: e.f.slot, rank, kos: e.f.kos, falls: e.f.falls, score: e.f.kos - e.f.falls };
+      return { slot: e.f.slot, rank, kos: e.f.kos, falls: e.f.falls, score: e.f.kos - e.f.falls, dealt: Math.round(e.f.dealt), throws: e.f.throws };
     });
   }
 

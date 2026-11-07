@@ -27,6 +27,7 @@ import {
 import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
 import { applyTouchLayout, currentButtonPositions } from './touchLayout';
+import { checkTitles, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
 import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, type PullResult } from './wallet';
 import { COSTUMES, getCostume, rarityName } from '../shared/costumes';
 
@@ -35,6 +36,27 @@ preventZoomGestures();
 
 const settings: Settings = loadSettings();
 const wallet = loadWallet();
+const progress = loadProgress();
+
+/** 対戦中の自分の行動を数える（ミッション・戦績用） */
+const tally = { specials: 0, throws: 0, smashes: 0, taunts: 0, items: 0, prevMove: '' as string | null };
+function resetTally(): void {
+  Object.assign(tally, { specials: 0, throws: 0, smashes: 0, taunts: 0, items: 0, prevMove: '' });
+}
+function countTally(view: ViewState, events: GameEvent[], mySlot: number | null): void {
+  if (mySlot === null || mySlot < 0) return;
+  const f = view.fighters.find((x) => x.slot === mySlot);
+  if (!f) return;
+  const mv = f.state === 'attack' ? f.move : null;
+  if (mv && mv !== tally.prevMove) {
+    if (mv.endsWith('special')) tally.specials++;
+    else if (mv.endsWith('throw')) tally.throws++;
+    else if (mv === 'smash' || mv === 'charge') tally.smashes++;
+    else if (mv === 'taunt') tally.taunts++;
+  }
+  tally.prevMove = mv;
+  for (const e of events) if (e.k === 'item' && e.s === mySlot) tally.items++;
+}
 applyTouchLayout(settings);
 const coinBadge = () => `<div class="coin-badge" title="着せ替えガチャ（準備中）で使えます"><span class="coin-icon"></span>${wallet.coins.toLocaleString()}</div>`;
 applyUiSettings(settings);
@@ -215,8 +237,38 @@ let lastSetup: MatchSetup | null = null;
 let lastView: ViewState | null = null;
 let resultsShown = false;
 
+/** 画質の自動調整：「きれい」で動きが重い（平均45fps未満が続く）ときは「軽さ優先」に切り替える */
+const autoQ = {
+  elapsed: 0,
+  frames: 0,
+  time: 0,
+  done: false,
+  reset() {
+    this.elapsed = this.frames = this.time = 0;
+    this.done = false;
+  },
+  tick(dt: number) {
+    if (this.done || !settings.autoQuality || settings.quality !== 'high') return;
+    this.elapsed += dt;
+    if (this.elapsed < 5) return; // 始まってすぐ（読み込み直後）は数えない
+    this.frames++;
+    this.time += dt;
+    if (this.time < 6) return;
+    const fps = this.frames / this.time;
+    this.frames = this.time = 0;
+    if (fps < 45) {
+      this.done = true;
+      settings.quality = 'low';
+      saveSettings(settings);
+      renderer.setQuality('low');
+      toast(`動作が重いため、画質を「軽さ優先」にしました（${Math.round(fps)}fps）。設定で戻せます。`, 5000);
+    }
+  },
+};
+
 function startSession(s: Session): void {
   renderer.hidePreview();
+  if (!(s instanceof LocalSession && s.training && tutorialStarting)) stopTutorial();
   session = s;
   resultsShown = false;
   lastView = null;
@@ -233,7 +285,12 @@ function startSession(s: Session): void {
     return;
   }
   const isTraining = s instanceof LocalSession && !!s.training;
-  hud.setup(s.setup, s.mySlot, isTraining);
+  // HUDの顔アイコン（キャラと衣装ごとに作って使い回す）
+  const faces: Record<number, string> = {};
+  for (const p of s.setup.players) faces[p.slot] = renderer.portrait(p.charId, p.costume);
+  hud.setup(s.setup, s.mySlot, isTraining, faces);
+  autoQ.reset();
+  resetTally();
   trainingBtn.classList.toggle('hidden', !isTraining);
   combo.reset();
   hud.show(true);
@@ -245,7 +302,8 @@ function startSession(s: Session): void {
 }
 
 function updateTouchVisibility(): void {
-  const inGame = session && session.kind !== 'demo';
+  // 観戦中（自分の選手がいない）はボタンを出さない
+  const inGame = session && session.kind !== 'demo' && !(session.kind === 'net' && (session.mySlot ?? -1) < 0);
   touchEl.classList.toggle('hidden', !inGame || input.gamepadConnected);
 }
 document.addEventListener('gamepadchange', updateTouchVisibility);
@@ -277,7 +335,17 @@ function loop(t: number): void {
       hud.update(lastView, events);
       if (session.kind === 'net') hud.setNetInfo(net.connected ? `通信 ${Math.round(net.rtt)}ms` : '再接続中…');
       playEvents(events, session.mySlot, lastView);
+      countTally(lastView, events, session.mySlot);
+      // ピンチ（残り30秒・自分が最後の1機）でBGMを盛り上げる。練習モードは除く
+      if (!(session instanceof LocalSession && session.training)) {
+        const me = session.mySlot !== null ? lastView.fighters.find((f) => f.slot === session!.mySlot) : undefined;
+        const timePinch = lastView.timeLeft > 0 && lastView.timeLeft < 30 * 60 && lastView.countdown <= 0;
+        const stockPinch = session.setup.rules.mode === 'stock' && !!me && me.stocks === 1 && !me.out;
+        music.setPinch(!lastView.ended && (timePinch || stockPinch));
+      }
+      autoQ.tick(dt);
       if (session instanceof LocalSession && session.training) combo.update(lastView, events, dt);
+      if (tutorial && session instanceof LocalSession) updateTutorial(session, lastView, events, dt);
     }
     if (session instanceof LocalSession) {
       if (session.kind === 'demo' && session.sim.finished) startDemo();
@@ -512,7 +580,7 @@ function showCharSelect(o: CharSelectOptions): void {
           root.querySelector('.cs-nameplate')!.innerHTML = nameHtml(picked);
           root.querySelector('.costume-row')!.innerHTML = costumeChips(picked);
           renderer.showPreview(picked, o.slot, myCostume(picked));
-          sfx.click();
+          sfx.jingle(picked);
         }),
       );
       // 衣装を選ぶ（持っている衣装だけ）
@@ -593,7 +661,9 @@ function ruleControls(rules: MatchRules): string {
   return `
     <div class="opt">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム']], rules.mode)}</div>
     <div class="opt" data-show="stock">残機 ${seg('stocks', [[1, '1'], [2, '2'], [3, '3'], [5, '5']], rules.stocks)}</div>
-    <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>`;
+    <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>
+    <div class="opt">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
+    <div class="opt">ステージギミック ${seg('gim', [['on', 'あり'], ['off', 'なし']], rules.gimmicks ? 'on' : 'off')}</div>`;
 }
 
 function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): void {
@@ -615,6 +685,14 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     rules.timeLimit = Number(v);
     onChange();
   });
+  bindSeg(root, 'items', (v) => {
+    rules.items = v === 'on';
+    onChange();
+  });
+  bindSeg(root, 'gim', (v) => {
+    rules.gimmicks = v === 'on';
+    onChange();
+  });
 }
 
 function showTitle(): void {
@@ -625,7 +703,7 @@ function showTitle(): void {
      <div class="row" style="justify-content:center">
        <label class="field">なまえ<input type="text" id="name" maxlength="10" placeholder="プレイヤー" value="${esc(settings.name)}"/></label>
      </div>
-     <button class="btn primary" id="go">はじめる</button>
+     <button class="btn primary" id="go">${new URLSearchParams(location.search).get('room') ? `はじめる（ルーム ${esc(new URLSearchParams(location.search).get('room') ?? '')} に参加）` : 'はじめる'}</button>
      ${tip}`,
     'overlay title-screen',
     (root) => {
@@ -633,6 +711,28 @@ function showTitle(): void {
         unlockAudio();
         settings.name = (root.querySelector('#name') as HTMLInputElement).value.trim().slice(0, 10);
         saveSettings(settings);
+        // 招待リンクから開いたときは、そのルームへの参加に進む
+        const room = new URLSearchParams(location.search).get('room');
+        if (room && isRoomCode(room) && settings.serverUrl) {
+          history.replaceState(null, '', location.pathname);
+          joinRoom(room, showMenu);
+          return;
+        }
+        if (!progress.tutorialDone && !progress.tutorialAsked) {
+          progress.tutorialAsked = true;
+          saveProgress(progress);
+          showScreen(
+            `<h2>はじめての人へ</h2>
+             <p class="help">操作を順番に体験できるチュートリアルがあります（2〜3分）。<br/>最後までやると <span class="coin-icon"></span>100 コインもらえます。あとからメニューの「遊び方」からも始められます。</p>
+             <div class="footer"><button class="btn" id="later">あとで</button><button class="btn primary" id="tut">チュートリアルをやる</button></div>`,
+            'overlay',
+            (r) => {
+              r.querySelector('#later')!.addEventListener('click', showMenu);
+              r.querySelector('#tut')!.addEventListener('click', startTutorial);
+            },
+          );
+          return;
+        }
         showMenu();
       });
     },
@@ -650,6 +750,7 @@ function showMenu(): void {
        <button class="btn" id="join" ${online ? '' : 'disabled'}>コードで参加<small>4桁の合言葉を入力</small></button>
        <button class="btn" id="gacha">着せ替えガチャ<small>コインで衣装を引く</small></button>
        <button class="btn" id="training">練習モード<small>技やコンボを試す</small></button>
+       <button class="btn" id="records">戦績・ミッション<small>${missionSummary()}</small></button>
        <button class="btn" id="howto">遊び方<small>操作とルール</small></button>
        <button class="btn" id="settings">設定<small>ボタン・画質・音</small></button>
        ${install}
@@ -664,6 +765,7 @@ function showMenu(): void {
       root.querySelector('#join')!.addEventListener('click', showJoin);
       root.querySelector('#howto')!.addEventListener('click', showHowTo);
       root.querySelector('#gacha')!.addEventListener('click', showGacha);
+      root.querySelector('#records')!.addEventListener('click', () => showRecords('missions'));
       root.querySelector('#training')!.addEventListener('click', () =>
         showCharSelect({ title: '練習モード：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'つぎへ', onBack: showMenu, onNext: () => showTrainingSetup() }),
       );
@@ -671,6 +773,13 @@ function showMenu(): void {
       root.querySelector('#install')?.addEventListener('click', () => void promptInstall().then(showMenu));
       // ログインボーナス（その日はじめてメニューを開いたとき）
       const bonus = claimLogin(wallet);
+      const newTitles = checkTitles(progress, wallet);
+      if (newTitles.length) {
+        saveProgress(progress);
+        saveWallet(wallet);
+        root.querySelector('.coin-badge')!.outerHTML = coinBadge();
+        toast(newTitles.map((t) => `称号「${t.name}」を手に入れた！ +${t.coins}`).join(' / '), 4000);
+      }
       if (bonus) {
         saveWallet(wallet);
         root.querySelector('.coin-badge')!.outerHTML = coinBadge();
@@ -758,18 +867,35 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
   touchEl.classList.add('hidden');
   pauseBtn.classList.add('hidden');
   hud.show(false);
+  // 表彰：いちばん多い人（同じ数なら全員）に
+  const awards = new Map<number, string[]>();
+  const award = (label: string, val: (r: ResultEntry) => number, min = 1, lowest = false) => {
+    const vals = results.map(val);
+    const best = lowest ? Math.min(...vals) : Math.max(...vals);
+    if (!lowest && best < min) return;
+    if (lowest && results.every((r) => val(r) === best)) return; // 全員同じなら出さない
+    for (const r of results) if (val(r) === best) awards.set(r.slot, [...(awards.get(r.slot) ?? []), label]);
+  };
+  if (results.length >= 2) {
+    award('最多撃墜', (r) => r.kos);
+    award('最大ダメージ', (r) => r.dealt ?? 0, 30);
+    award('投げ名人', (r) => r.throws ?? 0, 2);
+    award('鉄壁', (r) => r.falls, 0, true);
+  }
   const rows = results
     .map((r) => {
       const p = setup.players.find((x) => x.slot === r.slot)!;
       const c = getCharacter(p.charId);
+      const badges = (awards.get(r.slot) ?? []).map((a) => `<span class="award">${a}</span>`).join('');
       return `<div class="res-row ${r.rank === 1 ? 'first' : ''}">
         <div class="rank">${r.rank}</div>
-        <div><span style="color:${hex(SLOT_COLORS[p.slot % SLOT_COLORS.length])}">●</span> ${esc(p.name)} <small style="color:var(--muted)">${c.name}</small></div>
-        <div style="font-size:13px;color:var(--muted)">撃墜 ${r.kos} / 落下 ${r.falls}</div></div>`;
+        <div><span style="color:${hex(SLOT_COLORS[p.slot % SLOT_COLORS.length])}">●</span> ${esc(p.name)} <small style="color:var(--muted)">${c.name}</small>${badges ? `<div class="awards">${badges}</div>` : ''}</div>
+        <div style="font-size:12px;color:var(--muted);text-align:right">撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
     })
     .join('');
   const win = results.find((r) => r.rank === 1);
   const winner = win ? setup.players.find((p) => p.slot === win.slot) : null;
+  if (winner) setTimeout(() => sfx.jingle(winner.charId), 300);
   // 自分が勝っていたらコインを渡す（相手がいる試合だけ）
   const mine = online ? net.slot : setup.players.find((p) => !p.cpu)?.slot ?? -1;
   const myResult = results.find((r) => r.slot === mine);
@@ -780,8 +906,35 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
     saveWallet(wallet);
     reward = `<div class="reward"><span class="coin-icon"></span>勝利 +${r.base} コイン${
       r.bonus ? `<span class="bonus">通算${r.bonus.wins}勝ボーナス +${r.bonus.amount}</span>` : ''
-    }<small>（所持 ${wallet.coins.toLocaleString()}・通算 ${r.total} 勝）</small></div>`;
+    }<small>（所持 __COINS__・通算 ${r.total} 勝）</small></div>`;
   }
+  // 戦績・ミッション・称号（自分が戦った試合だけ）
+  if (myResult) {
+    const me = setup.players.find((p) => p.slot === mine)!;
+    const stats: MatchStats = {
+      charId: me.charId,
+      won: myResult.rank === 1 && setup.players.length >= 2,
+      kos: myResult.kos,
+      falls: myResult.falls,
+      dealt: myResult.dealt ?? 0,
+      throws: tally.throws,
+      taunts: tally.taunts,
+      specials: tally.specials,
+      smashes: tally.smashes,
+      items: tally.items,
+    };
+    const got = recordMatch(progress, wallet, stats);
+    saveProgress(progress);
+    saveWallet(wallet);
+    const lines = [
+      ...got.missions.map((m) => `ミッション達成：${esc(m)} +${MISSION_REWARD}`),
+      ...(got.bonus ? [`今日のミッションをすべて達成！ +${MISSION_BONUS}`] : []),
+      ...got.titles.map((t) => `称号「${esc(t.name)}」を手に入れた！ +${t.coins}`),
+    ];
+    if (lines.length) reward += `<div class="reward-sub">${lines.map((l) => `<div>🎉 ${l}</div>`).join('')}</div>`;
+  }
+  // 所持コインは、勝利・ミッション・称号をすべて足したあとの数を出す
+  reward = reward.replace('__COINS__', wallet.coins.toLocaleString());
   renderer.celebrate(win ? win.slot : null);
   music.play('menu');
   showScreen(
@@ -790,16 +943,27 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
      <div class="results">${rows}</div>
      <div class="footer">
        <button class="btn" id="menu">メニューへ</button>
-       <button class="btn primary" id="again">${online ? 'ルームへ戻る' : 'もう一度'}</button>
+       <div class="row" style="gap:8px">
+         ${online ? '<button class="btn" id="lobby">ルームへ戻る</button>' : ''}
+         ${online && lobby && lobby.hostSlot === net.slot ? '<button class="btn primary" id="rematch">同じメンバーで再戦</button>' : ''}
+         ${online && !(lobby && lobby.hostSlot === net.slot) ? '<span class="muted">ホストが再戦を始めると、そのまま始まります</span>' : ''}
+         ${!online ? '<button class="btn primary" id="again">もう一度</button>' : ''}
+       </div>
      </div>`,
     'overlay results-screen',
     (root) => {
       root.querySelector('#menu')!.addEventListener('click', endToMenu);
-      root.querySelector('#again')!.addEventListener('click', () => {
-        if (online) {
-          startDemo();
-          showLobby();
-        } else if (lastSetup) {
+      root.querySelector('#lobby')?.addEventListener('click', () => {
+        startDemo();
+        showLobby();
+      });
+      root.querySelector('#rematch')?.addEventListener('click', () => {
+        // ロビーの設定（ステージ・ルール・CPU）のまま、すぐに始める
+        net.start();
+        toast('再戦を始めます');
+      });
+      root.querySelector('#again')?.addEventListener('click', () => {
+        if (lastSetup) {
           lastSetup = { ...lastSetup, seed: (Math.random() * 1e9) | 0 };
           startSession(new LocalSession(lastSetup));
         }
@@ -860,13 +1024,18 @@ function showHowTo(): void {
        <p><b>AIエンジニア：</b>B 推論（近くの相手を追いかける弾）／横B 学習（構え中に飛び道具を吸収し、次の攻撃を強化）／下B エージェント起動（AIドローンがそばを飛び、近くの相手を自動で撃つ。攻撃を当てると壊れる）／上B API呼び出し（ワイヤーで崖をつかんで復帰）</p>
        <p><b>ガード：</b>押している間ガード。ガード中にスティックをはじくと回避。空中で押すと空中回避。</p>
        <p><b>つかみ：</b>ガード中にAで目の前の相手をつかみます（ガードを崩せます）。つかんでいる間はAでつかみ攻撃、スティックを倒した方向（前・後ろ・上・下）へ投げます。つかまれたらボタン連打で早く抜けられます。</p>
+       <p><b>アピール：</b>ガード中にスティックを上にはじくと、キャラごとの一言（SSR衣装なら特別なセリフ）。</p>
+       <p><b>アイテム・ステージギミック：</b>ルールで「あり」にすると、アイテム（回復・倍速・相手を止める・無敵）が落ちてきて、触れると使えます。ギミックはキャラ別ステージごとに違う仕掛け（強風・レーザー・スクーターなど）で、来る前に予告が出ます。</p>
        <p><b>崖：</b>ステージの端に近づくと自動でつかまります。スティック上かジャンプで上がります。</p>
        <p><b>クレジット：</b>キャラクター・BGM・効果音はすべてこのゲームのプログラムで作っています。</p>
        <p><b>キーボード：</b>矢印/WASD＝移動、J＝A、K＝B、スペース＝ジャンプ、L＝ガード、Esc＝メニュー。<b>ゲームパッド：</b>左＝A、右＝B、下・上＝ジャンプ、肩＝ガード。</p>
      </div>
-     <div class="footer"><button class="btn" id="back">もどる</button></div>`,
+     <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="tut">チュートリアルを始める${progress.tutorialDone ? '' : '（100コイン）'}</button></div>`,
     'overlay',
-    (root) => root.querySelector('#back')!.addEventListener('click', showMenu),
+    (root) => {
+      root.querySelector('#back')!.addEventListener('click', showMenu);
+      root.querySelector('#tut')!.addEventListener('click', startTutorial);
+    },
   );
 }
 
@@ -876,6 +1045,7 @@ function showSettings(): void {
      <div class="setup-grid">
        <div class="opt">ボタン（配置・大きさ・濃さ） <button type="button" class="btn small" id="layout">${settings.leftHanded ? '左利き・' : ''}${Object.keys(settings.btnPos).length ? '自分で配置' : '標準の配置'}・大きさ${{ S: '小', M: '中', L: '大' }[settings.btnSize]}（変える）</button></div>
        <div class="opt">画質 ${seg('q', [['low', '軽さ優先'], ['high', 'きれい']], settings.quality)}</div>
+       <div class="opt">画質の自動調整（重いとき軽さ優先に） ${seg('aq', [['on', 'する'], ['off', 'しない']], settings.autoQuality ? 'on' : 'off')}</div>
        <div class="opt">スティック上でジャンプ ${seg('tj', [['on', 'する'], ['off', 'しない']], settings.tapJump ? 'on' : 'off')}</div>
        <div class="opt">振動（Androidのみ） ${seg('vib', [['on', 'する'], ['off', 'しない']], settings.vibration ? 'on' : 'off')}</div>
        <div class="opt">フレームレート表示 ${seg('fps', [['on', 'する'], ['off', 'しない']], settings.showFps ? 'on' : 'off')}</div>
@@ -895,6 +1065,7 @@ function showSettings(): void {
         saveSettings(settings);
         showButtonEditor();
       });
+      bindSeg(root, 'aq', (v) => (settings.autoQuality = v === 'on'));
       bindSeg(root, 'tj', (v) => (settings.tapJump = v === 'on'));
       bindSeg(root, 'vib', (v) => (settings.vibration = v === 'on'));
       bindSeg(root, 'fps', (v) => (settings.showFps = v === 'on'));
@@ -912,6 +1083,56 @@ function showSettings(): void {
         saveSettings(settings);
         showMenu();
       });
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 戦績・ミッション・称号
+function missionSummary(): string {
+  refreshMissions(progress);
+  const done = progress.missions.list.filter((m) => m.done).length;
+  return `今日のミッション ${done}/3`;
+}
+
+function showRecords(tab: 'missions' | 'records' | 'titles'): void {
+  refreshMissions(progress);
+  saveProgress(progress);
+  const day = progress.missions.day;
+  let body = '';
+  if (tab === 'missions') {
+    body = `<div class="missions">${progress.missions.list
+      .map((m) => {
+        const goal = missionGoal(m.id);
+        return `<div class="mission ${m.done ? 'done' : ''}"><div class="mt">${esc(missionText(m.id, day))}</div>
+          <div class="bar"><div style="width:${Math.round((m.progress / goal) * 100)}%"></div></div>
+          <div class="mp">${m.progress} / ${goal}　${m.done ? '達成！' : `<span class="coin-icon"></span>${MISSION_REWARD}`}</div></div>`;
+      })
+      .join('')}</div>
+      <p class="muted">3つすべて達成すると、さらに <span class="coin-icon"></span>${MISSION_BONUS}（${progress.missions.bonus ? '受け取り済み' : '未達成'}）。ミッションは毎日入れ替わります。CPU戦・オンライン対戦で進みます（練習モードは対象外）。</p>`;
+  } else if (tab === 'records') {
+    const t = progress.totals;
+    body = `<div class="muted">通算：${t.matches}試合・${t.wins}勝・${t.kos}撃墜・投げ${t.throws}回・必殺技${t.specials}回</div>
+      <table class="rec"><tr><th>キャラ</th><th>試合</th><th>勝利</th><th>勝率</th><th>撃墜</th><th>落下</th><th>与ダメ</th></tr>${CHARACTERS.map((c) => {
+        const r = progress.records[c.id] ?? { matches: 0, wins: 0, kos: 0, falls: 0, dealt: 0 };
+        return `<tr><td>${c.name}</td><td>${r.matches}</td><td>${r.wins}</td><td>${r.matches ? Math.round((r.wins / r.matches) * 100) + '%' : '-'}</td><td>${r.kos}</td><td>${r.falls}</td><td>${r.dealt}%</td></tr>`;
+      }).join('')}</table>`;
+  } else {
+    body = `<div class="muted">手に入れた称号 ${progress.titles.length} / ${TITLES.length}（手に入れるとコインがもらえます）</div>
+      <div class="titles">${TITLES.map((t) => {
+        const have = progress.titles.includes(t.id);
+        return `<div class="title-card ${have ? 'have' : ''}"><b>${have ? esc(t.name) : '？？？'}</b><div>${esc(t.cond)}</div><div class="muted"><span class="coin-icon"></span>${t.coins}</div></div>`;
+      }).join('')}</div>`;
+  }
+  showScreen(
+    `<div class="row" style="justify-content:space-between"><h2>戦績・ミッション</h2>${coinBadge()}</div>
+     ${seg('tab', [['missions', '今日のミッション'], ['records', '戦績'], ['titles', '称号']], tab)}
+     <div class="rec-body">${body}</div>
+     <div class="footer"><button class="btn primary" id="back">もどる</button></div>`,
+    'overlay',
+    (root) => {
+      bindSeg(root, 'tab', (v) => showRecords(v as 'missions' | 'records' | 'titles'));
+      root.querySelector('#back')!.addEventListener('click', showMenu);
     },
   );
 }
@@ -949,6 +1170,11 @@ function showGacha(): void {
       const pull = (n: 1 | 10) => {
         const res = pullGacha(wallet, n);
         if (!res) return toast('コインが足りません');
+        const titles = checkTitles(progress, wallet);
+        if (titles.length) {
+          saveProgress(progress);
+          setTimeout(() => toast(titles.map((t) => `称号「${t.name}」を手に入れた！ +${t.coins}`).join(' / '), 4000), 2500);
+        }
         saveWallet(wallet);
         playGachaOpening(res);
       };
@@ -1139,6 +1365,139 @@ function bindPreviewSpin(root: HTMLElement): void {
     }
   });
   drag.addEventListener('pointercancel', () => (lastX = null));
+}
+
+// ---------------------------------------------------------------------------
+// チュートリアル：練習モードの上で、操作を1つずつ体験する
+interface TutorialStep {
+  title: string;
+  text: string;
+  /** その段階を始めるときの準備 */
+  setup?(s: LocalSession): void;
+  /** 達成したか */
+  done(s: LocalSession, view: ViewState, events: GameEvent[]): boolean;
+}
+let tutorial: { step: number; startX: number; count: number; wait: number } | null = null;
+let tutorialStarting = false;
+const tutorialEl = document.createElement('div');
+tutorialEl.id = 'tutorial';
+tutorialEl.className = 'hidden';
+document.getElementById('app')!.appendChild(tutorialEl);
+
+const TUTORIAL: TutorialStep[] = [
+  { title: '移動', text: '画面の左半分をなぞるとスティックが出ます。左右に動いてみよう', done: (s, v) => Math.abs((v.fighters[0]?.x ?? 0) - tutorial!.startX) > 3 },
+  { title: 'ジャンプ', text: 'ジャンプボタン（またはスティックを上にはじく）で跳ぼう。空中でもう一度押すと2段ジャンプ', done: (_s, _v, e) => e.some((x) => x.k === 'jump' && x.s === 0) },
+  { title: '攻撃', text: 'Aボタンで攻撃。相手に近づいて当てよう', setup: (s) => placeNear(s), done: (_s, _v, e) => e.some((x) => x.k === 'hit' && x.a === 0) },
+  { title: '必殺技', text: 'Bボタンで必殺技。スティックの向き（なし・横・下・上）で4種類あります', done: (_s, v) => (v.fighters[0]?.move ?? '').endsWith('special') },
+  { title: 'スマッシュ攻撃', text: 'スティックを横にはじきながらAで強力なスマッシュ。Aを押し続けると溜められます', setup: (s) => placeNear(s), done: (_s, v) => v.fighters[0]?.move === 'smash' },
+  { title: 'ガード', text: 'ガードボタンを押し続けると、攻撃を防げます（1秒ほど続けよう）', done: (_s, v) => {
+    if (v.fighters[0]?.state === 'shield') tutorial!.count = Math.max(tutorial!.count, v.fighters[0].stateTime);
+    return tutorial!.count > 60;
+  } },
+  { title: 'つかみ・投げ', text: 'ガード中にAで相手をつかみ、スティックを倒した方向へ投げよう', setup: (s) => placeNear(s), done: (_s, v) => (v.fighters[0]?.move ?? '').endsWith('throw') },
+  { title: 'アピール', text: 'ガード中にスティックを上にはじくと、アピール！', done: (_s, _v, e) => e.some((x) => x.k === 'taunt' && x.s === 0) },
+  {
+    title: 'ふっとばそう',
+    text: '相手のダメージ%が高いほど遠くへ飛びます。画面の外までふっとばしたら撃墜！（相手を150%にしました）',
+    setup: (s) => {
+      const d = s.sim.fighters.find((f) => f.slot === 1);
+      if (d) d.damage = 150;
+      placeNear(s);
+    },
+    done: (_s, _v, e) => e.some((x) => x.k === 'ko' && x.s === 1),
+  },
+];
+
+function placeNear(s: LocalSession): void {
+  const me = s.sim.fighters.find((f) => f.slot === 0);
+  const d = s.sim.fighters.find((f) => f.slot === 1);
+  if (!me || !d || !d.alive) return;
+  d.x = me.x + (me.x < 4 ? 2 : -2);
+  d.y = 0.05;
+  d.vx = d.vy = 0;
+  d.grounded = false;
+  d.state = 'air';
+}
+
+function startTutorial(): void {
+  tutorialStarting = true;
+  const opts: TrainingOpts = { dummyChar: 'guard', mode: 'stand', cpuLevel: 1, speed: 1, showInfo: false };
+  const setup: MatchSetup = {
+    players: [
+      { slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0, costume: myCostume(settings.charId) },
+      { slot: 1, name: '練習相手', charId: 'guard', cpu: true, cpuLevel: 1 },
+    ],
+    stageId: 'plain',
+    rules: { mode: 'stock', stocks: 99, timeLimit: 99 * 60 },
+    seed: 1,
+  };
+  const s = new LocalSession(setup, false, opts);
+  startSession(s);
+  tutorialStarting = false;
+  tutorial = { step: -1, startX: 0, count: 0, wait: 0 };
+  nextTutorialStep(s);
+}
+
+function nextTutorialStep(s: LocalSession): void {
+  if (!tutorial) return;
+  tutorial.step++;
+  tutorial.count = 0;
+  tutorial.wait = 0;
+  tutorial.startX = s.sim.fighters[0]?.x ?? 0;
+  const st = TUTORIAL[tutorial.step];
+  if (!st) return finishTutorial();
+  st.setup?.(s);
+  tutorialEl.classList.remove('hidden', 'ok');
+  tutorialEl.innerHTML = `<div class="tu-step">チュートリアル ${tutorial.step + 1} / ${TUTORIAL.length}</div><div class="tu-title">${st.title}</div><div class="tu-text">${st.text}</div>`;
+}
+
+function updateTutorial(s: LocalSession, view: ViewState, events: GameEvent[], dt: number): void {
+  const t = tutorial;
+  if (!t) return;
+  const st = TUTORIAL[t.step];
+  if (!st) return;
+  if (t.wait > 0) {
+    // 「できた！」を少し見せてから次へ（秒）
+    t.wait -= dt;
+    if (t.wait <= 0) nextTutorialStep(s);
+    return;
+  }
+  if (st.done(s, view, events)) {
+    sfx.buff();
+    tutorialEl.classList.add('ok');
+    tutorialEl.querySelector('.tu-title')!.textContent = `${st.title}：できた！`;
+    t.wait = 1.2;
+  }
+}
+
+function finishTutorial(): void {
+  const first = !progress.tutorialDone;
+  progress.tutorialDone = true;
+  saveProgress(progress);
+  if (first) {
+    wallet.coins += 100;
+    saveWallet(wallet);
+  }
+  stopTutorial();
+  if (session instanceof LocalSession) session.paused = true;
+  showScreen(
+    `<h2>チュートリアル完了！</h2>
+     <p class="help">これで基本の操作はばっちりです。${first ? '<br/><span class="coin-icon"></span>100 コインをもらいました。' : ''}<br/>キャラごとの必殺技は、キャラ選択で技を長押しすると説明が見られます。</p>
+     <div class="footer"><button class="btn" id="train">練習を続ける</button><button class="btn primary" id="menu">メニューへ</button></div>`,
+    'overlay',
+    (root) => {
+      root.querySelector('#menu')!.addEventListener('click', endToMenu);
+      root.querySelector('#train')!.addEventListener('click', () => {
+        if (session instanceof LocalSession) session.paused = false;
+        clearScreen();
+      });
+    },
+  );
+}
+
+function stopTutorial(): void {
+  tutorial = null;
+  tutorialEl.classList.add('hidden');
 }
 
 // ---------------------------------------------------------------------------
@@ -1505,6 +1864,8 @@ function showButtonEditor(): void {
 // ---------------------------------------------------------------------------
 // オンライン
 let lobby: LobbyInfo | null = null;
+/** 最後に参加しようとしたルームのコード（観戦に切り替えるため） */
+let lastJoinCode = '';
 let creating = false;
 let createAttempts = 0;
 
@@ -1534,6 +1895,24 @@ const net = new NetClient({
       return;
     }
     creating = false;
+    // 満員・対戦中なら、観戦を勧める
+    if ((code === 'full' || code === 'inmatch') && !net.spectating && lastJoinCode) {
+      const joinCode = lastJoinCode;
+      showScreen(
+        `<h2>${esc(msg)}</h2>
+         <p class="help">観戦なら、満員でも対戦中でも入れます（見るだけ）。</p>
+         <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="watch">観戦する</button></div>`,
+        'overlay',
+        (root) => {
+          root.querySelector('#back')!.addEventListener('click', showMenu);
+          root.querySelector('#watch')!.addEventListener('click', () => {
+            showScreen(`<h2>接続中…</h2>`, 'overlay');
+            net.connect(settings.serverUrl, joinCode, false, settings.name || 'プレイヤー', settings.charId, undefined, true);
+          });
+        },
+      );
+      return;
+    }
     toast(msg, 3500);
     if (code !== 'taken') showMenu();
   },
@@ -1569,6 +1948,48 @@ function createRoom(attempt: number): void {
   net.connect(settings.serverUrl, code, true, settings.name || 'プレイヤー', settings.charId, myCostume(settings.charId));
 }
 
+/** ルームに参加する（キャラを選んでからつなぐ） */
+function joinRoom(code: string, back: () => void): void {
+  lastJoinCode = code;
+  showCharSelect({
+    title: `ルーム ${code} に参加：キャラを選ぶ`,
+    slot: 0,
+    current: settings.charId,
+    nextLabel: '参加する',
+    onBack: back,
+    onNext: () => {
+      creating = false;
+      showScreen(`<h2>接続中…</h2>`, 'overlay');
+      net.connect(settings.serverUrl, code, false, settings.name || 'プレイヤー', settings.charId, myCostume(settings.charId));
+    },
+  });
+}
+
+/** 招待リンク（開くとそのルームに参加する画面になる） */
+function inviteUrl(code: string): string {
+  return `${location.origin}${location.pathname}?room=${code}`;
+}
+
+async function shareInvite(code: string): Promise<void> {
+  const url = inviteUrl(code);
+  const text = `ぶっとびアリーナで対戦しよう！ルームコード ${code}`;
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: 'ぶっとびアリーナ', text, url });
+      return;
+    }
+  } catch {
+    // 共有をやめたときなど
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(`${text}\n${url}`);
+    toast('招待リンクをコピーしました');
+  } catch {
+    toast(`招待リンク：${url}`, 6000);
+  }
+}
+
 function showJoin(): void {
   showScreen(
     `<h2>コードで参加</h2>
@@ -1584,18 +2005,7 @@ function showJoin(): void {
         const code = inp.value.trim();
         if (!isRoomCode(code)) return toast('4桁の数字を入力してください');
         unlockAudio();
-        showCharSelect({
-          title: `ルーム ${code} に参加：キャラを選ぶ`,
-          slot: 0,
-          current: settings.charId,
-          nextLabel: '参加する',
-          onBack: showJoin,
-          onNext: () => {
-            creating = false;
-            showScreen(`<h2>接続中…</h2>`, 'overlay');
-            net.connect(settings.serverUrl, code, false, settings.name || 'プレイヤー', settings.charId, myCostume(settings.charId));
-          },
-        });
+        joinRoom(code, showJoin);
       });
       root.querySelector('#back')!.addEventListener('click', showMenu);
     },
@@ -1629,7 +2039,7 @@ function showLobby(): void {
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
         ${ruleControls(rules)}
       </div>`
-    : `<p class="help">ステージ：${getStage(l.stageId).name} ／ ルール：${l.rules.mode === 'stock' ? `ストック ${l.rules.stocks}` : `タイム ${l.rules.timeLimit / 60}分`}<br/>★のホストが開始するのを待っています…</p>`;
+    : `<p class="help">ステージ：${getStage(l.stageId).name} ／ ルール：${l.rules.mode === 'stock' ? `ストック ${l.rules.stocks}` : `タイム ${l.rules.timeLimit / 60}分`} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…</p>`;
   const canStart = l.players.length >= 2 && !l.inMatch;
   showScreen(
     `<div data-lobby class="row" style="justify-content:space-between">
@@ -1637,9 +2047,15 @@ function showLobby(): void {
        <div class="players grow" style="max-width:560px">${slots}</div>
      </div>
      <div class="row my-char">
-       <span class="dot" style="background:${hex(SLOT_COLORS[net.slot % SLOT_COLORS.length])}"></span>
+       ${
+         net.spectating
+           ? '<div><b>観戦中</b>（見るだけ。対戦が始まると見られます）</div>'
+           : `<span class="dot" style="background:${hex(SLOT_COLORS[net.slot % SLOT_COLORS.length])}"></span>
        <div>あなたのキャラ：<b>${getCharacter(me?.charId ?? settings.charId).name}</b></div>
-       <button class="btn small" id="change-char">キャラを変える</button>
+       <button class="btn small" id="change-char">キャラを変える</button>`
+       }
+       <button class="btn small" id="invite">招待リンクを送る</button>
+       ${l.spectators ? `<span class="muted">観戦 ${l.spectators}人</span>` : ''}
      </div>
      ${hostControls}
      <div class="footer">
@@ -1648,7 +2064,8 @@ function showLobby(): void {
      </div>`,
     'overlay',
     (root) => {
-      root.querySelector('#change-char')!.addEventListener('click', () =>
+      root.querySelector('#invite')!.addEventListener('click', () => void shareInvite(l.code));
+      root.querySelector('#change-char')?.addEventListener('click', () =>
         showCharSelect({
           title: 'キャラを変える',
           slot: net.slot,

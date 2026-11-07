@@ -11,7 +11,7 @@ function client(name, hello) {
   return new Promise((resolve) => {
     const ws = new WebSocket(`${URL_BASE}/room/${code}`);
     const c = { ws, name, slot: -1, token: '', lobby: null, start: null, snaps: 0, me: 0, ack: -1, errors: [] };
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 9, name, ...hello }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 10, name, ...hello }));
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
       if (m.t === 'welcome') {
@@ -69,6 +69,11 @@ await sleep(500);
 check('戻った後の入力が処理される（番号0から数え直し）', again.ack >= 2, `処理済みの番号 ${again.ack}`);
 const bad = await client('他人', { charId: 'hacker', create: false, rejoin: { slot: host.slot, token: 'wrong' } });
 check('違う合言葉では、他の人の枠に入れない', bad.slot !== host.slot, `slot ${bad.slot} / ${bad.errors.join(',')}`);
-for (const c of [host, again, bad]) c.ws.close();
+// 観戦：対戦中でも、見るだけなら入れて状態が届く
+const watcher = await client('観戦', { charId: 'guard', create: false, spectate: true });
+await sleep(800);
+check('対戦中でも観戦で入れる（自分の選手はなし）', watcher.slot === -1 && watcher.errors.length === 0 && !!watcher.start && watcher.snaps > 5 && watcher.me === 0, `snaps ${watcher.snaps}`);
+check('ロビー情報に観戦の人数が出る', (host.lobby?.spectators ?? 0) >= 1, `${host.lobby?.spectators}`);
+for (const c of [host, again, bad, watcher]) c.ws.close();
 await sleep(200);
 process.exit(fail ? 1 : 0);

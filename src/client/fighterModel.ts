@@ -1180,6 +1180,7 @@ export class FighterModel {
     else if (v.state === 'sleep' || blinking) this.setExpression('closed', 'line', false);
     // 課金・倍速・吸収などの「強化」はドヤ顔
     else if (special === 'pay' || special === 'speedup' || special === 'absorb' || special === 'drone') this.setExpression('smug', 'smile', false);
+    else if (special === 'taunt') this.setExpression(smugType ? 'smug' : 'happy', 'open', false);
     else if (v.state === 'attack') this.setExpression('angry', v.move === 'smash' || v.move === 'charge' || (v.move ?? '').endsWith('special') || (v.move ?? '').endsWith('throw') ? 'open' : 'line', false);
     // ピンチ（崖につかまっている・%が高い）は焦り顔と汗
     else if (v.state === 'ledge' || v.damage >= 100) this.setExpression('panic', 'open', false);
@@ -1822,6 +1823,10 @@ export class FighterModel {
       case 'tether':
         p.armR = UP * 0.75;
         p.armL = 0.3;
+        return;
+      case 'taunt':
+        // アピール：キャラごとの決めポーズ
+        Object.assign(p, this.victoryPose(def.id, v.moveFrame / 60 + 0.3));
         return;
     }
     switch (v.move) {

@@ -23,7 +23,7 @@ export class Hud {
     this.net = document.createElement('div');
   }
 
-  setup(setup: MatchSetup, myslot: number | null, training = false): void {
+  setup(setup: MatchSetup, myslot: number | null, training = false, portraits: Record<number, string> = {}): void {
     this.training = training;
     this.el.innerHTML = '';
     this.panels.clear();
@@ -45,6 +45,13 @@ export class Hud {
       const ch = document.createElement('div');
       ch.className = 'nm';
       ch.textContent = getCharacter(p.charId).name;
+      if (portraits[p.slot]) {
+        const face = document.createElement('img');
+        face.className = 'face';
+        face.src = portraits[p.slot];
+        face.alt = '';
+        root.appendChild(face);
+      }
       root.append(nm, dmg, stk);
       wrap.appendChild(root);
       this.panels.set(p.slot, { root, dmg, stk, last: -1 });
@@ -71,6 +78,15 @@ export class Hud {
       p.root.classList.toggle('out', f.out);
     }
     for (const e of events) {
+      if (e.k === 'ko') {
+        // 撃墜された人の表示が割れる
+        const p = this.panels.get(e.s);
+        if (p) {
+          p.root.classList.remove('broken');
+          void p.root.offsetWidth;
+          p.root.classList.add('broken');
+        }
+      }
       if (e.k === 'hit') {
         const p = this.panels.get(e.s);
         if (p) {

@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 9;
+export const PROTOCOL_VERSION = 10;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -33,12 +33,14 @@ export interface LobbyInfo {
   rules: MatchRules;
   stageId: string;
   inMatch: boolean;
+  /** 観戦している人数 */
+  spectators?: number;
 }
 
 /** 端末 → サーバー */
 export type ClientMsg =
   /** rejoin：通信が切れた後に、同じ枠に戻る（welcome で受け取った合言葉を使う） */
-  | { t: 'hello'; v: number; name: string; charId: string; create: boolean; costume?: string; rejoin?: { slot: number; token: string } }
+  | { t: 'hello'; v: number; name: string; charId: string; create: boolean; costume?: string; rejoin?: { slot: number; token: string }; spectate?: boolean }
   | { t: 'char'; charId: string; costume?: string }
   | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number }
   | { t: 'start' }
@@ -71,8 +73,8 @@ export interface EncodedState {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const SHOT_KINDS = ['text', 'bullet', 'mail', 'malware', 'coin', 'thanks', 'badge', 'stone', 'bag', 'orb', 'gold', 'spark'];
-const ENTITY_KINDS: ViewEntity['kind'][] = ['wall', 'trap', 'popup', 'food', 'decoy', 'drone'];
+const SHOT_KINDS = ['text', 'bullet', 'mail', 'malware', 'coin', 'thanks', 'badge', 'stone', 'bag', 'orb', 'gold', 'spark', 'packet', 'laser', 'comment', 'notif', 'capsule', 'scooter', 'beam'];
+const ENTITY_KINDS: ViewEntity['kind'][] = ['wall', 'trap', 'popup', 'food', 'decoy', 'drone', 'item'];
 
 export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
   return {

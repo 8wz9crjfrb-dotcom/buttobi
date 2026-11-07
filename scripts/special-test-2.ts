@@ -384,4 +384,72 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   for (let i = 0; i < 20; i++) sim.step(new Map([[2, i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N]]));
   check('つかまれている人が攻撃されると、つかみが解ける', grabbed && h.state !== 'grabbed' && g.grabbing === -1 && h.grabbedBy === -1, `${h.state}`);
 }
+// ---- アピール・アイテム・ステージギミック・成績
+{
+  const sim = make('streamer', 'guard');
+  let taunted = false;
+  for (let i = 0; i < 12; i++) {
+    const inp: InputState = i < 3 ? { mx: 0, my: 0, buttons: BTN_SHIELD } : i < 6 ? { mx: 0, my: 1, buttons: BTN_SHIELD } : N;
+    sim.step(new Map([[0, inp]]));
+    if (sim.events.some((e) => e.k === 'taunt' && e.s === 0)) taunted = true;
+  }
+  check('ガード中にスティックを上にはじくとアピール', taunted && sim.fighters[0].move === 'taunt', `${sim.fighters[0].state}:${sim.fighters[0].move}`);
+}
+{
+  const mk = (items: boolean, gimmicks: boolean, stageId: string) => {
+    const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'guard', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: 'hacker', cpu: false, cpuLevel: 1 }], stageId, rules: { mode: 'stock', stocks: 3, timeLimit: 300, items, gimmicks }, seed: 3 });
+    while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+    return sim;
+  };
+  const off = mk(false, false, 'plain');
+  run(off, 1300);
+  check('アイテム「なし」ならアイテムは出ない', !off.entities.some((e) => e.kind === 'item'));
+  const on = mk(true, false, 'plain');
+  run(on, 600);
+  const spawned = on.entities.find((e) => e.kind === 'item');
+  // 落ちる場所から2人とも離しておく
+  on.fighters.forEach((f, i) => (f.x = (spawned ? (spawned.x > 0 ? -7 : 7) : 0) + i * 0.1));
+  run(on, 10);
+  const item = on.entities.find((e) => e.kind === 'item');
+  check('アイテム「あり」なら10秒ごとにアイテムが出る', !!item);
+  if (item) {
+    run(on, 90); // 床に落ちるまで
+    const f = on.fighters[0];
+    f.damage = 50;
+    f.x = item.x; f.y = item.y; f.vx = 0; f.vy = 0;
+    let picked = -1;
+    for (let i = 0; i < 5 && picked < 0; i++) {
+      on.step(new Map());
+      const ev = on.events.find((e) => e.k === 'item');
+      if (ev && ev.k === 'item') picked = ev.t;
+    }
+    check('触れるとアイテムを拾って効果が出る', picked >= 0 && !on.entities.some((e) => e.id === item.id), `種類${picked} %=${f.damage.toFixed(0)} 速さ${f.speedBuff} 無敵${f.invuln} 相手の停止${on.fighters[1].hitlag}`);
+  }
+  // ギミック：金庫室のレーザーは床の近くを横切り、当たるとダメージ
+  const v = mk(false, true, 'vault');
+  let warned = false;
+  let lasered = false;
+  const g = v.fighters[0];
+  for (let i = 0; i < 300 + 90 + 120; i++) {
+    g.x = 0; g.y = 0; g.vx = 0; g.vy = 0; g.grounded = true; g.state = g.state === 'hitstun' ? 'hitstun' : 'idle';
+    v.step(new Map());
+    if (v.events.some((e) => e.k === 'warn')) warned = true;
+    if (v.projectiles.some((p) => p.kind === 'laser')) lasered = true;
+  }
+  check('ギミック：予告のあとレーザーが出て、当たるとダメージ', warned && lasered && g.damage > 0, `${g.damage.toFixed(1)}%`);
+  const sky = mk(false, true, 'plain');
+  run(sky, 900);
+  check('デフォルトのステージにはギミックがない', !sky.projectiles.some((p) => p.owner === -1));
+}
+{
+  // 成績：与えたダメージと投げた回数が結果に入る
+  const sim = make('guard', 'hacker');
+  sim.fighters[0].x = 0; sim.fighters[0].facing = 1; sim.fighters[1].x = 1.0;
+  run(sim, 1, () => ({ mx: 0, my: 0, buttons: BTN_SHIELD }));
+  run(sim, 14, at(0, { mx: 0, my: 0, buttons: BTN_SHIELD | BTN_A }));
+  run(sim, 10, () => ({ mx: 1, my: 0, buttons: 0 }));
+  run(sim, 30);
+  const r = sim.results().find((x) => x.slot === 0)!;
+  check('結果に与えたダメージと投げた回数が入る', (r.dealt ?? 0) > 0 && r.throws === 1, `与えた${r.dealt} 投げ${r.throws}`);
+}
 process.exit(fail ? 1 : 0);
