@@ -1238,17 +1238,15 @@ export class FighterModel {
     // ---- 美容師：センター分けのマッシュヘア・黒いエプロン・腰のハサミ入れ
     {
       const hg = grp(0, h);
-      // 丸く厚みのある髪
-      this.part(hg, new THREE.SphereGeometry(0.345, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, [0, 0.31, -0.02], { rot: [-0.28, 0, 0], scale: [1.04, 1.06, 1.02] });
-      // 真ん中で分けて、左右へ流した前髪（毛先が外へ流れる）
+      // マッシュ：丸くふくらんだ輪郭。前髪は眉まで下ろし、真ん中で分けて V 字におでこが見える
+      const hr = this.hairToon(c.hair);
+      hr.side = THREE.DoubleSide;
+      this.hairShell(hg, hr, 0.345, 0, Math.PI * 2, 0, 1.05, [1.07, 1.05, 1.05]);
+      this.hairShell(hg, hr, 0.35, Math.PI / 2 + 0.95, Math.PI * 2 - 1.9, 0.9, 1.05, [1.1, 1, 1.06]);
       for (const sd of [1, -1]) {
-        const bang = this.swingPivot(hg, [0, 0.47, 0.27], 0.35);
-        for (let k = 0; k < 3; k++) {
-          this.part(bang, new THREE.ConeGeometry(0.065, 0.2, 6), hair, [sd * (0.06 + k * 0.085), -0.03 - k * 0.012, -k * 0.035], { rot: [Math.PI + 0.25, 0, sd * (0.35 + k * 0.2)], outline: false });
-        }
+        const fr = this.hairShell(hg, hr, 0.36, sd > 0 ? Math.PI / 2 + 0.12 : Math.PI / 2 - 1.12, 1.0, 0.55, 0.8, [1.06, 1, 1.04]);
+        fr.rotation.z = sd * 0.13;
       }
-      // もみあげ・耳にかかる髪
-      for (const sd of [1, -1]) this.part(hg, new THREE.CapsuleGeometry(0.06, 0.12, 4, 8), hair, [sd * 0.3, 0.33, 0.03], { rot: [0, 0, sd * 0.15], outline: false });
       const bg = grp(0, b);
       this.part(bg, new THREE.BoxGeometry(0.36, 0.5, 0.02), this.toon(c.sub), [0, 0.78, 0.18], { outline: false });
       for (const x of [0.13, -0.13]) this.part(bg, new THREE.BoxGeometry(0.03, 0.26, 0.02), this.toon(c.sub), [x, 1.08, 0.16], { rot: [0, 0, x > 0 ? -0.3 : 0.3], outline: false });
@@ -1257,35 +1255,57 @@ export class FighterModel {
     }
     // ---- バンドマン：長くてぼさぼさの髪・黒いベスト・チェーン・背中のギター
     {
-      // ツンツンのウルフカット（襟足が長い）。差し色のメッシュ入り
+      // ウルフカット：てっぺんはツンツン、顔の横と襟足は長くギザギザ。差し色のメッシュ入り
       const hg = grp(1, h);
+      const hr = this.hairToon(c.hair);
+      hr.side = THREE.DoubleSide;
       const streak = this.hairToon(c.accent);
-      this.part(hg, new THREE.SphereGeometry(0.345, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0.31, -0.03], { rot: [-0.25, 0, 0] });
+      this.hairShell(hg, hr, 0.34, 0, Math.PI * 2, 0, 1.1, [1.04, 1.04, 1.04]);
+      this.hairShell(hg, hr, 0.345, Math.PI / 2 + 1.05, Math.PI * 2 - 2.1, 0.9, 1.0, [1.06, 1, 1.04]);
       // 頭のてっぺんの、立ち上がった毛束
       for (const [x, z, rx, rz, mesh] of [
-        [0, 0.12, -0.5, 0, 0],
-        [0.13, 0.08, -0.35, -0.55, 1],
-        [-0.13, 0.08, -0.35, 0.55, 0],
-        [0.08, -0.08, -0.9, -0.35, 0],
-        [-0.08, -0.08, -0.9, 0.35, 0],
-        [0, -0.16, -1.2, 0, 0],
-        [0.22, -0.02, -0.4, -1.0, 0],
-        [-0.22, -0.02, -0.4, 1.0, 0],
+        [0, 0.14, -0.45, 0, 0],
+        [0.14, 0.1, -0.3, -0.6, 1],
+        [-0.14, 0.1, -0.3, 0.6, 0],
+        [0.09, -0.06, -0.95, -0.4, 0],
+        [-0.09, -0.06, -0.95, 0.4, 0],
+        [0, -0.15, -1.25, 0, 0],
+        [0.24, 0, -0.35, -1.05, 0],
+        [-0.24, 0, -0.35, 1.05, 0],
       ]) {
-        this.part(hg, new THREE.ConeGeometry(0.075, 0.24, 6), mesh ? streak : hair, [x, 0.6, z], { rot: [rx, 0, rz], outline: false });
+        this.part(hg, new THREE.ConeGeometry(0.08, 0.27, 6), mesh ? streak : hair, [x, 0.6, z], { rot: [rx, 0, rz], outline: false });
       }
-      // 片目にかかる前髪
-      const bang = this.swingPivot(hg, [0.06, 0.5, 0.27], 0.5);
-      this.part(bang, new THREE.ConeGeometry(0.07, 0.24, 6), hair, [0.04, -0.09, 0.03], { rot: [Math.PI, 0, -0.45], outline: false });
-      for (const sd of [1, -1]) this.part(hg, new THREE.ConeGeometry(0.06, 0.2, 6), hair, [sd * 0.29, 0.32, 0.06], { rot: [Math.PI, 0, sd * 0.2], outline: false });
-      // 長い襟足（揺れる）
-      for (const [x, mesh] of [
-        [0.15, 0],
-        [0, 1],
-        [-0.15, 0],
-      ]) {
-        const lock = this.swingPivot(hg, [x, 0.3, -0.24], 0.8);
-        this.part(lock, new THREE.ConeGeometry(0.075, 0.34, 6), mesh ? streak : hair, [x * 0.4, -0.15, -0.04], { rot: [Math.PI - 0.25, 0, -x * 1.6], outline: false });
+      // ギザギザの前髪（毛先が眉と目にかかる）
+      const fringe: [number, number, number][] = [
+        [-0.75, 0.16, 0],
+        [-0.42, 0.2, 0],
+        [-0.12, 0.17, 1],
+        [0.18, 0.26, 0],
+        [0.48, 0.18, 1],
+        [0.78, 0.15, 0],
+      ];
+      for (const [a, len, mesh] of fringe) {
+        const th = 1.0;
+        const r = 0.35;
+        const x = r * Math.sin(th) * Math.sin(a);
+        const y = 0.29 + r * 0.95 * Math.cos(th);
+        const z = r * 0.95 * Math.sin(th) * Math.cos(a);
+        const lk = this.swingPivot(hg, [x, y + 0.02, z], 0.3);
+        this.part(lk, new THREE.ConeGeometry(0.07, len, 6), mesh ? streak : hair, [0, -len / 2, 0.02], { rot: [Math.PI + 0.35, a * 0.6, -a * 0.25], outline: false });
+      }
+      // 顔の横に垂れる長い毛（あごまで）と、肩まで届く襟足
+      for (const sd of [1, -1]) {
+        for (const [dz, len, out, mesh] of [
+          [0.08, 0.3, 0.25, sd > 0 ? 1 : 0],
+          [-0.06, 0.36, 0.35, 0],
+        ]) {
+          const lk = this.swingPivot(hg, [sd * 0.31, 0.32, dz], 0.7);
+          this.part(lk, new THREE.ConeGeometry(0.075, len, 6), mesh ? streak : hair, [sd * 0.02, -len / 2, 0], { rot: [Math.PI, 0, -sd * out], outline: false });
+        }
+      }
+      for (const x of [-0.17, 0, 0.17]) {
+        const lk = this.swingPivot(hg, [x, 0.24, -0.27], 0.9);
+        this.part(lk, new THREE.ConeGeometry(0.08, 0.42, 6), hair, [x * 0.5, -0.2, -0.04], { rot: [Math.PI - 0.3, 0, -x * 2.2], outline: false });
       }
       const bg = grp(1, b);
       this.part(bg, new THREE.CapsuleGeometry(0.205, 0.2, 6, 16), this.toon(c.sub), [0, 0.95, 0], { scale: [1.14, 0.9, 0.86] });
@@ -1299,24 +1319,21 @@ export class FighterModel {
     }
     // ---- バーテンダー：なでつけた髪・ベスト・蝶ネクタイ
     {
-      // オールバック：前を少し盛って、後ろへなでつける（くしの跡が入る）
+      // オールバック：生えぎわを上げておでこを出し、髪は後ろへなでつける。つやの筋が後ろへ流れる
       const hg = grp(2, h);
-      // 髪を後ろへ傾けて、おでこを出す
-      const back = new THREE.Group();
-      back.position.set(0, 0.32, -0.03);
-      back.rotation.x = -0.62;
-      hg.add(back);
-      this.part(back, new THREE.SphereGeometry(0.335, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0, 0], { scale: [1.02, 1, 1.05] });
-      // 生えぎわの盛り上がり
-      this.part(hg, new THREE.SphereGeometry(0.15, 16, 10), hair, [0, 0.6, 0.12], { rot: [-0.6, 0, 0], scale: [1.4, 0.5, 0.9], outline: false });
-      // くしの跡（後ろへ流れる線）
-      const comb = this.hairToon(new THREE.Color(c.hair).multiplyScalar(0.55).getHex());
-      for (const x of [-0.13, 0, 0.13]) {
-        const r = Math.sqrt(0.345 * 0.345 - x * x);
-        const arc = this.part(back, new THREE.TorusGeometry(r, 0.009, 4, 24, Math.PI * 0.62), comb, [x, 0, 0], { outline: false });
-        arc.rotation.y = Math.PI / 2;
+      const hr = this.hairToon(c.hair);
+      hr.side = THREE.DoubleSide;
+      this.hairShell(hg, hr, 0.338, 0, Math.PI * 2, 0, 0.93, [1.03, 1.04, 1.04]);
+      // 横と後ろは頭にぴったり（耳の上で短く）。こめかみから後ろへ斜めに下がる
+      this.hairShell(hg, hr, 0.325, Math.PI / 2 + 1.0, Math.PI * 2 - 2.0, 0.8, 0.85, [1.03, 1, 1.06]);
+      // つやの筋（明るい色の線が、生えぎわから後ろへ流れる）
+      const gloss = this.hairToon(new THREE.Color(c.hair).lerp(new THREE.Color(0xffffff), 0.6).getHex());
+      gloss.side = THREE.DoubleSide;
+      for (const d of [0.18, -0.3, 0.55]) {
+        this.hairShell(hg, gloss, 0.35, Math.PI / 2 + d, 0.09, 0.05, 0.88, [1.03, 1.04, 1.04]);
+        this.hairShell(hg, gloss, 0.35, (Math.PI * 3) / 2 - d - 0.09, 0.09, 0.05, 1.1, [1.03, 1.04, 1.04]);
       }
-      for (const sd of [1, -1]) this.part(hg, new THREE.BoxGeometry(0.03, 0.1, 0.07), hair, [sd * 0.29, 0.31, 0.04], { outline: false });
+      for (const sd of [1, -1]) this.part(hg, new THREE.BoxGeometry(0.03, 0.1, 0.07), hair, [sd * 0.3, 0.31, 0.04], { outline: false });
       const bg = grp(2, b);
       this.part(bg, new THREE.CapsuleGeometry(0.205, 0.2, 6, 16), this.toon(c.sub), [0, 0.9, 0], { scale: [1.14, 0.85, 0.86] });
       this.part(bg, new THREE.BoxGeometry(0.08, 0.36, 0.02), this.toon(c.main), [0, 0.98, 0.18], { outline: false });
@@ -1325,6 +1342,21 @@ export class FighterModel {
       this.part(bg, new THREE.SphereGeometry(0.025, 8, 6), this.toon(c.accent), [0, 1.15, 0.18], { outline: false });
     }
     this.setJob(0);
+  }
+
+  /**
+   * 頭の形に沿った髪の曲面。phi は水平の角度（π/2 が顔の正面）、theta は頭のてっぺんからの角度。
+   * 場所ごとに長さの違う髪（前は眉まで・横と後ろは耳の下まで、など）を組み合わせて作る
+   */
+  private hairShell(parent: THREE.Object3D, mat: THREE.Material, r: number, phiStart: number, phiLen: number, thetaStart: number, thetaLen: number, scale: [number, number, number] = [1, 1, 1]): THREE.Mesh {
+    const geo = new THREE.SphereGeometry(r, Math.max(8, Math.round(phiLen * 6)), Math.max(4, Math.round(thetaLen * 8)), phiStart, phiLen, thetaStart, thetaLen);
+    const mesh = new THREE.Mesh(geo, mat);
+    // 頭（半径0.31、縦と奥行き0.95倍）と同じ中心・同じつぶれ方
+    mesh.position.set(0, 0.29, 0);
+    mesh.scale.set(scale[0], 0.95 * scale[1], 0.95 * scale[2]);
+    mesh.castShadow = true;
+    parent.add(mesh);
+    return mesh;
   }
 
   /** ギター（背中と手持ちで共用） */
