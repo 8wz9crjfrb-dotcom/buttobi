@@ -43,7 +43,7 @@ jobs:
         run: npm ci
         working-directory: server
       # 登録した値の前後の空白・改行や「Bearer 」が混ざっていても動くように取り除いてから使う。
-      # 値そのものはログに出さず、文字数だけ出す（トークンは40文字前後、アカウントIDは32文字）
+      # 値そのものはログに出さず、文字数だけ出す（アカウントIDは32文字。トークンは数十文字の1かたまり）
       - name: Deploy Worker
         if: env.HAS_TOKEN == 'true'
         working-directory: server
