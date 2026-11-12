@@ -7,6 +7,10 @@ iPhone・iPad・Android のブラウザで遊べる、2〜6人の3D対戦アク�
 - 対戦サーバー：Cloudflare Workers + Durable Objects（無料プラン）
 - 公開：GitHub Pages（無料）
 
+## 対戦サーバーの自動更新
+
+`.github/workflows/deploy-server.yml` が、main に push したときにサーバーに関わるファイル（`server/`・`src/shared/`）が変わっていれば、テストを通してから Cloudflare に自動で公開します。リポジトリの Settings → Secrets and variables → Actions → Secrets に `CLOUDFLARE_API_TOKEN`（「Edit Cloudflare Workers」テンプレートのAPIトークン）と `CLOUDFLARE_ACCOUNT_ID` を登録すると有効になります（未登録の間は公開の手順を飛ばします）。Actions の画面から手動でも実行できます。
+
 ## 今後の予定（メモ）
 
 - データの引き継ぎ（コイン・衣装・戦績を別の端末へ）
