@@ -42,13 +42,19 @@ jobs:
       - name: Install server dependencies
         run: npm ci
         working-directory: server
+      # 登録した値の前後の空白・改行や「Bearer 」が混ざっていても動くように取り除いてから使う。
+      # 値そのものはログに出さず、文字数だけ出す（トークンは40文字前後、アカウントIDは32文字）
       - name: Deploy Worker
         if: env.HAS_TOKEN == 'true'
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: server
+        working-directory: server
+        env:
+          RAW_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RAW_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          TOKEN="$(printf '%s' "$RAW_TOKEN" | tr -d '[:space:]' | sed -e 's/^[Bb]earer//')"
+          ACCOUNT="$(printf '%s' "$RAW_ACCOUNT" | tr -d '[:space:]')"
+          echo "トークンの文字数: ${#TOKEN} / アカウントIDの文字数: ${#ACCOUNT}"
+          CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT" npx wrangler deploy
       - name: Skip (secrets not set)
         if: env.HAS_TOKEN != 'true'
         run: echo "CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID が未登録のため、サーバーの更新は行いませんでした。"
