@@ -1363,70 +1363,46 @@ export class FighterModel {
     return mesh;
   }
 
-  /** 見比べ用：開発中だけ、髪型の案を切り替える（window.__threebHair = { 0: 'perm', 2: 'side' } など） */
-  private hairVariant(job: number, fallback: string): string {
-    const o = (globalThis as { __threebHair?: Record<number, string> }).__threebHair;
-    return o?.[job] ?? fallback;
-  }
-
-  /** 美容師の髪 */
+  /** 美容師の髪：ハイトーンの外ハネ（どの衣装でも明るい髪色にする） */
   private buildBeauticianHair(hg: THREE.Group): void {
-    const c = this.c;
-    const hair = this.hairToon(c.hair);
-    const hr = this.hairToon(c.hair);
+    const tone = new THREE.Color(this.c.hair).lerp(new THREE.Color(0xf3dfb8), 0.72).getHex();
+    const hair = this.hairToon(tone);
+    const hr = this.hairToon(tone);
     hr.side = THREE.DoubleSide;
-    const v = this.hairVariant(0, 'center');
     const F = Math.PI / 2;
-    if (v === 'perm') {
-      // ゆるふわパーマ：丸い小さな毛束がたくさん集まって、ふんわり大きい
-      this.hairShell(hg, hr, 0.33, 0, Math.PI * 2, 0, 1.15);
-      this.hairShell(hg, hr, 0.335, F + 1.0, Math.PI * 2 - 2.0, 0.9, 1.0);
-      let k = 0;
-      for (let th = 0.2; th < 1.95; th += 0.27) {
-        const ring = Math.max(1, Math.round(Math.sin(th) * 14));
-        for (let i = 0; i < ring; i++) {
-          const ph = (i / ring) * Math.PI * 2 + th * 1.3;
-          const d = Math.atan2(Math.sin(ph - F), Math.cos(ph - F));
-          if (Math.abs(d) < 1.0 && th > 1.12) continue; // 顔は出す
-          k++;
-          const big = 0.075 + ((k * 37) % 5) * 0.006;
-          this.hairLock(hg, hair, ph, th, big, big, big * 0.8, [0, -1, 0], 1.1);
-        }
-      }
-      // 前髪のカール
-      for (const a of [-0.55, -0.25, 0.05, 0.35, 0.62]) this.hairLock(hg, hair, F + a, 1.12, 0.07, 0.075, 0.06, [0, -1, 0.2], 1.1);
-      return;
+    // 土台：頭の上と、横・後ろはあごの高さまでまっすぐ下ろす
+    this.hairShell(hg, hr, 0.33, 0, Math.PI * 2, 0, 0.75, [1.04, 1.04, 1.04]);
+    this.hairShell(hg, hr, 0.335, F + 0.9, Math.PI * 2 - 1.8, 0.55, 1.42, [1.05, 1, 1.05]);
+    // 毛先の外ハネ：あごの高さで、ぐるっと外へはねる
+    for (let i = 0; i <= 16; i++) {
+      const ph = F + 0.85 + (i / 16) * (Math.PI * 2 - 1.7);
+      const out: [number, number, number] = [-Math.cos(ph), 0.95, Math.sin(ph)];
+      this.hairLock(hg, hair, ph, 1.95, 0.17, 0.075, 0.03, out, 1.12);
     }
-    // センターパート：真ん中で分けた前髪が左右に流れ、頬のあたりで外へはねる
-    this.hairShell(hg, hr, 0.325, 0, Math.PI * 2, 0, 0.62);
-    this.hairShell(hg, hr, 0.33, F + 0.55, Math.PI * 2 - 1.1, 0.5, 1.4);
+    // 前髪：すき間のある軽い前髪を、少し横へ流して眉の上まで
+    for (const [a, len] of [
+      [-0.55, 0.17],
+      [-0.3, 0.2],
+      [-0.05, 0.21],
+      [0.2, 0.2],
+      [0.45, 0.17],
+      [0.68, 0.15],
+    ]) {
+      this.hairLock(hg, hair, F + a, 0.72, len, 0.075, 0.026, [0.3, -1, 0.2], 1.06);
+    }
+    // 顔の横にかかる長めの毛（あごで外へはねる）
     for (const sd of [1, -1]) {
-      // 分け目から横へ流れる前髪（細い束を、頭の丸みに沿って重ねる）
-      for (const [a, th] of [
-        [0.1, 0.6],
-        [0.3, 0.68],
-        [0.5, 0.8],
-        [0.72, 0.94],
-        [0.95, 1.1],
-        [1.15, 1.28],
-      ]) {
-        this.hairLock(hg, hair, F + sd * a, th, 0.16, 0.085, 0.032, [sd * 0.9, -1, 0.1], 1.04);
-        this.hairLock(hg, hair, F + sd * (a + 0.12), th + 0.18, 0.15, 0.08, 0.03, [sd * 0.7, -1, 0.1], 1.03);
-      }
-      // 頬のあたりで外へはねる毛先
-      this.hairLock(hg, hair, F + sd * 1.3, 1.58, 0.11, 0.08, 0.035, [sd * 1, 0.6, 0.1], 1.04);
-      // 頭の上：分け目から後ろへ
-      for (const [a, th] of [
-        [0.12, 0.25],
-        [0.45, 0.35],
-        [0.8, 0.5],
-        [0.25, 0.08],
-      ]) {
-        this.hairLock(hg, hair, F + sd * a, th, 0.17, 0.11, 0.035, [sd * 0.4, 0.1, -1], 1.03);
-      }
+      this.hairLock(hg, hair, F + sd * 0.95, 1.2, 0.24, 0.09, 0.03, [0, -1, 0.1], 1.08);
+      this.hairLock(hg, hair, F + sd * 0.92, 1.9, 0.15, 0.075, 0.03, [sd, 0.95, 0.2], 1.1);
     }
-    // 後ろ：首のほうへ流れる
-    for (const a of [-1.0, -0.5, 0, 0.5, 1.0]) this.hairLock(hg, hair, (Math.PI * 3) / 2 + a, 1.25, 0.18, 0.11, 0.035, [0, -1, -0.2], 1.03);
+    // 頭の上：後ろへ流れる毛束（頭に沿わせる）
+    for (const [a, th] of [
+      [0, 0.38],
+      [0.55, 0.48],
+      [-0.55, 0.48],
+    ]) {
+      this.hairLock(hg, hair, F + a, th, 0.15, 0.1, 0.028, [a * 0.6, 0.2, -1], 1.03);
+    }
   }
 
   /** バーテンダーの髪（どの衣装でも黒髪） */
@@ -1436,28 +1412,9 @@ export class FighterModel {
     const shine = this.hairToon(0x4a4a5c);
     const hr = this.hairToon(black);
     hr.side = THREE.DoubleSide;
-    const v = this.hairVariant(2, 'allback');
     const F = Math.PI / 2;
     this.hairShell(hg, hr, 0.322, 0, Math.PI * 2, 0, 0.84);
     this.hairShell(hg, hr, 0.325, F + 1.2, Math.PI * 2 - 2.4, 0.75, 0.75);
-    if (v === 'side') {
-      // 七三分け：横の分け目から、反対側へ大きく流す
-      for (const [a, th] of [
-        [0.55, 0.95],
-        [0.25, 0.92],
-        [-0.05, 0.92],
-        [-0.35, 0.95],
-        [0.45, 0.6],
-        [0.1, 0.55],
-        [-0.25, 0.6],
-      ]) {
-        this.hairLock(hg, a > 0.3 ? shine : hair, F + a, th, 0.26, 0.11, 0.05, [-1, 0.35, -0.2]);
-      }
-      this.hairLock(hg, hair, F + 0.75, 1.05, 0.16, 0.09, 0.04, [1, -0.6, 0]);
-      for (const a of [-1.3, -1.6, 1.3, 1.6]) this.hairLock(hg, hair, F + a, 1.1, 0.2, 0.1, 0.04, [0, 0, -1]);
-      for (const a of [-0.7, 0, 0.7]) this.hairLock(hg, hair, (Math.PI * 3) / 2 + a, 0.8, 0.24, 0.13, 0.05, [0, -1, -0.3]);
-      return;
-    }
     // オールバック：生えぎわから後ろへ、細い毛束を頭の丸みに沿って何段も重ねてなでつける。ところどころ明るい束でつや
     let k = 0;
     for (const [th, list] of [
