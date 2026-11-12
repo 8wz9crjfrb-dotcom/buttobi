@@ -9,7 +9,7 @@ function client(code, create, name) {
   return new Promise((res) => {
     const ws = new WebSocket(`${URL_BASE}/room/${code}`);
     const c = { ws, msgs: [], lobby: null, start: null, slot: -1, end: null };
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 12, name, charId: 'guard', create }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 13, name, charId: 'guard', create }));
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       if (m.t === 'welcome') { c.slot = m.slot; res(c); }

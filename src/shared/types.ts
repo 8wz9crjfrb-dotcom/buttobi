@@ -200,7 +200,7 @@ export interface ViewFighter {
   out: boolean;
   /** 毒（マルウェア）でじわじわダメージを受けている */
   poison: boolean;
-  /** 状態のビット：1=倍速 2=課金 4=自転車 8=操作反転 16=吸収済み、32〜64=バズり段階（0〜3）、128=ひるまない（プロテイン） */
+  /** 状態のビット：1=倍速 2=課金 4=自転車 8=操作反転 16=吸収済み、32〜64=バズり段階（0〜3）、128=ひるまない（プロテイン）、256〜512=3Bの仕事 */
   fx: number;
 }
 
@@ -211,6 +211,9 @@ export const FX_CONFUSED = 8;
 export const FX_CHARGED = 16;
 /** プロテイン（トレーナー）でひるまない */
 export const FX_ARMOR = 128;
+/** 3B の仕事（0〜2）を入れるビットの位置（256〜512） */
+export const FX_JOB_SHIFT = 8;
+export const fxJob = (fx: number) => (fx >> FX_JOB_SHIFT) & 3;
 export const fxBuzz = (fx: number) => (fx >> 5) & 3;
 
 export interface ViewProjectile {

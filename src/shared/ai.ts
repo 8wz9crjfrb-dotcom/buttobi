@@ -206,6 +206,27 @@ export class CpuController {
           return b.hold;
         }
         break;
+      case 'threeb':
+        // 3B：ときどき着替えて（早着替えで強くなる）、仕事ごとの得意技を使う
+        if (f.jobCd === 0 && f.jobBuff === 0 && adx < 3.5 && this.rng.chance(skill * 0.22)) return { mx: 0, my: -1, buttons: BTN_B };
+        if (f.job === 0) {
+          if (near && adx < 1.6 && this.rng.chance(skill * 0.35)) return { mx: 0, my: 0, buttons: BTN_B };
+          if (near && adx > 1.8 && adx < 3.8 && this.rng.chance(skill * 0.25)) return { mx: dir, my: 0, buttons: BTN_B };
+        } else if (f.job === 1) {
+          if (near && adx < 1.9 && this.rng.chance(skill * 0.3)) {
+            b.hold = { mx: 0, my: 0, buttons: BTN_B };
+            b.holdFrames = 8 + Math.round(this.rng.range(0, 25 + lv * 3));
+            return b.hold;
+          }
+          if (near && adx > 2.5 && adx < 5 && this.rng.chance(skill * 0.25)) return { mx: dir, my: 0, buttons: BTN_B };
+        } else {
+          if (near && adx < 1.9 && this.rng.chance(skill * 0.3)) {
+            if (dir !== f.facing) return { mx: dir, my: 0, buttons: 0 };
+            return { mx: 0, my: 0, buttons: BTN_B };
+          }
+          if (near && t.grounded && adx > 1.4 && adx < 3.6 && this.rng.chance(skill * 0.3)) return { mx: dir, my: 0, buttons: BTN_B };
+        }
+        break;
       case 'trainer':
         // プロテインは近くに相手がいるときに飲む。ガードしている相手や近い相手にはタックル。
         // 上にいる相手にはマッスルジャンプ。近ければダンベルカールを溜めて殴る

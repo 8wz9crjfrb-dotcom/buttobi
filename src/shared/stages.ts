@@ -13,7 +13,7 @@ export interface Platform {
 }
 
 /** ステージの見た目の種類（キャラごとのステージ。sky はキャラに関係ないデフォルト） */
-export type StageKind = 'sky' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym';
+export type StageKind = 'sky' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym' | 'livebar';
 
 export interface StageTheme {
   kind: StageKind;
@@ -263,6 +263,29 @@ STAGES.push(
     ],
     respawnY: 10,
     theme: { kind: 'gym', bright: true, sky: 0xf3ece2, skyBottom: 0xfff8ee, fog: 0xf2e8da, accentA: 0xff6a3d, accentB: 0x2fbfa0 },
+  },
+  {
+    // 夜のライブバー：左はライブのステージ、右はバーカウンター、上をミラーボールの足場が左右に動く
+    id: 'livebar',
+    name: '夜のライブバー',
+    charId: 'threeb',
+    main: { x1: -9.5, x2: 9.5, top: 0, bottom: -3 },
+    platforms: [
+      { x1: -7.5, x2: -3.5, y: 2.4 },
+      { x1: 3.5, x2: 7.5, y: 2.4 },
+      { x1: -1.8, x2: 1.8, y: 5.2, moveAmp: 2.2, movePeriod: 420 },
+    ],
+    blast: { left: -22, right: 22, top: 18, bottom: -11 },
+    spawns: [
+      { x: -6, y: 0 },
+      { x: 6, y: 0 },
+      { x: -2, y: 0 },
+      { x: 2, y: 0 },
+      { x: -4, y: 0 },
+      { x: 4, y: 0 },
+    ],
+    respawnY: 10,
+    theme: { kind: 'livebar', bright: false, sky: 0x0c0612, skyBottom: 0x2a0f2a, fog: 0x1a0a1e, accentA: 0xc77dff, accentB: 0xff5ea8 },
   },
 );
 

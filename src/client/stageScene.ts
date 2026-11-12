@@ -1,4 +1,4 @@
-// ステージの見た目。キャラごとのステージ9つ（ジムを含む）と、デフォルト（そらの台地）を組み立てる。
+// ステージの見た目。キャラごとのステージ10個と、デフォルト（そらの台地）を組み立てる。
 // 当たり判定は shared/stages.ts の数値で決まっていて、ここは見た目だけ。
 
 import * as THREE from 'three';
@@ -54,6 +54,9 @@ export function buildStageScene(stage: StageDef, quality: Quality): BuiltStage {
       break;
     case 'gym':
       buildGym(kit);
+      break;
+    case 'livebar':
+      buildLivebar(kit);
       break;
   }
   return kit.finish();
@@ -1716,4 +1719,131 @@ function buildGym(kit: Kit): void {
   });
   // ほこりのきらめき
   kit.particles({ count: high ? 36 : 14, x: [cx - 18, cx + 18], y: [m.top, m.top + 12], z: [-8, 1], color: [0xffffff, th.accentA], size: 0.1, vy: 0.2, wobble: 0.3, opacity: 0.6 });
+}
+
+// ====================================================================== 夜のライブバー（3B）
+function buildLivebar(kit: Kit): void {
+  const { cx, w, m, rnd, high } = kit;
+  const th = kit.stage.theme;
+  // 奥の壁：暗いレンガ
+  const brick = kit.tex(256, 128, (g) => {
+    g.fillStyle = '#1c1018';
+    g.fillRect(0, 0, 256, 128);
+    for (let y = 0; y < 128; y += 32) {
+      for (let x = (y / 32) % 2 ? -32 : 0; x < 256; x += 64) {
+        g.fillStyle = rnd() < 0.5 ? '#2e1824' : '#28141f';
+        g.fillRect(x + 2, y + 2, 60, 28);
+      }
+    }
+  }, [8, 4]);
+  kit.plane(130, 50, kit.toon(0xffffff, { map: brick }), cx, 10, -14);
+  // ネオン看板（美容室・ライブ・バー）
+  const signs: [string, number, number][] = [
+    ['HAIR SALON', th.accentB, -14],
+    ['LIVE', th.accentA, 0],
+    ['BAR', 0x2fe8ff, 14],
+  ];
+  const signMeshes: THREE.Mesh[] = [];
+  for (const [t, col, x] of signs) {
+    const sg = neonSign(kit, t, col, t.length > 4 ? 6 : 3.6);
+    sg.position.set(cx + x, m.top + 10, -12.6);
+    kit.add(sg);
+    signMeshes.push(sg);
+  }
+  kit.anim((t) => signMeshes.forEach((sg, i) => (sg.visible = Math.sin(t * 7 + i * 2) > -0.92)));
+  // 床屋のサインポール（くるくる回る）
+  const pole = kit.tex(64, 128, (g) => {
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, 64, 128);
+    for (let k = -2; k < 6; k++) {
+      g.fillStyle = k % 2 ? '#e5484d' : '#2f6fdf';
+      g.beginPath();
+      g.moveTo(0, k * 32);
+      g.lineTo(64, k * 32 + 32);
+      g.lineTo(64, k * 32 + 48);
+      g.lineTo(0, k * 32 + 16);
+      g.fill();
+    }
+  });
+  pole.wrapT = THREE.RepeatWrapping;
+  for (const sd of [-1, 1]) {
+    kit.mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.6, 20), kit.basic(0xffffff, { map: pole }), cx + sd * (w / 2 + 4), m.top + 5, -8);
+    kit.mesh(new THREE.SphereGeometry(0.4, 16, 10), kit.toon(0xd8dde6), cx + sd * (w / 2 + 4), m.top + 6.4, -8);
+  }
+  kit.scroll(pole, 0, 0.6);
+  // 左奥：ライブのステージ（アンプとドラム）
+  for (let k = 0; k < 3; k++) {
+    const x = cx - w / 2 - 1 + k * 2.2;
+    kit.box(1.8, 2.2, 1.2, kit.toon(0x15151c), x, m.top + 1.1, -6);
+    kit.plane(1.5, 1.5, kit.toon(0x2a2a34), x, m.top + 1.1, -5.39);
+  }
+  // バスドラム（胴は黒、正面は白い皮に「3B」）とスタンドのシンバル
+  const drumFace = kit.tex(128, 128, (g) => {
+    g.fillStyle = '#f2eef6';
+    g.beginPath();
+    g.arc(64, 64, 62, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = hex(th.accentA);
+    g.font = `900 52px ${FONT}`;
+    g.textAlign = 'center';
+    g.fillText('3B', 64, 82);
+  });
+  kit.mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.7, 24), kit.toon(0x1a1a22), cx - 4, m.top + 0.9, -7.5).rotation.x = Math.PI / 2;
+  kit.mesh(new THREE.CircleGeometry(0.82, 24), kit.basic(0xffffff, { map: drumFace, transparent: true }), cx - 4, m.top + 0.9, -7.14);
+  kit.mesh(new THREE.TorusGeometry(0.88, 0.05, 6, 24), kit.toon(th.accentA), cx - 4, m.top + 0.9, -7.13);
+  for (const x of [-5.4, -2.6]) kit.mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 16), kit.std(0xffd23f, { metalness: 0.7, roughness: 0.3 }), cx + x, m.top + 2.2, -7.5);
+  // 右奥：バーのボトル棚（光る）
+  const bottles: THREE.Mesh[] = [];
+  for (let row = 0; row < 3; row++) {
+    kit.box(10, 0.12, 0.8, kit.toon(0x3a2418), cx + 10, m.top + 1.5 + row * 1.4, -9);
+    for (let k = 0; k < 10; k++) {
+      const col = [0x2f8a4a, 0xa0522d, 0x2fe8ff, 0xffd23f, 0xff5ea8][(k + row) % 5];
+      bottles.push(kit.mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.7, 10), kit.glow(col, 0.85), cx + 5.6 + k * 0.95, m.top + 1.95 + row * 1.4, -9));
+    }
+  }
+  kit.anim((t) => bottles.forEach((b2, i) => (b2.visible = Math.sin(t * 0.8 + i) > -0.95)));
+  // 天井のスポットライト（色が変わりながら首を振る）
+  const beams: THREE.Mesh[] = [];
+  for (let i = 0; i < 4; i++) {
+    const bm = kit.beam(i % 2 ? th.accentA : th.accentB, 13, 2.2, 0.16);
+    bm.position.set(cx - 9 + i * 6, m.top + 13, -3);
+    kit.add(bm);
+    beams.push(bm);
+  }
+  kit.anim((t) => beams.forEach((bm, i) => (bm.rotation.z = Math.sin(t * 0.9 + i * 1.7) * 0.45)));
+
+  // 床：黒と白のチェッカー（ステージのような光沢）
+  const floor = kit.tex(128, 128, (g) => {
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) {
+      g.fillStyle = (x + y) % 2 ? '#1a1a22' : '#e8e4f0';
+      g.fillRect(x * 64, y * 64, 64, 64);
+    }
+  }, [6, 1.5]);
+  const front = kit.tex(256, 64, (g) => {
+    g.fillStyle = '#140a14';
+    g.fillRect(0, 0, 256, 64);
+    for (let x = 8; x < 256; x += 24) {
+      g.fillStyle = (x / 24) % 2 ? '#c77dff' : '#ff5ea8';
+      g.beginPath();
+      g.arc(x, 32, 5, 0, Math.PI * 2);
+      g.fill();
+    }
+  }, [3, 0.75]);
+  mainSlab(kit, kit.std(0xffffff, { map: floor, roughness: 0.3, metalness: 0.1 }), kit.toon(0xffffff, { map: front }), 0.7, 5);
+  const strip = kit.box(w - 0.2, 0.06, 0.06, kit.glow(th.accentA), cx, m.top - 0.25, 2.5);
+  kit.anim((t) => ((strip.material as THREE.MeshBasicMaterial).color.setHex(Math.floor(t * 2) % 2 ? th.accentA : th.accentB)));
+  kit.box(w * 0.8, 2.4, 3.6, kit.toon(0x1a0f1a), cx, m.top - 1.9, 0);
+  accentLights(kit, th.accentA, th.accentB, 50);
+
+  // すり抜け足場：左右はステージの台とカウンター、中央はミラーボールつきの吊り台
+  kit.platform((g, pw) => {
+    g.add(kit.slab(pw, 0.3, 1.8, [kit.toon(0x2a1a24), kit.toon(0x3a2418)], { radius: 0.1, bevel: 0.05 }));
+    kit.box(pw, 0.05, 0.05, kit.glow(th.accentB), 0, -0.3, 0.9, g);
+    if (pw < 3.8) {
+      const ball = kit.mesh(new THREE.IcosahedronGeometry(0.55, 1), kit.std(0xe8e8f0, { metalness: 0.9, roughness: 0.15, flatShading: true }), 0, -0.9, 0, g);
+      kit.anim((t) => (ball.rotation.y = t * 1.2));
+      for (const x of [-pw / 2 + 0.2, pw / 2 - 0.2]) kit.box(0.04, 8, 0.04, kit.toon(0x55555f), x, 4, 0, g);
+    }
+  });
+  kit.particles({ count: high ? 50 : 20, x: [cx - 18, cx + 18], y: [m.top, m.top + 12], z: [-8, 1], color: [th.accentA, th.accentB, 0xffffff], size: 0.12, vy: 0.2, wobble: 0.5, opacity: 0.8 });
 }

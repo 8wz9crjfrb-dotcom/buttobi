@@ -95,7 +95,13 @@ export type SpecialKind =
   | 'curl'
   | 'tackle'
   | 'slam'
-  | 'armor';
+  | 'armor'
+  // 3B
+  | 'jobchange'
+  | 'rush'
+  | 'dive'
+  | 'bottle'
+  | 'slide';
 
 export interface MoveDef {
   startup: number;
@@ -124,6 +130,10 @@ export interface MoveDef {
   rehit?: number;
   /** 使った後、着地まで無防備になる */
   helpless?: boolean;
+  /** 当たった相手の左右の操作を、このフレーム数の間だけ逆にする（酔い） */
+  confuse?: number;
+  /** ひるみ時間の倍率 */
+  hitstunMul?: number;
 }
 
 /** 4体共通の通常技（キャラごとの攻撃力・速さの倍率がかかる） */
@@ -559,9 +569,57 @@ const SPECIALS: Record<string, Specials> = {
   },
 };
 
-/** そのキャラの技のデータ */
-export function moveOf(charId: string, id: MoveId): MoveDef {
+// 3B：下Bのジョブチェンジで、美容師（0）・バンドマン（1）・バーテンダー（2）の必殺技に切り替わる
+/** ジョブチェンジ（3つの仕事で共通）：くるっと回って着替える。回る瞬間に近くの相手へ軽い一撃 */
+const JOBCHANGE: MoveDef = { startup: 8, active: 6, end: 12, hitboxes: [{ x: 0, y: 0.95, r: 0.95 }], dmg: 3, base: 6, growth: 3, angle: 60, air: true, special: 'jobchange' };
+const THREEB: Specials[] = [
+  {
+    // 美容師：シザーラッシュ（Bを連打すると続き、最後の一撃でふっとばす）
+    nspecial: { startup: 5, active: 15, end: 14, hitboxes: [{ x: 0.85, y: 1.0, r: 0.62 }], dmg: 1.6, base: 1.2, growth: 0, angle: 0, air: true, special: 'rush', rehit: 4, hitstunMul: 1.6, landLag: 8 },
+    // ブローアップ：熱風を当てながら踏み込む連続ヒット
+    sspecial: { startup: 7, active: 16, end: 16, hitboxes: [{ x: 0.9, y: 0.95, r: 0.7 }], dmg: 1.8, base: 3, growth: 1, angle: 10, air: true, special: 'dash', dashSpeed: 7, rehit: 4, landLag: 10 },
+    dspecial: JOBCHANGE,
+    // スプレーターン：回りながら上昇して周りに連続ヒット
+    uspecial: { startup: 4, active: 20, end: 8, hitboxes: [{ x: 0, y: 1.0, r: 0.95 }], dmg: 1.6, base: 4, growth: 2, angle: 80, air: true, special: 'recovery', riseV: 15.5, rehit: 5, helpless: true },
+  },
+  {
+    // バンドマン：爆音ソロ（Bを押し続けると溜まる。自分の周り全方向）
+    nspecial: { startup: 18, active: 5, end: 24, hitboxes: [{ x: 0, y: 1.0, r: 1.55 }], dmg: 10, base: 7.5, growth: 11, angle: 55, air: true, special: 'curl', landLag: 12 },
+    // ステージダイブ：前へ飛び込んで体当たり。当たると相手を踏み台に跳ねる
+    sspecial: { startup: 8, active: 22, end: 14, hitboxes: [{ x: 0.5, y: 0.8, r: 0.75 }], dmg: 9, base: 6.5, growth: 9, angle: 40, air: true, special: 'dive', landLag: 14 },
+    dspecial: JOBCHANGE,
+    // アンコール：ギターを振り上げながら高く跳ぶ
+    uspecial: { startup: 5, active: 14, end: 10, hitboxes: [{ x: 0.3, y: 1.9, r: 0.8 }], dmg: 8, base: 7, growth: 8, angle: 85, air: true, special: 'recovery', riseV: 17.5, helpless: true },
+  },
+  {
+    // バーテンダー：フレアボトル（当たった相手は酔って左右の操作が逆になる）
+    nspecial: { startup: 9, active: 5, end: 16, hitboxes: [{ x: 1.0, y: 1.05, r: 0.65 }], dmg: 7, base: 5.5, growth: 7, angle: 40, air: true, special: 'bottle', confuse: 150, landLag: 8 },
+    // スライド：低く滑り込む足払い（地上の相手を長くひるませる）
+    sspecial: { startup: 8, active: 12, end: 18, hitboxes: [{ x: 0.75, y: 0.25, r: 0.6 }], dmg: 6, base: 6, growth: 4, angle: 15, air: false, special: 'slide', dashSpeed: 11, hitstunMul: 3.5 },
+    dspecial: JOBCHANGE,
+    // シェイカーターン：シェイカーを振りながら回転して上昇
+    uspecial: { startup: 5, active: 18, end: 8, hitboxes: [{ x: 0, y: 1.1, r: 0.85 }], dmg: 2.2, base: 5, growth: 3, angle: 80, air: true, special: 'recovery', riseV: 16, rehit: 6, helpless: true },
+  },
+];
+
+/** 3B の仕事の数と名前 */
+export const JOBS = ['美容師', 'バンドマン', 'バーテンダー'];
+export const THREEB_RULES = {
+  /** シザーラッシュを続けられる回数 */
+  rushChain: 2,
+  /** 早着替え：ジョブチェンジ後の攻撃力アップの時間と倍率 */
+  buff: 180,
+  buffMul: 1.2,
+  /** ジョブチェンジの待ち時間 */
+  cooldown: 60,
+  /** ステージダイブで当てたあとに跳ね上がる速さ */
+  bounce: 12,
+};
+
+/** そのキャラの技のデータ（job は 3B の仕事） */
+export function moveOf(charId: string, id: MoveId, job = 0): MoveDef {
   if (id === 'nspecial' || id === 'sspecial' || id === 'dspecial' || id === 'uspecial') {
+    if (charId === 'threeb') return THREEB[((job % 3) + 3) % 3][id];
     return (SPECIALS[charId] ?? SPECIALS.guard)[id];
   }
   return NORMALS[id];

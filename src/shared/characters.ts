@@ -254,7 +254,48 @@ export const CHARACTERS: CharacterDef[] = [
     specialNames: { n: 'ダンベルカール', s: 'タックル', d: 'プロテイン', u: 'マッスルジャンプ' },
     trait: { name: '筋肉は裏切らない', desc: '投げのダメージが1.3倍。体が重く、飛ばされにくい。' },
   },
+  {
+    id: 'threeb',
+    name: '3B',
+    role: 'ジョブチェンジ',
+    desc: '美容師・バンドマン・バーテンダーを下Bで切り替える。仕事ごとに必殺技と動きが変わる。',
+    color: 0xc77dff,
+    accent: 0x1a1a22,
+    // ここの数値は美容師のとき（バンドマン・バーテンダーは THREEB_JOBS で上書き）
+    walkSpeed: 4.0,
+    runSpeed: 8.6,
+    airSpeed: 6.0,
+    airAccel: 46,
+    jumpV: 13.4,
+    airJumpV: 12.2,
+    airJumps: 1,
+    gravity: 34,
+    fallMax: 14,
+    weight: 0.92,
+    dmgMul: 0.95,
+    kbMul: 0.96,
+    frameMul: 0.92,
+    scale: 1.0,
+    // 選択画面では短く（くわしい名前は長押しの説明に）
+    specialNames: { n: 'ハサミ／ギター／ボトル', s: 'ドライヤー／ダイブ／スライド', d: 'ジョブチェンジ', u: 'スプレー／アンコール／シェイカー' },
+    trait: { name: '早着替え', desc: 'ジョブチェンジしてから約3秒間、攻撃力が1.2倍。' },
+  },
 ];
+
+/** 3B の仕事ごとの体の性能（美容師は基本のまま。バンドマンは遅くて重い一撃、バーテンダーはその中間） */
+const THREEB_JOBS: Partial<CharacterDef>[] = [
+  {},
+  { walkSpeed: 3.4, runSpeed: 7.2, airSpeed: 5.2, jumpV: 12.8, weight: 1.06, dmgMul: 1.08, kbMul: 1.08, frameMul: 1.06 },
+  { walkSpeed: 3.7, runSpeed: 7.9, airSpeed: 5.6, jumpV: 13.1, weight: 0.98, dmgMul: 1.0, kbMul: 1.0, frameMul: 1.0 },
+];
+const threebDefs: CharacterDef[] = [];
+
+/** 3B の、その仕事のときの性能（id は 'threeb' のまま） */
+export function threebDef(job: number): CharacterDef {
+  const j = ((job % 3) + 3) % 3;
+  if (!threebDefs[j]) threebDefs[j] = { ...CHARACTERS.find((c) => c.id === 'threeb')!, ...THREEB_JOBS[j] };
+  return threebDefs[j];
+}
 
 export function getCharacter(id: string): CharacterDef {
   return CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0];
@@ -328,6 +369,12 @@ export const SPECIAL_DESCS: Record<string, { n: string; s: string; d: string; u:
     d: 'プロテインを飲み、約5秒間、攻撃を受けてもひるまなくなる（ダメージは0.85倍。とても強いふっとばしは受ける）。次に飲めるまで約15秒。',
     u: '飛び上がりながら相手をつかみ、そのまま真下へ落ちて地面に叩きつける復帰技。使ったあとは着地するまで無防備。',
   },
+  threeb: {
+    n: '【美容師：シザーラッシュ】ハサミの連続カット。Bを連打すると2回まで続き、最後の一撃でふっとばす。【バンドマン：爆音ソロ】ギターをかき鳴らし、自分の周り全方向に音の衝撃（近くだけ）。Bを押し続けると溜まる。【バーテンダー：フレアボトル】ボトルで殴る。当たった相手は約2.5秒、左右の操作が逆になる。',
+    s: '【美容師：ブローアップ】ドライヤーの熱風を当てながら踏み込む連続ヒット。【バンドマン：ステージダイブ】前へ飛び込んで体当たり。当たると相手を踏み台に跳ね上がる。【バーテンダー：スライド】低く滑り込む足払い（地上のみ）。地上の相手を長くひるませる。',
+    d: '美容師→バンドマン→バーテンダーの順に着替える。回る瞬間に近くの相手へ軽い一撃。続けて着替えるには約1秒待つ。着替えてから約3秒は攻撃力1.2倍。',
+    u: '【美容師：スプレーターン】スプレーを噴きながら回転して上昇、周りに連続ヒット。【バンドマン：アンコール】ギターを振り上げて高く跳ぶ。【バーテンダー：シェイカーターン】シェイカーを振りながら回転して上昇。どれも使ったあとは着地するまで無防備。',
+  },
   ai: {
     n: 'いちばん近い相手をゆっくり追いかける弾を撃つ。',
     s: '構え（約0.7秒）の間に飛んできた飛び道具を吸収してダメージを受けない。吸収すると、次に出す攻撃が威力1.6倍・ふっとばし力1.2倍になる（体が水色に光る）。直接の攻撃は吸収できない。',
@@ -347,6 +394,7 @@ export const TAUNT_LINES: Record<string, { lines: string[]; ssr: string }> = {
   courier: { lines: ['お届けです！', '置き配しときます', '時間指定ギリ！'], ssr: '光速でお届け！' },
   ai: { lines: ['推論完了', '学習済みです', 'それ、想定内'], ssr: 'シンギュラリティ到達' },
   trainer: { lines: ['あと1回！', '筋肉は裏切らない', 'いい汗かいた！'], ssr: 'これが鋼の肉体だ！' },
+  threeb: { lines: ['今日はどんな感じにします？', '次のライブ来てよ', '何かお作りしましょうか'], ssr: '夜はこれからだ' },
 };
 
 /** アイテムの名前（種類の番号順） */

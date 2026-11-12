@@ -70,7 +70,14 @@ export class GameRenderer {
   } | null = null;
   private thumbs = new Map<string, string>();
 
+  /** 夜のライブバーのギミック：照明が落ちて暗くなる（画面の上にかぶせる黒い幕） */
+  private blackout: HTMLDivElement;
+  private blackoutAt = -1;
+
   constructor(canvas: HTMLCanvasElement) {
+    this.blackout = document.createElement('div');
+    this.blackout.style.cssText = 'position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 55%, rgba(10,4,20,0.7) 0%, rgba(4,2,10,0.94) 70%)';
+    canvas.insertAdjacentElement('afterend', this.blackout);
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
@@ -142,6 +149,7 @@ export class GameRenderer {
   }
 
   setMatch(setup: MatchSetup, stage: StageDef): void {
+    this.blackoutAt = -1;
     this.clear();
     this.stage = stage;
     this.setup = setup;
@@ -452,6 +460,10 @@ export class GameRenderer {
 
   render(view: ViewState | null, dt: number, newEvents: GameEvent[]): void {
     this.time += dt;
+    // 暗転：予告から1.5秒後に暗くなり、約3秒続いてから明るく戻る
+    const bt = this.blackoutAt < 0 || this.preview || !view ? -1 : this.time - this.blackoutAt;
+    const dark = bt < 0 ? 0 : bt < 0.3 ? bt / 0.3 : bt < 3.3 ? 1 : bt < 3.8 ? (3.8 - bt) / 0.5 : 0;
+    this.blackout.style.opacity = dark.toFixed(2);
     if (this.preview) {
       this.updateParticles(dt);
       this.renderPreview(dt);
@@ -857,7 +869,9 @@ export class GameRenderer {
       gacha: 'カプセルの雨！',
       lab: 'AIの光線が来る！',
       gym: e.d > 0 ? 'ランニングマシン始動 →→' : '←← ランニングマシン始動',
+      livebar: '照明が落ちる！',
     };
+    if (e.h === 'livebar') this.blackoutAt = this.time + 1.5;
     this.props.showText(`⚠ ${labels[e.h] ?? '注意！'}`, '#ffd23f', (m.x1 + m.x2) / 2, m.top + 6.5, true, 110);
     if (e.h === 'lab') {
       // 光線が落ちる場所に赤い印

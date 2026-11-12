@@ -3,10 +3,10 @@
 // 色は衣装（costumes.ts）から受け取るので、着せ替えにも対応できる。
 
 import * as THREE from 'three';
-import type { CharacterDef } from '../shared/characters';
+import { threebDef, type CharacterDef } from '../shared/characters';
 import type { Accessory, Costume, CostumeFx } from '../shared/costumes';
 import { moveOf } from '../shared/moves';
-import { FX_ARMOR, FX_BIKE, FX_CHARGED, FX_POWER, FX_SPEED, type ViewFighter } from '../shared/types';
+import { FX_ARMOR, FX_BIKE, FX_CHARGED, FX_POWER, FX_SPEED, fxJob, type ViewFighter } from '../shared/types';
 
 const FWD = -Math.PI / 2; // 腕・脚を前に向ける回転（x軸まわり）
 const UP = -Math.PI;
@@ -271,7 +271,7 @@ function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean,
 }
 
 /** 頭のてっぺんの高さ（帽子・髪の上。王冠や天使の輪を置く位置） */
-const HEAD_TOP: Record<string, number> = { guard: 0.67, hacker: 0.7, thief: 0.67, streamer: 0.66, dopa: 0.72, gacha: 0.66, courier: 0.66, ai: 0.64, trainer: 0.68 };
+const HEAD_TOP: Record<string, number> = { guard: 0.67, hacker: 0.7, thief: 0.67, streamer: 0.66, dopa: 0.72, gacha: 0.66, courier: 0.66, ai: 0.64, trainer: 0.68, threeb: 0.68 };
 
 /** SSR の粒の絵 */
 const fxTextures = new Map<string, THREE.Texture>();
@@ -360,6 +360,7 @@ const EYE_COLORS: Record<string, number> = {
   courier: 0x7a4a2a,
   ai: 0x2aa8d8,
   trainer: 0x6a3a1a,
+  threeb: 0x8a4ad0,
 };
 
 /** 体の横幅（警備員とトレーナーはがっしり、データ泥棒は細身） */
@@ -412,7 +413,14 @@ export class FighterModel {
   private vel: Partial<Record<keyof Pose, number>> = {};
   private prevSpin = { spinY: 0, spinZ: 0 };
   /** 攻撃のときだけ持つ道具（警棒・ホログラムの剣・ガチャのカプセル） */
-  private attackProps: { obj: THREE.Object3D; moves: string[] }[] = [];
+  private attackProps: { obj: THREE.Object3D; moves: string[]; job?: number }[] = [];
+  /** 3B：仕事ごとの見た目（髪・服・小物）。今の仕事のものだけ表示する */
+  private jobParts: THREE.Object3D[][] = [[], [], []];
+  private job = 0;
+  /** 3B：背中のギター（手に持っている間は隠す） */
+  private backGuitar: THREE.Object3D | null = null;
+  /** キャラ選択画面で見せる仕事（タップで切り替える。null なら試合の状態に合わせる） */
+  previewJob: number | null = null;
   private mouths: { line: THREE.Object3D; open: THREE.Object3D; smile: THREE.Object3D } | null = null;
   private browMeshes: { mesh: THREE.Object3D; base: number; side: number }[] = [];
   private shieldMesh: THREE.Mesh;
@@ -442,6 +450,8 @@ export class FighterModel {
 
   /** タップされたときのアクション（決めポーズで跳ねる） */
   playAction(): void {
+    // 3B はタップするたびに着替える
+    if (this.def.id === 'threeb') this.previewJob = ((this.previewJob ?? 0) + 1) % 3;
     this.actionT = 1.4;
     this.actionKind = (this.actionKind + 1) % 2;
   }
@@ -1010,6 +1020,49 @@ export class FighterModel {
       this.part(sh, new THREE.CylinderGeometry(0.068, 0.068, 0.06, 14), this.toon(c.main), [0, 0.09, 0.07], { outline: false });
       this.part(sh, new THREE.BoxGeometry(0.11, 0.07, 0.005), this.toon(c.accent), [0, -0.04, 0.135], { outline: false });
       this.attackProps.push({ obj: sh, moves: ['dspecial'] });
+    } else if (id === 'threeb') {
+      const metal = this.toon(0xd8dde6);
+      // 美容師：ハサミ（B）・ドライヤー（横B）・スプレー（上B）
+      {
+        const g = new THREE.Group();
+        this.hand(this.armR).add(g);
+        for (const r of [0.25, -0.25]) this.part(g, new THREE.BoxGeometry(0.025, 0.3, 0.012), metal, [0, -0.15, 0.05], { rot: [0, 0, r], outline: false });
+        for (const x of [0.05, -0.05]) this.part(g, new THREE.TorusGeometry(0.035, 0.012, 5, 10), this.toon(c.accent), [x, 0.02, 0.05], { outline: false });
+        this.attackProps.push({ obj: g, moves: ['nspecial'], job: 0 });
+        const dr = new THREE.Group();
+        this.hand(this.armR).add(dr);
+        this.part(dr, new THREE.CylinderGeometry(0.03, 0.03, 0.16, 8), this.toon(0x2a2a32), [0, -0.04, 0.05]);
+        this.part(dr, new THREE.CylinderGeometry(0.075, 0.06, 0.26, 12), this.toon(c.accent), [0, -0.14, 0.13], { rot: [Math.PI / 2, 0, 0] });
+        this.attackProps.push({ obj: dr, moves: ['sspecial'], job: 0 });
+        const sp = new THREE.Group();
+        this.hand(this.armR).add(sp);
+        this.part(sp, new THREE.CylinderGeometry(0.05, 0.05, 0.2, 12), this.toon(c.accent), [0, -0.06, 0.06]);
+        this.part(sp, new THREE.CylinderGeometry(0.02, 0.03, 0.05, 8), metal, [0, 0.07, 0.06], { outline: false });
+        this.attackProps.push({ obj: sp, moves: ['uspecial'], job: 0 });
+      }
+      // バンドマン：手に持つギター（B・上B・スマッシュ・溜め）
+      {
+        const g = new THREE.Group();
+        g.rotation.set(0, 0, 0);
+        this.hand(this.armR).add(g);
+        this.buildGuitar(g, [0, -0.15, 0.12], 0.75);
+        g.children[0].rotation.x = Math.PI / 2;
+        this.attackProps.push({ obj: g, moves: ['nspecial', 'uspecial', 'smash', 'charge'], job: 1 });
+      }
+      // バーテンダー：ボトル（B）とシェイカー（上B）
+      {
+        const bt = new THREE.Group();
+        this.hand(this.armR).add(bt);
+        this.part(bt, new THREE.CylinderGeometry(0.06, 0.07, 0.2, 12), this.toon(0x2f8a4a), [0, -0.18, 0.04]);
+        this.part(bt, new THREE.CylinderGeometry(0.025, 0.04, 0.12, 10), this.toon(0x2f8a4a), [0, -0.02, 0.04], { outline: false });
+        this.part(bt, new THREE.BoxGeometry(0.1, 0.07, 0.005), this.toon(0xf2e6c8), [0, -0.18, 0.105], { outline: false });
+        this.attackProps.push({ obj: bt, moves: ['nspecial'], job: 2 });
+        const sh = new THREE.Group();
+        this.hand(this.armR).add(sh);
+        this.part(sh, new THREE.CylinderGeometry(0.06, 0.05, 0.2, 12), metal, [0, -0.06, 0.06]);
+        this.part(sh, new THREE.ConeGeometry(0.06, 0.08, 12), metal, [0, 0.08, 0.06], { outline: false });
+        this.attackProps.push({ obj: sh, moves: ['uspecial'], job: 2 });
+      }
     }
     for (const p of this.attackProps) p.obj.visible = false;
   }
@@ -1162,11 +1215,107 @@ export class FighterModel {
       const towel = this.swingPivot(this.body, [0.22, 1.18, -0.05], 0.5);
       this.part(towel, new THREE.BoxGeometry(0.13, 0.05, 0.36), this.toon(0xf4f4f6), [0, 0, 0], { rot: [0, 0, -0.25] });
       this.part(towel, new THREE.BoxGeometry(0.13, 0.3, 0.04), this.toon(0xf4f4f6), [0.04, -0.15, -0.17], { rot: [0, 0, -0.1] });
+    } else if (id === 'threeb') {
+      this.buildThreeB();
     }
+  }
+
+  /** 3B：美容師・バンドマン・バーテンダーの3つの見た目を作り、今の仕事のものだけ表示する */
+  private buildThreeB(): void {
+    const c = this.c;
+    const h = this.head;
+    const b = this.body;
+    this.mouth();
+    this.brows(0.08, c.hair, 0.026);
+    const hair = this.hairToon(c.hair);
+    /** 仕事 j の部品を入れる入れ物を、親に付けて返す */
+    const grp = (j: number, parent: THREE.Object3D) => {
+      const g = new THREE.Group();
+      parent.add(g);
+      this.jobParts[j].push(g);
+      return g;
+    };
+    // ---- 美容師：流した前髪・黒いエプロン・腰のハサミ入れ
+    {
+      const hg = grp(0, h);
+      this.part(hg, new THREE.SphereGeometry(0.335, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0.31, -0.02], { rot: [-0.3, 0, 0] });
+      const bang = this.swingPivot(hg, [0.05, 0.56, 0.2], 0.5);
+      this.part(bang, new THREE.CapsuleGeometry(0.08, 0.26, 4, 8), hair, [-0.04, -0.06, 0.02], { rot: [0, 0, Math.PI / 2 + 0.45], outline: false });
+      this.part(hg, new THREE.ConeGeometry(0.07, 0.2, 6), hair, [0.2, 0.5, 0.12], { rot: [0.4, 0, -1.2], outline: false });
+      const bg = grp(0, b);
+      this.part(bg, new THREE.BoxGeometry(0.36, 0.5, 0.02), this.toon(c.sub), [0, 0.78, 0.18], { outline: false });
+      for (const x of [0.13, -0.13]) this.part(bg, new THREE.BoxGeometry(0.03, 0.26, 0.02), this.toon(c.sub), [x, 1.08, 0.16], { rot: [0, 0, x > 0 ? -0.3 : 0.3], outline: false });
+      this.part(bg, new THREE.BoxGeometry(0.12, 0.16, 0.06), this.toon(0x2a2a32), [-0.24, 0.72, 0.1]);
+      for (const x of [-0.22, -0.26]) this.part(bg, new THREE.CylinderGeometry(0.012, 0.012, 0.12, 6), this.toon(0xd8dde6), [x, 0.85, 0.1], { outline: false });
+    }
+    // ---- バンドマン：長くてぼさぼさの髪・黒いベスト・チェーン・背中のギター
+    {
+      const hg = grp(1, h);
+      this.part(hg, new THREE.SphereGeometry(0.34, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, [0, 0.3, -0.03], { rot: [-0.15, 0, 0] });
+      for (const [x, z] of [
+        [0.27, -0.05],
+        [-0.27, -0.05],
+        [0.18, -0.2],
+        [-0.18, -0.2],
+        [0, -0.27],
+      ]) {
+        const lock = this.swingPivot(hg, [x, 0.36, z], 0.8);
+        this.part(lock, new THREE.CapsuleGeometry(0.075, 0.3, 4, 8), hair, [0, -0.17, 0], { outline: false });
+      }
+      this.part(hg, new THREE.ConeGeometry(0.08, 0.22, 6), hair, [0.08, 0.52, 0.2], { rot: [1.4, 0, -0.3], outline: false });
+      const bg = grp(1, b);
+      this.part(bg, new THREE.CapsuleGeometry(0.205, 0.2, 6, 16), this.toon(c.sub), [0, 0.95, 0], { scale: [1.14, 0.9, 0.86] });
+      this.part(bg, new THREE.BoxGeometry(0.1, 0.4, 0.02), this.toon(c.main), [0, 0.95, 0.18], { outline: false });
+      this.part(bg, new THREE.TorusGeometry(0.1, 0.012, 5, 16, Math.PI), this.toon(0xd8dde6), [-0.12, 0.66, 0.16], { rot: [0, 0, Math.PI], outline: false });
+      // 背中のギター
+      const gt = this.swingPivot(b, [0, 1.12, -0.2], 0.3);
+      this.jobParts[1].push(gt);
+      this.buildGuitar(gt, [0, -0.3, -0.06], 0.6);
+      this.backGuitar = gt;
+    }
+    // ---- バーテンダー：なでつけた髪・ベスト・蝶ネクタイ
+    {
+      const hg = grp(2, h);
+      this.part(hg, new THREE.SphereGeometry(0.33, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.45), hair, [0, 0.33, -0.03], { rot: [-0.45, 0, 0] });
+      this.part(hg, new THREE.TorusGeometry(0.2, 0.05, 6, 16, Math.PI), hair, [0, 0.55, 0.08], { rot: [-0.5, 0, 0], outline: false });
+      const bg = grp(2, b);
+      this.part(bg, new THREE.CapsuleGeometry(0.205, 0.2, 6, 16), this.toon(c.sub), [0, 0.9, 0], { scale: [1.14, 0.85, 0.86] });
+      this.part(bg, new THREE.BoxGeometry(0.08, 0.36, 0.02), this.toon(c.main), [0, 0.98, 0.18], { outline: false });
+      for (const y of [0.92, 0.82]) this.part(bg, new THREE.SphereGeometry(0.018, 6, 5), this.toon(c.accent), [0.07, y, 0.18], { outline: false });
+      for (const x of [0.05, -0.05]) this.part(bg, new THREE.ConeGeometry(0.045, 0.08, 4), this.toon(c.accent), [x, 1.15, 0.17], { rot: [0, 0, x > 0 ? Math.PI / 2 : -Math.PI / 2], outline: false });
+      this.part(bg, new THREE.SphereGeometry(0.025, 8, 6), this.toon(c.accent), [0, 1.15, 0.18], { outline: false });
+    }
+    this.setJob(0);
+  }
+
+  /** ギター（背中と手持ちで共用） */
+  private buildGuitar(parent: THREE.Object3D, pos: [number, number, number], size: number): void {
+    const c = this.c;
+    const g = new THREE.Group();
+    g.position.set(...pos);
+    g.scale.setScalar(size);
+    parent.add(g);
+    this.part(g, new THREE.SphereGeometry(0.22, 16, 12), this.toon(c.accent), [0, -0.12, 0], { scale: [1, 1.15, 0.3] });
+    this.part(g, new THREE.SphereGeometry(0.17, 16, 12), this.toon(c.accent), [0, 0.15, 0], { scale: [1, 1, 0.3] });
+    this.part(g, new THREE.BoxGeometry(0.06, 0.55, 0.04), this.toon(0x3a2a20), [0, 0.5, 0], { outline: false });
+    this.part(g, new THREE.BoxGeometry(0.1, 0.12, 0.05), this.toon(0x1a1a22), [0, 0.82, 0]);
+    this.part(g, new THREE.CylinderGeometry(0.05, 0.05, 0.02, 12), this.toon(0x1a1a22), [0, -0.05, 0.07], { rot: [Math.PI / 2, 0, 0], outline: false });
+  }
+
+  /** 3B の見た目を、その仕事のものに切り替える */
+  private setJob(j: number): void {
+    this.job = j;
+    this.jobParts.forEach((list, k) => list.forEach((o) => (o.visible = k === j)));
   }
 
   // ---------------------------------------------------------------- 毎フレームの更新
   update(v: ViewFighter, def: CharacterDef, time: number, dt: number): void {
+    // 3B：仕事に合わせて見た目と性能（技の速さ）を切り替える
+    if (def.id === 'threeb') {
+      const j = this.previewJob ?? fxJob(v.fx);
+      if (j !== this.job) this.setJob(j);
+      def = threebDef(j);
+    }
     const visible = v.state !== 'dead';
     this.root.visible = visible;
     if (!visible) return;
@@ -1208,7 +1357,9 @@ export class FighterModel {
       }
     }
     // 攻撃のときだけ持つ道具
-    for (const ap of this.attackProps) ap.obj.visible = v.state === 'attack' && !!v.move && ap.moves.includes(v.move);
+    for (const ap of this.attackProps) ap.obj.visible = v.state === 'attack' && !!v.move && ap.moves.includes(v.move) && (ap.job === undefined || ap.job === this.job);
+    // 背中のギターは、手に持っている間は隠す
+    if (this.backGuitar) this.backGuitar.visible = this.job === 1 && !(v.state === 'attack' && ['nspecial', 'uspecial', 'smash', 'charge'].includes(v.move ?? ''));
     // AIアシスタント：ふわふわ浮かぶ
     if (this.buddy) {
       this.buddy.visible = !this.buddyAway;
@@ -1238,14 +1389,14 @@ export class FighterModel {
     // 表情：攻撃中はキリッ、被弾中は「><」、眠り・まばたきは閉じ目、勝利は笑顔
     const blinking = (time + this.blinkSeed) % 3.7 < 0.12;
     const tired = def.id === 'gacha';
-    const special = v.state === 'attack' && v.move ? moveOf(def.id, v.move).special : undefined;
+    const special = v.state === 'attack' && v.move ? moveOf(def.id, v.move, this.job).special : undefined;
     const smugType = def.id === 'guard' || def.id === 'hacker' || def.id === 'thief' || def.id === 'ai';
     if (acting) this.setExpression('happy', 'open', false);
     else if (this.victory || this.fancyIdle) this.setExpression(smugType ? 'smug' : 'happy', smugType ? 'smile' : 'open', false);
     else if (v.state === 'hitstun' || v.state === 'shieldbreak' || v.state === 'helpless' || v.state === 'grabbed') this.setExpression('hurt', 'open', false);
     else if (v.state === 'sleep' || blinking) this.setExpression('closed', 'line', false);
     // 課金・倍速・吸収などの「強化」はドヤ顔
-    else if (special === 'pay' || special === 'speedup' || special === 'absorb' || special === 'drone' || special === 'armor') this.setExpression('smug', 'smile', false);
+    else if (special === 'pay' || special === 'speedup' || special === 'absorb' || special === 'drone' || special === 'armor' || special === 'jobchange') this.setExpression('smug', 'smile', false);
     else if (special === 'taunt') this.setExpression(smugType ? 'smug' : 'happy', 'open', false);
     else if (v.state === 'attack') this.setExpression('angry', v.move === 'smash' || v.move === 'charge' || (v.move ?? '').endsWith('special') || (v.move ?? '').endsWith('throw') ? 'open' : 'line', false);
     // ピンチ（崖につかまっている・%が高い）は焦り顔と汗
@@ -1260,7 +1411,7 @@ export class FighterModel {
     if (shielding) this.shieldMesh.scale.setScalar((0.55 + 0.6 * v.shield) * def.scale);
 
     // 無敵の点滅・溜めの発光・回避や透明化・毒
-    const md = v.state === 'attack' && v.move ? moveOf(def.id, v.move) : null;
+    const md = v.state === 'attack' && v.move ? moveOf(def.id, v.move, this.job) : null;
     const invisible = md?.special === 'invis' && v.moveFrame >= Math.round(md.startup * def.frameMul) && v.moveFrame < Math.round(md.startup * def.frameMul) + md.active;
     const flash = v.invuln && !invisible && Math.floor(time * 20) % 2 === 0;
     const charging = v.charge > 0;
@@ -1465,6 +1616,16 @@ export class FighterModel {
         p.lean = 0.35;
         p.bob = Math.abs(Math.cos(time * 14)) * 0.07;
         break;
+      case 'threeb':
+        // 3B：その場でくるくる回りながら、仕事が次々に変わる
+        p.spinY = time * 2.4;
+        p.bob = Math.abs(Math.sin(time * 4.8)) * 0.1;
+        p.armL = UP * 0.4;
+        p.armR = UP * 0.4;
+        p.armLz = 0.7;
+        p.armRz = -0.7;
+        this.previewJob = Math.floor(time / 1.3) % 3;
+        break;
       case 'trainer':
         // スクワットをくり返す（腕は前にそろえる）
         p.bob = -Math.abs(Math.sin(time * 2.6)) * 0.22;
@@ -1559,6 +1720,30 @@ export class FighterModel {
         p.armLz = 0.55;
         p.bob = Math.abs(slow) * 0.03;
         p.lean = -0.05;
+        break;
+      case 'threeb':
+        // 3B：仕事ごとの決めポーズ（美容師はハサミを顔の横に、バンドマンは拳を突き上げ、バーテンダーは一礼）
+        if (this.job === 0) {
+          p.armR = FWD * 1.35;
+          p.armRz = 0.55;
+          p.armL = 0.3;
+          p.armLz = 0.5;
+          p.headTilt = -0.1;
+          p.lean = -0.05 + Math.sin(time * 2) * 0.02;
+        } else if (this.job === 1) {
+          p.armR = UP * (0.95 + Math.max(0, Math.sin(time * 5)) * 0.05);
+          p.armL = 0.3;
+          p.armLz = 0.4;
+          p.headTilt = 0.25 * Math.abs(Math.sin(time * 5));
+          p.bob = Math.abs(Math.sin(time * 5)) * 0.06;
+        } else {
+          p.lean = 0.35 + Math.sin(time * 1.5) * 0.03;
+          p.armR = FWD * 0.6;
+          p.armRz = 0.75;
+          p.armL = -0.3;
+          p.armLz = 0.25;
+          p.headTilt = 0.15;
+        }
         break;
       case 'trainer':
         // 両腕を上げて力こぶ（ダブルバイセップス）。ぐっと力を入れるたびに体が締まる
@@ -1773,6 +1958,28 @@ export class FighterModel {
         p.legL = Math.max(0, Math.sin(time * 6)) * -0.25;
         p.legR = Math.max(0, -Math.sin(time * 6)) * -0.25;
         break;
+      case 'threeb':
+        if (this.job === 0) {
+          // 美容師：指でハサミのしぐさ
+          p.armR = FWD * 0.75 + Math.sin(time * 6) * 0.05;
+          p.armRz = 0.3;
+          p.armL = 0.3;
+          p.armLz = 0.5;
+        } else if (this.job === 1) {
+          // バンドマン：リズムに乗ってヘッドバンギング
+          p.headTilt = Math.max(0, Math.sin(time * 6)) * 0.3;
+          p.bob = Math.abs(Math.sin(time * 6)) * 0.04;
+          p.armL = 0.15;
+          p.armR = -0.15;
+        } else {
+          // バーテンダー：グラスを磨く
+          p.armR = FWD * 0.7;
+          p.armRz = 0.4 + Math.sin(time * 5) * 0.12;
+          p.armL = FWD * 0.65;
+          p.armLz = -0.4;
+          p.headTilt = 0.12;
+        }
+        break;
       case 'trainer':
         // 軽く弾みながら、腕をぐるぐる回してウォームアップ
         p.bob = Math.abs(Math.sin(time * 5)) * 0.04;
@@ -1797,7 +2004,7 @@ export class FighterModel {
 
   private attackPose(v: ViewFighter, def: CharacterDef, p: Pose): void {
     if (!v.move) return;
-    const md = moveOf(def.id, v.move);
+    const md = moveOf(def.id, v.move, this.job);
     const s = Math.max(1, Math.round(md.startup * def.frameMul));
     const a = md.active;
     const e = Math.max(1, Math.round(md.end * def.frameMul));
@@ -1862,7 +2069,8 @@ export class FighterModel {
       case 'platform':
         p.armR = UP;
         p.armL = UP * 0.4;
-        if (def.id === 'thief') p.spinY = f * 0.6;
+        // データ泥棒・3B（美容師・バーテンダー）は回りながら上がる
+        if (def.id === 'thief' || (def.id === 'threeb' && this.job !== 1)) p.spinY = f * 0.6;
         if (md.riseVx) p.lean = 0.5;
         return;
       case 'speedup':
@@ -1920,6 +2128,19 @@ export class FighterModel {
         p.armL = 0.3;
         return;
       case 'curl':
+        if (def.id === 'threeb') {
+          // 爆音ソロ：ギターを構えてかき鳴らし（溜め中は激しく）、鳴らす瞬間にのけぞる
+          const strum = Math.sin(v.stateTime * 1.6) * 0.25;
+          p.armR = FWD * 0.6 + (f < s || v.charge > 0 ? strum : 0);
+          p.armRz = 0.3;
+          p.armL = FWD * 0.7;
+          p.armLz = -0.6;
+          p.lean = f < s || v.charge > 0 ? 0.15 : -0.35 * k;
+          p.headTilt = f < s || v.charge > 0 ? 0.2 + strum * 0.4 : -0.3 * k;
+          p.legL = 0.35;
+          p.legR = -0.35;
+          return;
+        }
         if (v.charge > 0 || f < s) {
           // ダンベルを胸の前に持ち上げて溜める（溜まるほど震える）
           const shake = Math.sin(v.stateTime * 2.3) * 0.05 * Math.min(1, v.charge / 40);
@@ -1938,6 +2159,50 @@ export class FighterModel {
           p.legL = -0.6 * k;
           p.legR = 0.5 * k;
         }
+        return;
+      case 'jobchange':
+        // くるっと回って着替える
+        p.spinY = Math.min(1, f / (s + a)) * Math.PI * 2;
+        p.armL = UP * 0.4;
+        p.armR = UP * 0.4;
+        p.armLz = 0.8;
+        p.armRz = -0.8;
+        p.bob = Math.sin(Math.min(1, f / (s + a)) * Math.PI) * 0.2;
+        return;
+      case 'rush':
+        // シザーラッシュ：ハサミを細かく速く動かす
+        p.armR = FWD * (0.85 + Math.sin(f * 1.7) * 0.18);
+        p.armRz = Math.sin(f * 1.3) * 0.35;
+        p.armL = FWD * 0.4;
+        p.armLz = -0.3;
+        p.lean = 0.2;
+        return;
+      case 'dive':
+        // ステージダイブ：体を横にして飛び込む
+        p.lean = 1.1 * k;
+        p.armL = FWD * 1.1;
+        p.armR = FWD * 1.1;
+        p.armLz = -0.5;
+        p.armRz = 0.5;
+        p.legL = 0.3;
+        p.legR = -0.2;
+        return;
+      case 'bottle':
+        // フレアボトル：ボトルをくるっと回してから振り下ろす
+        p.armR = f < s ? UP * 0.9 : lerp(UP * 0.9, FWD * 0.9, k);
+        p.armRz = f < s ? Math.sin(f * 0.9) * 0.6 : 0;
+        p.armL = 0.4;
+        p.armLz = 0.5;
+        p.lean = 0.3 * k;
+        return;
+      case 'slide':
+        // スライド：のけぞりながら足から滑り込む
+        p.lean = -0.55 * k;
+        p.legR = FWD * 1.0 * k;
+        p.legL = 0.5 * k;
+        p.armL = 0.9;
+        p.armR = 0.6;
+        p.bob = -0.25 * k;
         return;
       case 'tackle':
         // 体を低くして突っ込む

@@ -1,8 +1,8 @@
 // ゲーム進行の本体。端末（CPU戦）とサーバー（オンライン戦）で同じコードを使う。
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
-import { CHARACTERS, getCharacter, type CharacterDef } from './characters';
-import { BIKE, CHARGE, DECOY, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
+import { BIKE, CHARGE, DECOY, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -15,6 +15,7 @@ import {
   FX_BIKE,
   FX_ARMOR,
   FX_CHARGED,
+  FX_JOB_SHIFT,
   FX_CONFUSED,
   FX_POWER,
   FX_SPEED,
@@ -93,7 +94,7 @@ const SNAPSHOT_KEYS = [
   'flickX', 'flickY', 'neutralXAge', 'neutralYAge', 'poison', 'poisonFrom',
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHitCd', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
-  'armor', 'armorCd', 'slamming',
+  'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -161,6 +162,12 @@ export class Fighter {
   armorCd = 0;
   /** マッスルジャンプでつかんで落ちている途中（残りフレーム。0 ならしていない） */
   slamming = 0;
+  /** 3B：今の仕事（0=美容師 1=バンドマン 2=バーテンダー）、早着替えの残り時間、次に着替えられるまでの時間 */
+  job = 0;
+  jobBuff = 0;
+  jobCd = 0;
+  /** シザーラッシュの途中でBが押された（切り終わったら、もう一度切り続ける） */
+  rushQueued = false;
   /** 課金の残り時間 */
   powerBuff = 0;
   /** 自転車に乗っている残り時間 */
@@ -234,6 +241,8 @@ export class Fighter {
       self[k] = Array.isArray(v) ? [...v] : v;
     }
     this.moveHit = new Set(s.moveHit ?? []);
+    // 3B は仕事によって体の性能が変わる
+    if (this.def.id === 'threeb') this.def = threebDef(this.job);
   }
 
   /** ガードの最大値（警備員の特性「巡回中」は1.5倍） */
@@ -461,6 +470,8 @@ export class Sim {
     if (f.speedBuff > 0) f.speedBuff--;
     if (f.speedCd > 0) f.speedCd--;
     if (f.armor > 0) f.armor--;
+    if (f.jobBuff > 0) f.jobBuff--;
+    if (f.jobCd > 0) f.jobCd--;
     if (f.armorCd > 0) f.armorCd--;
     if (f.powerBuff > 0) f.powerBuff--;
     if (f.confused > 0) f.confused--;
@@ -811,10 +822,11 @@ export class Sim {
     } else f.stale = 1;
     if (id !== 'sspecial') f.chain = 0;
     f.redirected = false;
+    f.rushQueued = false;
     f.crit = false;
     f.tetherOn = false;
     // 学習で吸収していたら、この技が強くなる（吸収の構えそのものは除く）
-    const md = moveOf(f.def.id, id);
+    const md = moveOf(f.def.id, id, f.job);
     f.chargedMove = false;
     if (f.absorbCharge && md.special !== 'absorb' && (md.hitboxes.length > 0 || md.shots)) {
       f.chargedMove = true;
@@ -836,6 +848,8 @@ export class Sim {
       dmg *= PAY.dmg;
       kb *= PAY.kb;
     }
+    // 早着替え（3B）：ジョブチェンジのあとしばらく強い
+    if (a.jobBuff > 0) dmg *= THREEB_RULES.buffMul;
     if (a.chargedMove) {
       dmg *= 1.6;
       kb *= 1.2;
@@ -1000,6 +1014,9 @@ export class Sim {
           const k: ShotKind = kind === 'cyber' ? 'packet' : kind === 'timeline' ? 'notif' : 'capsule';
           shot(k, x, m.top + 14, 0, -6, kind === 'gacha' ? 14 : 0, 200, 0.4, 5, 4, 4, 80, false);
         }
+        break;
+      case 'livebar':
+        // 照明が落ちる：見た目だけ（画面を暗くするのは renderer）
         break;
       case 'gym':
         // ランニングマシン：4秒間、床（すり抜け足場ではなく本体の台）に立っている全員が横へ流される
@@ -1187,7 +1204,7 @@ export class Sim {
 
   /** その選手が今出している技のデータ */
   private moveDef(f: Fighter): MoveDef {
-    return moveOf(f.def.id, f.move!);
+    return moveOf(f.def.id, f.move!, f.job);
   }
 
   private updateMove(f: Fighter): void {
@@ -1269,6 +1286,25 @@ export class Sim {
           break;
         case 'tackle':
           if (!f.grounded) f.vy = Math.max(f.vy, 1.5);
+          break;
+        case 'jobchange':
+          // ジョブチェンジ：美容師 → バンドマン → バーテンダー の順に着替える
+          if (f.jobCd <= 0) {
+            f.job = (f.job + 1) % 3;
+            f.def = threebDef(f.job);
+            f.jobBuff = THREEB_RULES.buff;
+            f.jobCd = THREEB_RULES.cooldown;
+            this.events.push({ k: 'poof', x: f.x, y: f.y + 0.9 * sc });
+            this.events.push({ k: 'buff', s: f.slot });
+          }
+          break;
+        case 'dive':
+          // ステージダイブ：前へ飛び込む
+          f.vx = f.facing * 10;
+          f.vy = Math.max(f.vy, 7);
+          f.grounded = false;
+          f.groundRef = -1;
+          f.fastFall = false;
           break;
         case 'speedup':
           if (f.speedCd <= 0) {
@@ -1407,6 +1443,16 @@ export class Sim {
       }
     }
     // 無限スクロール：途中でBを押し直すと、最大3回まで続けて滑る
+    // シザーラッシュ：途中でBを押すと、もう一度切り続ける（最大2回）。終わりに決めの一撃
+    if (md.special === 'rush' && mf >= t.s && mf < t.s + t.a) {
+      if (f.chain < THREEB_RULES.rushChain && this.pressed(f, BTN_B)) f.rushQueued = true;
+      if (mf === t.s + t.a - 1 && f.rushQueued) {
+        f.rushQueued = false;
+        f.chain++;
+        f.moveFrame = t.s;
+      }
+    }
+    if (md.special === 'rush' && mf === t.s + t.a) this.rushFinish(f, md);
     if (md.special === 'scroll' && f.chain < 2 && mf >= t.s + 3 && this.pressed(f, BTN_B)) {
       f.chain++;
       if (Math.abs(inp.mx) > 0.5) f.facing = inp.mx > 0 ? 1 : -1;
@@ -1458,7 +1504,13 @@ export class Sim {
       }
       return;
     }
-    if ((md.special === 'dash' || md.special === 'scroll' || md.special === 'tackle') && active) {
+    if (md.special === 'dive' && active) {
+      f.vx = f.facing * 10;
+    } else if (md.special === 'rush' && active) {
+      // シザーラッシュ：切りながら少しずつ前へ（相手を逃がさない）
+      f.vx = f.facing * 1.6;
+      if (!f.grounded) f.vy = Math.max(f.vy, -1);
+    } else if ((md.special === 'dash' || md.special === 'scroll' || md.special === 'tackle' || md.special === 'slide') && active) {
       f.vx = f.facing * ((md.dashSpeed ?? 13) - (mf - t.s) * 0.4);
       if (!f.grounded) f.vy = Math.max(f.vy, -1);
     } else if ((md.special === 'redirect' && active) || (md.special === 'tether' && f.tetherOn)) {
@@ -1889,6 +1941,30 @@ export class Sim {
     }
   }
 
+  /** シザーラッシュの決めの一撃：切り終わった瞬間、目の前の相手をふっとばす */
+  private rushFinish(f: Fighter, md: MoveDef): void {
+    const s = f.def.scale;
+    const hb = md.hitboxes[0];
+    const cx = f.x + hb.x * f.facing * s;
+    const cy = f.y + hb.y * s;
+    const pm = this.powerMul(f);
+    for (const v of this.fighters) {
+      if (v === f || !v.alive || v.invuln > 0 || this.friendly(f.slot, v)) continue;
+      if (!circleHitsBox(cx, cy, hb.r * s * 1.1, v)) continue;
+      const dmg = 4 * pm.dmg;
+      if (this.tryCounter(v, f, dmg)) continue;
+      if (v.state === 'shield') {
+        v.shield -= dmg * 1.3;
+        this.events.push({ k: 'shield', x: cx, y: cy });
+        if (v.shield <= 0) this.breakShield(v);
+        continue;
+      }
+      this.knock(v, f.facing, dmg, 7, 9, 40, pm.kb, f.slot);
+      f.hitlag = v.hitlag = 6;
+      this.events.push({ k: 'hit', x: cx, y: cy, p: 8, s: v.slot, a: f.slot });
+    }
+  }
+
   /** マッスルジャンプ：かかえた相手を地面に叩きつける */
   private slamLand(f: Fighter): void {
     const v = f.grabbing >= 0 ? this.fighter(f.grabbing) : undefined;
@@ -2045,6 +2121,16 @@ export class Sim {
     const before = v.damage;
     this.knock(v, a.facing, dmg, md.base, md.growth, md.angle, pm.kb * chargeMul, a.slot);
     this.lifesteal(a, v.damage - before);
+    // 酔い（フレアボトル）・長いひるみ（スライド・シザーラッシュ）
+    if (md.confuse) v.confused = Math.max(v.confused, md.confuse);
+    if (md.hitstunMul && v.state === 'hitstun') v.hitstun = Math.round(v.hitstun * md.hitstunMul);
+    if (md.special === 'dive') {
+      // ステージダイブ：相手を踏み台にして跳ね上がる
+      a.vy = THREEB_RULES.bounce;
+      a.vx *= 0.3;
+      a.move = null;
+      this.setState(a, 'air');
+    }
     if (a.crit) this.events.push({ k: 'flash', x: hx, y: hy, s: a.slot });
     const lag = Math.floor(3 + dmg / 3);
     a.hitlag = lag;
@@ -2458,6 +2544,7 @@ export class Sim {
           (f.confused > 0 ? FX_CONFUSED : 0) |
           (f.absorbCharge ? FX_CHARGED : 0) |
           (f.armor > 0 ? FX_ARMOR : 0) |
+          (f.job << FX_JOB_SHIFT) |
           (f.buzz << 5),
       })),
       projectiles: this.projectiles.map((p) => ({ x: p.x, y: p.y, owner: p.owner, kind: p.kind })),

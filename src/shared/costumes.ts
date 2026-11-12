@@ -118,6 +118,13 @@ export const COSTUMES: Costume[] = [
     rarity: 1,
     colors: { main: 0xff6a3d, sub: 0x1f1f2a, accent: 0xffffff, hair: 0x2a1a12, skin: 0xc98a5e, pants: 0x1f1f2a, shoes: 0xff6a3d },
   },
+  {
+    id: 'threeb-default',
+    charId: 'threeb',
+    name: 'いつもの3B',
+    rarity: 1,
+    colors: { main: 0xf2f2f5, sub: 0x1a1a22, accent: 0xc77dff, hair: 0x4a3048, skin: 0xf3d6bd, pants: 0x2a2a34, shoes: 0x1a1a22 },
+  },
 ];
 
 
@@ -186,6 +193,13 @@ COSTUMES.push(
   {
     id: 'trainer-ssr', charId: 'trainer', name: '鋼の肉体', rarity: 5, colors: c(0x1c1c22, 0x0e0e12, 0xffd23f, 0xfff0b0, 0xd8a070, 0x0e0e12, 0xffd23f),
     extras: ['cape'], extraColor: 0xff6a3d, fx: { particle: 'flame', color: 0xff8a1a, hit: 0xffd23f },
+  },
+  // 3B
+  { id: 'threeb-visual', charId: 'threeb', name: 'ヴィジュアル系', rarity: 4, colors: c(0x2a1a2e, 0x0e0a12, 0xff3a6a, 0xd8d8e8, 0xf3e0e8, 0x0e0a12, 0x2a1a2e), extras: ['scarf'], extraColor: 0xff3a6a },
+  { id: 'threeb-summer', charId: 'threeb', name: '夏フェス', rarity: 4, colors: c(0xfff4d6, 0x2fbfa0, 0xffd23f, 0xd9a050, 0xe8b890, 0x2f6fbf, 0xffffff), extras: ['sunglasses'] },
+  {
+    id: 'threeb-ssr', charId: 'threeb', name: '夜の帝王', rarity: 5, colors: c(0x14141a, 0x0a0a0e, 0xffd23f, 0xfff0b0, 0xf3d6bd, 0x0a0a0e, 0xffd23f),
+    extras: ['crown'], extraColor: 0xffd23f, fx: { particle: 'heart', color: 0xff5ea8, hit: 0xff5ea8 },
   },
 );
 

@@ -860,7 +860,7 @@ input[inputmode='numeric'] {
 
 .charsel-screen .chars {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
 }
 
 .charsel-screen .char-card {
@@ -868,12 +868,13 @@ input[inputmode='numeric'] {
   align-items: center;
   gap: 8px;
   text-align: left;
-  padding: 6px 8px;
+  /* キャラが10体になったので、枠を低くして下の説明とボタンが重ならないようにする */
+  padding: 3px 8px;
 }
 
 .charsel-screen .char-card .swatch {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   margin: 0;
   flex: none;
 }
@@ -1307,9 +1308,9 @@ input[inputmode='numeric'] {
   font-size: 11px;
 }
 
-/* ステージは10個：横1列に並べる（狭い画面では5列×2段） */
+/* ステージは11個：横1列に並べる（狭い画面では6列×2段） */
 .stages {
-  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-columns: repeat(11, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -1323,7 +1324,7 @@ input[inputmode='numeric'] {
 
 @media (max-width: 760px) {
   .stages {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 
