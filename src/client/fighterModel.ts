@@ -460,7 +460,7 @@ export class FighterModel {
 
   constructor(
     private def: CharacterDef,
-    costume: Costume,
+    private costume: Costume,
     slotColor: number,
   ) {
     const s = def.scale;
@@ -1227,7 +1227,8 @@ export class FighterModel {
     const b = this.body;
     this.mouth();
     this.brows(0.08, c.hair, 0.026);
-    const hair = this.hairToon(c.hair);
+    // バンドマンの髪（衣装ごとの色）
+    const hair = this.hairToon(this.jobHair(1));
     /** 仕事 j の部品を入れる入れ物を、親に付けて返す */
     const grp = (j: number, parent: THREE.Object3D) => {
       const g = new THREE.Group();
@@ -1249,7 +1250,7 @@ export class FighterModel {
     {
       // ウルフカット：てっぺんはツンツン、顔の横と襟足は長くギザギザ。差し色のメッシュ入り
       const hg = grp(1, h);
-      const hr = this.hairToon(c.hair);
+      const hr = this.hairToon(this.jobHair(1));
       hr.side = THREE.DoubleSide;
       const streak = this.hairToon(c.accent);
       this.hairShell(hg, hr, 0.34, 0, Math.PI * 2, 0, 1.1, [1.04, 1.04, 1.04]);
@@ -1405,9 +1406,18 @@ export class FighterModel {
     tip.add(tol);
   }
 
-  /** 美容師の髪：ハイトーンの外ハネ（どの衣装でも明るい髪色にする） */
+  /** 3B の仕事ごとの髪色（衣装で決まる。決まっていなければ、美容師は明るく、バーテンダーは黒） */
+  private jobHair(job: number): number {
+    const fixed = this.costume.jobHair?.[job];
+    if (fixed !== undefined) return fixed;
+    if (job === 0) return new THREE.Color(this.c.hair).lerp(new THREE.Color(0xf3dfb8), 0.72).getHex();
+    if (job === 2) return 0x16161c;
+    return this.c.hair;
+  }
+
+  /** 美容師の髪：ハイトーンの外ハネ（衣装ごとの明るい髪色） */
   private buildBeauticianHair(hg: THREE.Group): void {
-    const tone = new THREE.Color(this.c.hair).lerp(new THREE.Color(0xf3dfb8), 0.72).getHex();
+    const tone = this.jobHair(0);
     const hair = this.hairToon(tone);
     const hr = this.hairToon(tone);
     hr.side = THREE.DoubleSide;
@@ -1445,7 +1455,7 @@ export class FighterModel {
 
   /** バーテンダーの髪（どの衣装でも黒髪） */
   private buildBartenderHair(hg: THREE.Group): void {
-    const black = 0x16161c;
+    const black = this.jobHair(2);
     const hair = this.hairToon(black);
     const shine = this.hairToon(0x4a4a5c);
     const hr = this.hairToon(black);

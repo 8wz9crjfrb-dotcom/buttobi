@@ -38,6 +38,8 @@ export interface Costume {
   extraColor?: number;
   /** SSR のエフェクト */
   fx?: CostumeFx;
+  /** 3B：仕事ごとの髪色（美容師・バンドマン・バーテンダー）。バーテンダーはいつも黒髪 */
+  jobHair?: [number, number, number];
   colors: {
     /** 服のメインの色 */
     main: number;
@@ -123,6 +125,7 @@ export const COSTUMES: Costume[] = [
     charId: 'threeb',
     name: 'いつもの3B',
     rarity: 1,
+    jobHair: [0xeedcb4, 0x4a3048, 0x16161c],
     colors: { main: 0xf2f2f5, sub: 0x1a1a22, accent: 0xc77dff, hair: 0x4a3048, skin: 0xf3d6bd, pants: 0x2a2a34, shoes: 0x1a1a22 },
   },
 ];
@@ -195,11 +198,18 @@ COSTUMES.push(
     extras: ['cape'], extraColor: 0xff6a3d, fx: { particle: 'flame', color: 0xff8a1a, hit: 0xffd23f },
   },
   // 3B
-  { id: 'threeb-visual', charId: 'threeb', name: 'ヴィジュアル系', rarity: 4, colors: c(0x2a1a2e, 0x0e0a12, 0xff3a6a, 0xd8d8e8, 0xf3e0e8, 0x0e0a12, 0x2a1a2e), extras: ['scarf'], extraColor: 0xff3a6a },
-  { id: 'threeb-summer', charId: 'threeb', name: '夏フェス', rarity: 4, colors: c(0xfff4d6, 0x2fbfa0, 0xffd23f, 0xd9a050, 0xe8b890, 0x2f6fbf, 0xffffff), extras: ['sunglasses'] },
+  // 3B の衣装は、仕事ごとの髪色（jobHair）も変わる。3つの仕事のどれにも合うテーマにする
   {
-    id: 'threeb-ssr', charId: 'threeb', name: '夜の帝王', rarity: 5, colors: c(0x14141a, 0x0a0a0e, 0xffd23f, 0xfff0b0, 0xf3d6bd, 0x0a0a0e, 0xffd23f),
-    extras: ['crown'], extraColor: 0xffd23f, fx: { particle: 'heart', color: 0xff5ea8, hit: 0xff5ea8 },
+    id: 'threeb-visual', charId: 'threeb', name: 'ヴィジュアル系', rarity: 4, colors: c(0x2a1a2e, 0x0e0a12, 0xff3a6a, 0xd8d8e8, 0xf3e0e8, 0x0e0a12, 0x2a1a2e),
+    extras: ['scarf'], extraColor: 0xff3a6a, jobHair: [0xe2e2f0, 0x1a1420, 0x16161c],
+  },
+  {
+    id: 'threeb-summer', charId: 'threeb', name: '夏フェス', rarity: 4, colors: c(0xfff4d6, 0x2fbfa0, 0xffd23f, 0xd9a050, 0xe8b890, 0x2f6fbf, 0xffffff),
+    extras: ['sunglasses'], jobHair: [0xf8d878, 0xe09a48, 0x16161c],
+  },
+  {
+    id: 'threeb-ssr', charId: 'threeb', name: 'カリスマ', rarity: 5, colors: c(0x14141a, 0x0a0a0e, 0xffd23f, 0xfff0b0, 0xf3d6bd, 0x0a0a0e, 0xffd23f),
+    extras: ['crown'], extraColor: 0xffd23f, fx: { particle: 'heart', color: 0xff5ea8, hit: 0xff5ea8 }, jobHair: [0xfff3c8, 0xe8b830, 0x16161c],
   },
 );
 
