@@ -1238,15 +1238,7 @@ export class FighterModel {
     // ---- 美容師：センター分けのマッシュヘア・黒いエプロン・腰のハサミ入れ
     {
       const hg = grp(0, h);
-      // マッシュ：丸くふくらんだ輪郭。前髪は眉まで下ろし、真ん中で分けて V 字におでこが見える
-      const hr = this.hairToon(c.hair);
-      hr.side = THREE.DoubleSide;
-      this.hairShell(hg, hr, 0.345, 0, Math.PI * 2, 0, 1.05, [1.07, 1.05, 1.05]);
-      this.hairShell(hg, hr, 0.35, Math.PI / 2 + 0.95, Math.PI * 2 - 1.9, 0.9, 1.05, [1.1, 1, 1.06]);
-      for (const sd of [1, -1]) {
-        const fr = this.hairShell(hg, hr, 0.36, sd > 0 ? Math.PI / 2 + 0.12 : Math.PI / 2 - 1.12, 1.0, 0.55, 0.8, [1.06, 1, 1.04]);
-        fr.rotation.z = sd * 0.13;
-      }
+      this.buildBeauticianHair(hg);
       const bg = grp(0, b);
       this.part(bg, new THREE.BoxGeometry(0.36, 0.5, 0.02), this.toon(c.sub), [0, 0.78, 0.18], { outline: false });
       for (const x of [0.13, -0.13]) this.part(bg, new THREE.BoxGeometry(0.03, 0.26, 0.02), this.toon(c.sub), [x, 1.08, 0.16], { rot: [0, 0, x > 0 ? -0.3 : 0.3], outline: false });
@@ -1319,21 +1311,8 @@ export class FighterModel {
     }
     // ---- バーテンダー：なでつけた髪・ベスト・蝶ネクタイ
     {
-      // オールバック：生えぎわを上げておでこを出し、髪は後ろへなでつける。つやの筋が後ろへ流れる
       const hg = grp(2, h);
-      const hr = this.hairToon(c.hair);
-      hr.side = THREE.DoubleSide;
-      this.hairShell(hg, hr, 0.338, 0, Math.PI * 2, 0, 0.93, [1.03, 1.04, 1.04]);
-      // 横と後ろは頭にぴったり（耳の上で短く）。こめかみから後ろへ斜めに下がる
-      this.hairShell(hg, hr, 0.325, Math.PI / 2 + 1.0, Math.PI * 2 - 2.0, 0.8, 0.85, [1.03, 1, 1.06]);
-      // つやの筋（明るい色の線が、生えぎわから後ろへ流れる）
-      const gloss = this.hairToon(new THREE.Color(c.hair).lerp(new THREE.Color(0xffffff), 0.6).getHex());
-      gloss.side = THREE.DoubleSide;
-      for (const d of [0.18, -0.3, 0.55]) {
-        this.hairShell(hg, gloss, 0.35, Math.PI / 2 + d, 0.09, 0.05, 0.88, [1.03, 1.04, 1.04]);
-        this.hairShell(hg, gloss, 0.35, (Math.PI * 3) / 2 - d - 0.09, 0.09, 0.05, 1.1, [1.03, 1.04, 1.04]);
-      }
-      for (const sd of [1, -1]) this.part(hg, new THREE.BoxGeometry(0.03, 0.1, 0.07), hair, [sd * 0.3, 0.31, 0.04], { outline: false });
+      this.buildBartenderHair(hg);
       const bg = grp(2, b);
       this.part(bg, new THREE.CapsuleGeometry(0.205, 0.2, 6, 16), this.toon(c.sub), [0, 0.9, 0], { scale: [1.14, 0.85, 0.86] });
       this.part(bg, new THREE.BoxGeometry(0.08, 0.36, 0.02), this.toon(c.main), [0, 0.98, 0.18], { outline: false });
@@ -1357,6 +1336,154 @@ export class FighterModel {
     mesh.castShadow = true;
     parent.add(mesh);
     return mesh;
+  }
+
+  /**
+   * 毛束：頭の表面の (phi, theta) に、流れる向き flow に沿って細長い楕円体を置く。
+   * phi は水平の角度（π/2 が顔の正面）、theta は頭のてっぺんからの角度。
+   */
+  private hairLock(parent: THREE.Object3D, mat: THREE.Material, phi: number, theta: number, len: number, wid: number, thick: number, flow: [number, number, number], lift = 1.06): THREE.Mesh {
+    const r = 0.31 * lift;
+    const n = new THREE.Vector3(-Math.cos(phi) * Math.sin(theta), Math.cos(theta), Math.sin(phi) * Math.sin(theta));
+    const pos = new THREE.Vector3(n.x * r, 0.29 + n.y * r * 0.95, n.z * r * 0.95);
+    const f = new THREE.Vector3(...flow);
+    const t = f.sub(n.clone().multiplyScalar(f.dot(n))).normalize();
+    const x = new THREE.Vector3().crossVectors(n, t).normalize();
+    const geo = new THREE.SphereGeometry(1, 12, 8);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, n, t));
+    mesh.scale.set(wid, thick, len);
+    // 毛束の真ん中を、流れの向きに半分ずらして根元を置いた位置にする
+    mesh.position.copy(pos).addScaledVector(t, len * 0.55);
+    mesh.castShadow = true;
+    parent.add(mesh);
+    const ol = new THREE.Mesh(geo, this.outlineMat);
+    ol.scale.setScalar(1.04);
+    mesh.add(ol);
+    return mesh;
+  }
+
+  /** 見比べ用：開発中だけ、髪型の案を切り替える（window.__threebHair = { 0: 'perm', 2: 'side' } など） */
+  private hairVariant(job: number, fallback: string): string {
+    const o = (globalThis as { __threebHair?: Record<number, string> }).__threebHair;
+    return o?.[job] ?? fallback;
+  }
+
+  /** 美容師の髪 */
+  private buildBeauticianHair(hg: THREE.Group): void {
+    const c = this.c;
+    const hair = this.hairToon(c.hair);
+    const hr = this.hairToon(c.hair);
+    hr.side = THREE.DoubleSide;
+    const v = this.hairVariant(0, 'center');
+    const F = Math.PI / 2;
+    if (v === 'perm') {
+      // ゆるふわパーマ：丸い小さな毛束がたくさん集まって、ふんわり大きい
+      this.hairShell(hg, hr, 0.33, 0, Math.PI * 2, 0, 1.15);
+      this.hairShell(hg, hr, 0.335, F + 1.0, Math.PI * 2 - 2.0, 0.9, 1.0);
+      let k = 0;
+      for (let th = 0.2; th < 1.95; th += 0.27) {
+        const ring = Math.max(1, Math.round(Math.sin(th) * 14));
+        for (let i = 0; i < ring; i++) {
+          const ph = (i / ring) * Math.PI * 2 + th * 1.3;
+          const d = Math.atan2(Math.sin(ph - F), Math.cos(ph - F));
+          if (Math.abs(d) < 1.0 && th > 1.12) continue; // 顔は出す
+          k++;
+          const big = 0.075 + ((k * 37) % 5) * 0.006;
+          this.hairLock(hg, hair, ph, th, big, big, big * 0.8, [0, -1, 0], 1.1);
+        }
+      }
+      // 前髪のカール
+      for (const a of [-0.55, -0.25, 0.05, 0.35, 0.62]) this.hairLock(hg, hair, F + a, 1.12, 0.07, 0.075, 0.06, [0, -1, 0.2], 1.1);
+      return;
+    }
+    // センターパート：真ん中で分けた前髪が左右に流れ、頬のあたりで外へはねる
+    this.hairShell(hg, hr, 0.325, 0, Math.PI * 2, 0, 0.62);
+    this.hairShell(hg, hr, 0.33, F + 0.55, Math.PI * 2 - 1.1, 0.5, 1.4);
+    for (const sd of [1, -1]) {
+      // 分け目から横へ流れる前髪（細い束を、頭の丸みに沿って重ねる）
+      for (const [a, th] of [
+        [0.1, 0.6],
+        [0.3, 0.68],
+        [0.5, 0.8],
+        [0.72, 0.94],
+        [0.95, 1.1],
+        [1.15, 1.28],
+      ]) {
+        this.hairLock(hg, hair, F + sd * a, th, 0.16, 0.085, 0.032, [sd * 0.9, -1, 0.1], 1.04);
+        this.hairLock(hg, hair, F + sd * (a + 0.12), th + 0.18, 0.15, 0.08, 0.03, [sd * 0.7, -1, 0.1], 1.03);
+      }
+      // 頬のあたりで外へはねる毛先
+      this.hairLock(hg, hair, F + sd * 1.3, 1.58, 0.11, 0.08, 0.035, [sd * 1, 0.6, 0.1], 1.04);
+      // 頭の上：分け目から後ろへ
+      for (const [a, th] of [
+        [0.12, 0.25],
+        [0.45, 0.35],
+        [0.8, 0.5],
+        [0.25, 0.08],
+      ]) {
+        this.hairLock(hg, hair, F + sd * a, th, 0.17, 0.11, 0.035, [sd * 0.4, 0.1, -1], 1.03);
+      }
+    }
+    // 後ろ：首のほうへ流れる
+    for (const a of [-1.0, -0.5, 0, 0.5, 1.0]) this.hairLock(hg, hair, (Math.PI * 3) / 2 + a, 1.25, 0.18, 0.11, 0.035, [0, -1, -0.2], 1.03);
+  }
+
+  /** バーテンダーの髪（どの衣装でも黒髪） */
+  private buildBartenderHair(hg: THREE.Group): void {
+    const black = 0x16161c;
+    const hair = this.hairToon(black);
+    const shine = this.hairToon(0x4a4a5c);
+    const hr = this.hairToon(black);
+    hr.side = THREE.DoubleSide;
+    const v = this.hairVariant(2, 'allback');
+    const F = Math.PI / 2;
+    this.hairShell(hg, hr, 0.322, 0, Math.PI * 2, 0, 0.84);
+    this.hairShell(hg, hr, 0.325, F + 1.2, Math.PI * 2 - 2.4, 0.75, 0.75);
+    if (v === 'side') {
+      // 七三分け：横の分け目から、反対側へ大きく流す
+      for (const [a, th] of [
+        [0.55, 0.95],
+        [0.25, 0.92],
+        [-0.05, 0.92],
+        [-0.35, 0.95],
+        [0.45, 0.6],
+        [0.1, 0.55],
+        [-0.25, 0.6],
+      ]) {
+        this.hairLock(hg, a > 0.3 ? shine : hair, F + a, th, 0.26, 0.11, 0.05, [-1, 0.35, -0.2]);
+      }
+      this.hairLock(hg, hair, F + 0.75, 1.05, 0.16, 0.09, 0.04, [1, -0.6, 0]);
+      for (const a of [-1.3, -1.6, 1.3, 1.6]) this.hairLock(hg, hair, F + a, 1.1, 0.2, 0.1, 0.04, [0, 0, -1]);
+      for (const a of [-0.7, 0, 0.7]) this.hairLock(hg, hair, (Math.PI * 3) / 2 + a, 0.8, 0.24, 0.13, 0.05, [0, -1, -0.3]);
+      return;
+    }
+    // オールバック：生えぎわから後ろへ、細い毛束を頭の丸みに沿って何段も重ねてなでつける。ところどころ明るい束でつや
+    let k = 0;
+    for (const [th, list] of [
+      [0.82, [-0.85, -0.57, -0.28, 0, 0.28, 0.57, 0.85]],
+      [0.6, [-0.8, -0.48, -0.16, 0.16, 0.48, 0.8]],
+      [0.38, [-0.7, -0.35, 0, 0.35, 0.7]],
+      [0.16, [-0.5, 0, 0.5]],
+    ] as [number, number[]][]) {
+      for (const a of list) {
+        k++;
+        this.hairLock(hg, k % 3 === 0 ? shine : hair, F + a, th, 0.15, 0.1, 0.03, [0, 0.4, -1], 1.03);
+      }
+    }
+    // 頭の後ろ：首のほうへ流れる
+    for (const [th, list] of [
+      [0.25, [-0.6, 0, 0.6]],
+      [0.55, [-0.9, -0.45, 0, 0.45, 0.9]],
+      [0.85, [-0.9, -0.45, 0, 0.45, 0.9]],
+    ] as [number, number[]][]) {
+      for (const a of list) {
+        k++;
+        this.hairLock(hg, k % 3 === 0 ? shine : hair, (Math.PI * 3) / 2 + a, th, 0.16, 0.11, 0.03, [0, -1, -0.4], 1.03);
+      }
+    }
+    // 横：耳の上を後ろへ（ぴったり）
+    for (const a of [-1.25, -1.6, 1.25, 1.6]) this.hairLock(hg, hair, F + a, 1.05, 0.17, 0.09, 0.028, [0, 0.15, -1], 1.02);
   }
 
   /** ギター（背中と手持ちで共用） */
