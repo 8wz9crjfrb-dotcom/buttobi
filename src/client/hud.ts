@@ -1,7 +1,8 @@
 // 対戦中の表示（ダメージ%・残機・タイマー・カウントダウン）
 
-import { getCharacter, SLOT_COLORS } from '../shared/characters';
-import type { GameEvent, MatchSetup, ViewState } from '../shared/types';
+import { getCharacter, playerColor, TEAM_NAMES } from '../shared/characters';
+import { COUNTDOWN_FRAMES } from '../shared/sim';
+import { DEFAULT_HP, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
@@ -13,6 +14,11 @@ export class Hud {
   private net: HTMLElement;
   private lastCenter = '';
   private stockMode = true;
+  /** 体力制：残りHPを出す */
+  private hp = 0;
+  /** 100人組手：倒す人数 */
+  private horde = 0;
+
   /** 練習モード：残機とタイマーを出さない */
   private training = false;
 
@@ -27,17 +33,22 @@ export class Hud {
     this.training = training;
     this.el.innerHTML = '';
     this.panels.clear();
-    this.stockMode = setup.rules.mode === 'stock';
+    this.stockMode = setup.rules.mode !== 'time';
+    this.hp = setup.rules.mode === 'stamina' ? setup.rules.hp ?? DEFAULT_HP : 0;
+    this.horde = setup.rules.horde ?? 0;
     const wrap = document.createElement('div');
     wrap.className = 'hud-players';
-    for (const p of setup.players) {
+    // 100人組手は自分の表示だけ
+    const shown = this.horde ? setup.players.slice(0, 1) : setup.players;
+    for (const p of shown) {
       const root = document.createElement('div');
       root.className = 'hud-p';
-      root.style.color = hex(SLOT_COLORS[p.slot % SLOT_COLORS.length]);
+      root.style.color = hex(playerColor(setup, p.slot));
       const nm = document.createElement('div');
       nm.className = 'nm';
       const you = myslot === p.slot ? '（あなた）' : '';
-      nm.textContent = `P${p.slot + 1} ${p.name}${you}`;
+      const team = setup.rules.teams ? `${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}チーム ` : `P${p.slot + 1} `;
+      nm.textContent = `${team}${p.name}${you}`;
       const dmg = document.createElement('div');
       dmg.className = 'dmg';
       const stk = document.createElement('div');
@@ -67,10 +78,11 @@ export class Hud {
     for (const f of v.fighters) {
       const p = this.panels.get(f.slot);
       if (!p) continue;
-      const d = Math.floor(f.damage);
+      const d = this.hp ? Math.max(0, Math.ceil(this.hp - f.damage)) : Math.floor(f.damage);
       if (d !== p.last) {
-        p.dmg.innerHTML = `${d}<small>%</small>`;
-        const heat = Math.min(1, d / 150);
+        // 体力制は残りHP（減るほど赤く）、ふつうはダメージ%（増えるほど赤く）
+        p.dmg.innerHTML = this.hp ? `${d}<small>HP</small>` : `${d}<small>%</small>`;
+        const heat = this.hp ? 1 - d / this.hp : Math.min(1, d / 150);
         p.dmg.style.color = `rgb(255, ${Math.round(255 - heat * 170)}, ${Math.round(255 - heat * 230)})`;
         p.last = d;
       }
@@ -97,11 +109,15 @@ export class Hud {
       }
     }
     const secs = Math.ceil(v.timeLeft / 60);
-    this.timer.textContent = this.training ? '練習モード' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    if (this.horde) {
+      // 100人組手：倒した数と経過時間
+      const el = Math.max(0, Math.floor((v.frame - COUNTDOWN_FRAMES) / 60));
+      this.timer.innerHTML = `撃破 <b>${v.horde ?? 0}</b> / ${this.horde}<small> ${Math.floor(el / 60)}:${String(el % 60).padStart(2, '0')}</small>`;
+    } else this.timer.textContent = this.training ? '練習モード' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     let c = '';
     if (v.countdown > 0) c = v.countdown > 100 ? '3' : v.countdown > 50 ? '2' : '1';
     else if (v.frame < 210) c = 'GO!';
-    if (v.ended) c = v.timeLeft <= 0 ? 'TIME UP!' : 'GAME!';
+    if (v.ended) c = this.horde ? ((v.horde ?? 0) >= this.horde ? 'CLEAR!' : 'GAME!') : v.timeLeft <= 0 ? 'TIME UP!' : 'GAME!';
     if (c !== this.lastCenter) {
       this.center.textContent = c;
       this.center.classList.remove('pop');

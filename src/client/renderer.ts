@@ -1,7 +1,7 @@
 // three.js による描画：ステージ、キャラクター、カメラ、エフェクト
 
 import * as THREE from 'three';
-import { getCharacter, ITEM_NAMES, SLOT_COLORS, TAUNT_LINES } from '../shared/characters';
+import { getCharacter, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
 import { FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
@@ -162,7 +162,7 @@ export class GameRenderer {
     if (!this.setup) return;
     for (const p of this.setup.players) {
       const def = getCharacter(p.charId);
-      const color = SLOT_COLORS[p.slot % SLOT_COLORS.length];
+      const color = playerColor(this.setup, p.slot);
       const model = new FighterModel(def, getCostume(p.costume, p.charId), color);
       this.scene.add(model.root);
       this.models.set(p.slot, { model, charId: p.charId });
@@ -495,7 +495,7 @@ export class GameRenderer {
       if (!p) continue;
       const def = getCharacter(p.charId);
       if (!m) {
-        m = new FighterModel(def, getCostume(p.costume, p.charId), SLOT_COLORS[e.owner % SLOT_COLORS.length]);
+        m = new FighterModel(def, getCostume(p.costume, p.charId), playerColor(this.setup, e.owner));
         this.scene.add(m.root);
         this.decoys.set(e.owner, m);
       }
@@ -617,7 +617,7 @@ export class GameRenderer {
         if (p) {
           const def = getCharacter(p.charId);
           for (let i = 0; i < 3; i++) {
-            const g = new FighterModel(def, getCostume(p.costume, p.charId), SLOT_COLORS[f.slot % SLOT_COLORS.length]);
+            const g = new FighterModel(def, getCostume(p.costume, p.charId), playerColor(this.setup, f.slot));
             g.showMarker = false;
             g.ghost = [0.4, 0.26, 0.14][i];
             this.scene.add(g.root);
@@ -830,7 +830,7 @@ export class GameRenderer {
     } else if (e.k === 'shield') {
       this.spawn(this.ringGeo, 0x9fd0ff, e.x, e.y, 0, 0, 0.3, 8, 0.05);
     } else if (e.k === 'ko') {
-      const color = SLOT_COLORS[e.s % SLOT_COLORS.length];
+      const color = playerColor(this.setup, e.s);
       for (let i = 0; i < 30; i++) {
         const a = Math.random() * Math.PI * 2;
         const sp = 6 + Math.random() * 16;

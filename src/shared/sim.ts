@@ -10,6 +10,7 @@ import {
   BTN_B,
   BTN_JUMP,
   BTN_SHIELD,
+  DEFAULT_HP,
   EMPTY_INPUT,
   FX_BIKE,
   FX_CHARGED,
@@ -199,8 +200,12 @@ export class Fighter {
   tetherX = 0;
   tetherY = 0;
 
+  /** チーム（チーム戦でないときは選手ごとに別の番号） */
+  team = 0;
+
   constructor(slot: number, charId: string) {
     this.slot = slot;
+    this.team = 100 + slot;
     this.def = getCharacter(charId);
     this.jumpsLeft = this.def.airJumps;
   }
@@ -249,6 +254,23 @@ export function moveTiming(md: MoveDef, f: Fighter): { s: number; a: number; e: 
   return { s: frames(md.startup, mul), a: md.active, e: frames(md.end, mul) };
 }
 
+/** 100人組手：敵の攻撃力（倒した数で少しずつ上がる）・敵のふっとびやすさ・敵が受けるダメージの倍率・次の敵が出るまでのフレーム */
+export const HORDE = {
+  dmg: 0.25,
+  dmgGrow: 0.004,
+  kb: 2.2,
+  taken: 2,
+  respawn: 45,
+  size: 100,
+  /** この人数を倒すたびに自分のダメージが回復する */
+  healEvery: 10,
+  heal: 30,
+  /** 3人目の敵は、この人数を倒してから出てくる */
+  thirdAt: 30,
+};
+/** 体力制で、ふっとびの計算に使うダメージの上限 */
+const STAMINA_KB_CAP = 50;
+
 export class Sim {
   readonly setup: MatchSetup;
   readonly stage: StageDef;
@@ -284,7 +306,17 @@ export class Sim {
       f.y = sp.y;
       f.groundRef = sp.y > this.stage.main.top ? this.findPlatformAt(sp.x, sp.y) : -1;
       f.facing = sp.x > 0 ? -1 : 1;
-      f.stocks = setup.rules.mode === 'stock' ? setup.rules.stocks : 0;
+      f.stocks = setup.rules.mode === 'time' ? 0 : setup.rules.stocks;
+      if (setup.rules.teams || setup.rules.horde) f.team = setup.rules.horde ? (i === 0 ? 0 : 1) : Math.max(0, Math.min(3, p.team ?? 0));
+      // 100人組手の敵は倒されても次々に出てくる（残りの人数は hordeLeft で数える）
+      if (setup.rules.horde && f.team !== 0) {
+        f.stocks = 1;
+        // 3人目からの敵は、しばらく倒してから出てくる
+        if (i >= 3) {
+          f.state = 'dead';
+          f.respawnTimer = 1;
+        }
+      }
       f.shield = f.shieldMax;
       this.fighters.push(f);
     });
@@ -308,6 +340,34 @@ export class Sim {
 
   get timeLeftFrames(): number {
     return Math.max(0, this.timeLimitFrames - Math.max(0, this.frame - COUNTDOWN_FRAMES));
+  }
+
+  /** 100人組手で倒した敵の数 */
+  hordeDefeated = 0;
+
+  /** 100人組手で、出番を待っている3人目の敵 */
+  private hordeWaiting(f: Fighter): boolean {
+    return !!this.setup.rules.horde && f.team !== 0 && f.state === 'dead' && this.hordeDefeated < HORDE.thirdAt && this.fighters.indexOf(f) >= 3;
+  }
+
+  /** 体力制のHP */
+  get maxHp(): number {
+    return this.setup.rules.hp ?? DEFAULT_HP;
+  }
+
+  /** 同じチーム（チーム戦のとき。自分自身も含む） */
+  sameTeam(a: Fighter, b: Fighter): boolean {
+    return a.team === b.team;
+  }
+
+  /**
+   * from（攻撃した人の slot）の攻撃が v に当たらないか。
+   * チーム戦で「味方にも当たる」がオフのとき、味方の攻撃は当たらない（-1 はステージギミックなど）。
+   */
+  private friendly(from: number, v: Fighter): boolean {
+    if (from < 0 || from === v.slot || this.setup.rules.friendlyFire) return false;
+    const a = this.fighter(from);
+    return !!a && a.team === v.team;
   }
 
   /** 1フレーム進める。inputs は slot をキーにした入力 */
@@ -342,6 +402,7 @@ export class Sim {
     this.updateProjectiles();
     this.detectHits();
     for (const f of this.fighters) this.checkBlast(f);
+    if (this.setup.rules.mode === 'stamina') for (const f of this.fighters) this.checkHp(f);
     this.checkEnd();
     for (const f of this.fighters) {
       // ヒットストップで止まっていた選手は前回の入力を更新しない（押しっぱなしなら、止まりが解けた時に押したことになる）
@@ -407,6 +468,7 @@ export class Sim {
 
     if (f.state === 'dead') {
       if (f.out) return;
+      if (this.hordeWaiting(f)) return;
       f.respawnTimer--;
       if (f.respawnTimer <= 0) this.respawn(f);
       return;
@@ -798,7 +860,7 @@ export class Sim {
         // SSR：周りを大爆発
         this.events.push({ k: 'boom', x: f.x, y: f.y + 0.9 * sc });
         for (const v of this.fighters) {
-          if (v === f || !v.alive || v.invuln > 0) continue;
+          if (v === f || !v.alive || v.invuln > 0 || this.friendly(f.slot, v)) continue;
           if (Math.hypot(v.x - f.x, v.y + v.h / 2 - (f.y + 0.9 * sc)) > 2.6) continue;
           const pm = this.powerMul(f);
           this.knock(v, v.x >= f.x ? 1 : -1, 18 * pm.dmg, 8, 14, 50, pm.kb, f.slot);
@@ -853,7 +915,7 @@ export class Sim {
         f.speedBuff = SPEEDUP.duration;
         break;
       case 2:
-        for (const v of this.fighters) if (v !== f && v.alive) v.hitlag = Math.max(v.hitlag, ITEMS.freeze);
+        for (const v of this.fighters) if (v !== f && v.alive && !this.friendly(f.slot, v)) v.hitlag = Math.max(v.hitlag, ITEMS.freeze);
         break;
       case 3:
         f.invuln = Math.max(f.invuln, ITEMS.invuln);
@@ -1222,7 +1284,7 @@ export class Sim {
           let target: Fighter | null = null;
           let best: number = SWAP.range;
           for (const v of this.fighters) {
-            if (v === f || !v.alive || v.state === 'ledge') continue;
+            if (v === f || !v.alive || v.state === 'ledge' || this.friendly(f.slot, v)) continue;
             const d = Math.hypot(v.x - f.x, v.y - f.y);
             if (d < best) {
               best = d;
@@ -1249,7 +1311,7 @@ export class Sim {
           // 通知爆撃：周りの相手を自分のほうへ引き寄せる
           const pm = this.powerMul(f);
           for (const v of this.fighters) {
-            if (v === f || !v.alive || v.invuln > 0) continue;
+            if (v === f || !v.alive || v.invuln > 0 || this.friendly(f.slot, v)) continue;
             const dx = f.x - v.x;
             const dy = f.y - v.y;
             const d = Math.hypot(dx, dy);
@@ -1494,7 +1556,7 @@ export class Sim {
             continue;
           }
         } else if (e.kind === 'trap' && e.age >= TRAP.armDelay) {
-          const hit = this.fighters.find((v) => v.slot !== e.owner && v.alive && v.invuln <= 0 && circleHitsBox(e.x, e.y + 0.3, TRAP.r, v));
+          const hit = this.fighters.find((v) => v.slot !== e.owner && v.alive && v.invuln <= 0 && !this.friendly(e.owner, v) && circleHitsBox(e.x, e.y + 0.3, TRAP.r, v));
           if (hit) {
             const owner = this.fighter(e.owner);
             const md = moveOf('hacker', 'dspecial');
@@ -1519,7 +1581,7 @@ export class Sim {
           let target: Fighter | null = null;
           let best: number = DRONE.range;
           for (const v of this.fighters) {
-            if (v.slot === e.owner || !v.alive) continue;
+            if (v.slot === e.owner || !v.alive || this.friendly(e.owner, v)) continue;
             const d = Math.hypot(v.x - e.x, v.y + v.h / 2 - e.y);
             if (d < best) {
               best = d;
@@ -1541,7 +1603,7 @@ export class Sim {
       } else if (e.kind === 'wall') {
         // 壁：持ち主以外の選手を押し返す
         for (const v of this.fighters) {
-          if (v.slot === e.owner || !v.alive) continue;
+          if (v.slot === e.owner || !v.alive || this.friendly(e.owner, v)) continue;
           const half = WALL.w / 2 + v.hw;
           if (Math.abs(v.x - e.x) < half && v.y < e.y + WALL.h && v.y + v.h > e.y) {
             const side = v.x >= e.x ? 1 : -1;
@@ -1777,7 +1839,7 @@ export class Sim {
       const cx = a.x + a.facing * 0.6 * a.def.scale;
       const cy = a.y + 0.6 * a.def.scale;
       for (const v of this.fighters) {
-        if (v === a || !v.alive || v.invuln > 0 || a.bikeHitCd[v.slot] > 0) continue;
+        if (v === a || !v.alive || v.invuln > 0 || a.bikeHitCd[v.slot] > 0 || this.friendly(a.slot, v)) continue;
         if (!circleHitsBox(cx, cy, 0.7, v)) continue;
         a.bikeHitCd[v.slot] = BIKE.hitCooldown;
         this.applyHit(a, v, md, cx, cy);
@@ -1796,7 +1858,7 @@ export class Sim {
         const cy = a.y + hb.y * s;
         const r = hb.r * s;
         for (const v of this.fighters) {
-          if (v === a || !v.alive || v.invuln > 0 || a.moveHit.has(v.slot)) continue;
+          if (v === a || !v.alive || v.invuln > 0 || a.moveHit.has(v.slot) || this.friendly(a.slot, v)) continue;
           if (!circleHitsBox(cx, cy, r, v)) continue;
           if (md.special === 'grab' && !v.grounded) continue;
           a.moveHit.add(v.slot);
@@ -1931,12 +1993,24 @@ export class Sim {
       if (g && g.state === 'grab') this.setState(g, 'idle');
       v.grabbedBy = -1;
     }
+    const rules = this.setup.rules;
+    if (rules.horde) {
+      // 100人組手：敵は弱め（倒した数が増えるほど少しずつ強くなる）
+      const att = from >= 0 ? this.fighter(from) : undefined;
+      if (att && att.team !== 0) dmg *= HORDE.dmg + HORDE.dmgGrow * this.hordeDefeated;
+      if (v.team !== 0) {
+        kbMul *= HORDE.kb;
+        dmg *= HORDE.taken;
+      }
+    }
     v.damage = Math.min(999, v.damage + dmg);
     if (from >= 0 && from !== v.slot) {
       const att = this.fighter(from);
       if (att) att.dealt += dmg;
     }
-    const speed = ((base + (growth * KB_GROWTH_SCALE * v.damage) / 100) * kbMul) / v.def.weight;
+    // 体力制：ふっとびはダメージで大きくなりにくい（HPを削り切るのが主な撃墜方法）
+    const kbDamage = rules.mode === 'stamina' ? Math.min(v.damage, STAMINA_KB_CAP) : v.damage;
+    const speed = ((base + (growth * KB_GROWTH_SCALE * kbDamage) / 100) * kbMul) / v.def.weight;
     const rad = (angle * Math.PI) / 180;
     const ax = Math.cos(rad) * dir;
     let ay = Math.sin(rad);
@@ -2003,7 +2077,7 @@ export class Sim {
         let ty = 0;
         let best = Infinity;
         for (const v of this.fighters) {
-          if (v.slot === p.owner || !v.alive) continue;
+          if (v.slot === p.owner || !v.alive || this.friendly(p.owner, v)) continue;
           const d = Math.hypot(v.x - p.x, v.y + v.h / 2 - p.y);
           if (d < best) {
             best = d;
@@ -2079,7 +2153,7 @@ export class Sim {
       }
       if (!gone) {
         for (const v of this.fighters) {
-          if (v.slot === p.owner || !v.alive || v.invuln > 0 || p.hits.includes(v.slot)) continue;
+          if (v.slot === p.owner || !v.alive || v.invuln > 0 || p.hits.includes(v.slot) || this.friendly(p.owner, v)) continue;
           if (!circleHitsBox(p.x, p.y, p.r, v)) continue;
           const dir = Math.sign(p.vx) || 1;
           if (this.tryAbsorb(v, p)) {
@@ -2123,27 +2197,60 @@ export class Sim {
     if (!f.alive) return;
     const b = this.stage.blast;
     if (f.x >= b.left && f.x <= b.right && f.y >= b.bottom && f.y <= b.top) return;
-    this.events.push({
-      k: 'ko',
-      x: Math.max(b.left, Math.min(b.right, f.x)),
-      y: Math.max(b.bottom, Math.min(b.top, f.y)),
-      s: f.slot,
-    });
+    this.koFighter(f, Math.max(b.left, Math.min(b.right, f.x)), Math.max(b.bottom, Math.min(b.top, f.y)));
+  }
+
+  /** 体力制：HPが0になったら、その場で爆発して撃墜 */
+  private checkHp(f: Fighter): void {
+    if (!f.alive || f.damage < this.maxHp) return;
+    f.damage = this.maxHp;
+    this.events.push({ k: 'boom', x: f.x, y: f.y + f.h / 2 });
+    this.events.push({ k: 'finish', x: f.x, y: f.y + f.h / 2, s: f.slot });
+    this.koFighter(f, f.x, f.y + f.h / 2);
+  }
+
+  private koFighter(f: Fighter, x: number, y: number): void {
+    this.events.push({ k: 'ko', x, y, s: f.slot });
     f.falls++;
     if (f.lastHitBy >= 0 && this.frame - f.lastHitFrame < KO_CREDIT_FRAMES) {
       const k = this.fighter(f.lastHitBy);
-      if (k) {
+      // 味方を落としても撃墜数には数えない
+      if (k && k !== f && k.team !== f.team) {
         k.kos++;
         // バズり（配信者）：撃墜するたびに攻撃力アップ
         if (k.def.id === 'streamer') k.buzz = Math.min(3, k.buzz + 1);
       }
     }
+    if (f.grabbing >= 0) this.endGrab(f, this.fighter(f.grabbing));
     f.buzz = 0;
     f.move = null;
     f.ledgeSide = 0;
     this.setState(f, 'dead');
     f.respawnTimer = 100;
-    if (this.setup.rules.mode === 'stock') {
+    const rules = this.setup.rules;
+    if (rules.horde && f.team !== 0) {
+      // 100人組手の敵：すぐ次の敵が出てくる。出す敵がもういなければ退場
+      this.hordeDefeated++;
+      f.respawnTimer = HORDE.respawn;
+      if (this.hordeDefeated % HORDE.healEvery === 0) {
+        // 区切りの人数を倒したら回復
+        const me = this.fighters.find((o) => o.team === 0 && o.alive);
+        if (me) {
+          me.damage = Math.max(0, me.damage - HORDE.heal);
+          this.events.push({ k: 'heal', x: me.x, y: me.y + me.h, s: me.slot });
+        }
+      }
+      // 出ている敵（待っている敵は数えない）と倒した数で、もう出さなくていい敵を退場させる
+      for (const o of [f, ...this.fighters.filter((x) => x !== f && x.team !== 0 && !x.out && this.hordeWaiting(x))]) {
+        const onField = this.fighters.filter((x) => x !== o && x.team !== 0 && !x.out && !this.hordeWaiting(x)).length;
+        if (this.hordeDefeated + onField >= rules.horde) {
+          o.out = true;
+          o.outFrame = this.frame;
+        }
+      }
+      return;
+    }
+    if (rules.mode !== 'time') {
       f.stocks--;
       if (f.stocks <= 0) {
         f.out = true;
@@ -2154,11 +2261,14 @@ export class Sim {
 
   private checkEnd(): void {
     if (this.ended) return;
-    const timeUp = this.frame > COUNTDOWN_FRAMES && this.timeLeftFrames <= 0;
+    const rules = this.setup.rules;
+    // 制限時間 0 は時間切れなし（100人組手）
+    const timeUp = rules.timeLimit > 0 && this.frame > COUNTDOWN_FRAMES && this.timeLeftFrames <= 0;
     let over = timeUp;
-    if (this.setup.rules.mode === 'stock' && this.fighters.length > 1) {
-      const remaining = this.fighters.filter((f) => !f.out).length;
-      if (remaining <= 1) over = true;
+    if (rules.mode !== 'time' && this.fighters.length > 1) {
+      // 残っているチーム（チーム戦でなければ選手）が1つ以下になったら終わり
+      const teams = new Set(this.fighters.filter((f) => !f.out).map((f) => f.team));
+      if (teams.size <= 1) over = true;
     }
     if (over) {
       this.ended = true;
@@ -2167,19 +2277,36 @@ export class Sim {
   }
 
   results(): ResultEntry[] {
-    const stock = this.setup.rules.mode === 'stock';
-    const entries = this.fighters.map((f) => ({
-      f,
-      score: stock ? f.stocks * 10000 + (f.out ? f.outFrame : 999999) - Math.floor(f.damage) / 1000 : (f.kos - f.falls) * 10000 - f.damage,
-    }));
-    entries.sort((a, b) => b.score - a.score);
+    const time = this.setup.rules.mode === 'time';
+    const score = (f: Fighter) =>
+      time ? (f.kos - f.falls) * 10000 - f.damage : f.stocks * 10000 + (f.out ? f.outFrame : 999999) - Math.floor(f.damage) / 1000;
+    // チームの点：タイム制は合計、残機制・体力制は残機の合計と最後まで残った時間
+    const teamScore = new Map<number, number>();
+    for (const f of this.fighters) {
+      const members = this.fighters.filter((o) => o.team === f.team);
+      const v = time
+        ? members.reduce((n, o) => n + (o.kos - o.falls), 0) * 10000 - members.reduce((n, o) => n + o.damage, 0) / 1000
+        : members.reduce((n, o) => n + o.stocks, 0) * 10000 + Math.max(...members.map((o) => (o.out ? o.outFrame : 999999)));
+      teamScore.set(f.team, v);
+    }
+    const entries = this.fighters.map((f) => ({ f, team: teamScore.get(f.team)!, score: score(f) }));
+    const teamMode = this.teamMode;
+    if (teamMode) entries.sort((a, b) => b.team - a.team || a.f.team - b.f.team || b.score - a.score);
+    else entries.sort((a, b) => b.score - a.score);
     let rank = 0;
-    let prevScore = Number.NaN;
+    let prev: (typeof entries)[number] | null = null;
     return entries.map((e, i) => {
-      if (e.score !== prevScore) rank = i + 1;
-      prevScore = e.score;
+      // チーム戦は同じチームなら同じ順位。点が同じなら同じ順位
+      const same = prev && (teamMode ? prev.f.team === e.f.team || prev.team === e.team : prev.score === e.score);
+      if (!same) rank = i + 1;
+      prev = e;
       return { slot: e.f.slot, rank, kos: e.f.kos, falls: e.f.falls, score: e.f.kos - e.f.falls, dealt: Math.round(e.f.dealt), throws: e.f.throws };
     });
+  }
+
+  /** チームで順位を決める（チーム戦・100人組手） */
+  get teamMode(): boolean {
+    return !!(this.setup.rules.teams || this.setup.rules.horde);
   }
 
   toView(): ViewState {
@@ -2217,6 +2344,7 @@ export class Sim {
       entities: this.entities.map((e) => ({ kind: e.kind, x: e.x, y: e.y, owner: e.owner, life: e.life, dir: e.dir })),
       events: this.events,
       ended: this.ended,
+      horde: this.setup.rules.horde ? this.hordeDefeated : undefined,
     };
   }
 }

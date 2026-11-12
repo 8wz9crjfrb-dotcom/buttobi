@@ -253,6 +253,11 @@ export class NetClient {
     this.send({ t: 'char', charId, costume });
   }
 
+  /** チーム戦のチームを変える（slot を指定するとその枠。ホストだけ） */
+  setTeam(team: number, slot?: number): void {
+    this.send({ t: 'team', team, slot });
+  }
+
   config(rules: MatchRules, stageId: string, cpuCount: number, cpuLevel: number): void {
     this.send({ t: 'config', rules, stageId, cpuCount, cpuLevel });
   }

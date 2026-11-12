@@ -19,7 +19,7 @@ import {
 } from '../../src/shared/protocol';
 import { Sim } from '../../src/shared/sim';
 import { STAGES } from '../../src/shared/stages';
-import { DEFAULT_RULES, type GameEvent, type InputState, type MatchRules, type MatchSetup } from '../../src/shared/types';
+import { DEFAULT_HP, DEFAULT_RULES, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup } from '../../src/shared/types';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
@@ -50,6 +50,8 @@ interface StoredHuman {
   name: string;
   charId: string;
   costume?: string;
+  /** チーム戦のチーム */
+  team?: number;
   /** 通信が切れたときに同じ枠へ戻るための合言葉 */
   token: string;
   /** 通信が切れた時刻（つながっている間は 0）。猶予の間は枠を残す */
@@ -64,6 +66,13 @@ interface StoredLobby {
   stageId: string;
   cpuCount: number;
   cpuLevel: number;
+  /** ホストが決めたCPUのチーム（slot → チーム） */
+  cpuTeams?: Record<number, number>;
+}
+
+/** チームの番号を 0〜3 に収める */
+function validTeam(n: unknown): number | undefined {
+  return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n < TEAM_COUNT ? n : undefined;
 }
 
 interface InputQueue {
@@ -177,19 +186,19 @@ export class Room extends DurableObject<Env> {
   private lobbyInfo(): LobbyInfo {
     const l = this.lobby!;
     const connected = this.connectedSlots();
-    const players: LobbyPlayer[] = l.humans.map((h) => ({ slot: h.slot, name: h.name, charId: h.charId, costume: h.costume, cpu: false, cpuLevel: 0, connected: connected.has(h.slot) }));
+    const players: LobbyPlayer[] = l.humans.map((h) => ({ slot: h.slot, name: h.name, charId: h.charId, costume: h.costume, cpu: false, cpuLevel: 0, connected: connected.has(h.slot), team: h.team ?? h.slot % 2 }));
     if (this.sim) {
       for (const [slot, level] of this.cpuSlots) {
         if (players.some((p) => p.slot === slot)) continue;
         const f = this.sim.fighter(slot);
-        players.push({ slot, name: `CPU ${level}`, charId: f?.def.id ?? 'mira', cpu: true, cpuLevel: level, connected: true });
+        players.push({ slot, name: `CPU ${level}`, charId: f?.def.id ?? 'mira', cpu: true, cpuLevel: level, connected: true, team: this.sim.setup.players.find((p) => p.slot === slot)?.team ?? 0 });
       }
     } else {
       const used = new Set(players.map((p) => p.slot));
       let added = 0;
       for (let s = 0; s < MAX_PLAYERS && added < l.cpuCount; s++) {
         if (used.has(s)) continue;
-        players.push({ slot: s, name: `CPU ${l.cpuLevel}`, charId: CHARACTERS[s % CHARACTERS.length].id, cpu: true, cpuLevel: l.cpuLevel, connected: true });
+        players.push({ slot: s, name: `CPU ${l.cpuLevel}`, charId: CHARACTERS[s % CHARACTERS.length].id, cpu: true, cpuLevel: l.cpuLevel, connected: true, team: l.cpuTeams?.[s] ?? s % 2 });
         added++;
       }
     }
@@ -339,15 +348,30 @@ export class Room extends DurableObject<Env> {
         await this.save();
         return this.pushLobby();
       }
+      case 'team': {
+        if (this.sim) return;
+        const team = validTeam(msg.team);
+        if (team === undefined) return;
+        const target = typeof msg.slot === 'number' ? msg.slot : slot;
+        const h = l.humans.find((x) => x.slot === target);
+        if (h && (target === slot || slot === l.hostSlot)) h.team = team;
+        else if (!h && slot === l.hostSlot && target >= 0 && target < MAX_PLAYERS) (l.cpuTeams ??= {})[target] = team;
+        else return;
+        await this.save();
+        return this.pushLobby();
+      }
       case 'config': {
         if (this.sim || slot !== l.hostSlot) return;
         const r = msg.rules;
         l.rules = {
-          mode: r?.mode === 'time' ? 'time' : 'stock',
+          mode: r?.mode === 'time' ? 'time' : r?.mode === 'stamina' ? 'stamina' : 'stock',
           stocks: Math.max(1, Math.min(5, r?.stocks | 0 || 3)),
           timeLimit: Math.max(60, Math.min(600, r?.timeLimit | 0 || 180)),
           items: r?.items === true,
           gimmicks: r?.gimmicks === true,
+          hp: Math.max(50, Math.min(300, (r?.hp ?? 0) | 0 || DEFAULT_HP)),
+          teams: r?.teams === true,
+          friendlyFire: r?.friendlyFire === true,
         };
         if (STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;
         l.cpuCount = Math.max(0, Math.min(MAX_PLAYERS - l.humans.length, msg.cpuCount | 0));
@@ -360,8 +384,10 @@ export class Room extends DurableObject<Env> {
         const info = this.lobbyInfo();
         const players = info.players.filter((p) => p.cpu || p.connected);
         if (players.length < 2) return;
+        // チーム戦は2チーム以上いないと始められない
+        if (l.rules.teams && new Set(players.map((p) => p.team ?? 0)).size < 2) return;
         const setup: MatchSetup = {
-          players: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel, costume: p.costume })),
+          players: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel, costume: p.costume, team: p.team ?? 0 })),
           stageId: l.stageId,
           rules: l.rules,
           seed: (Math.random() * 2 ** 31) | 0,

@@ -1,5 +1,7 @@
 // キャラクター定義（職業がそのままキャラクター）
 
+import type { MatchSetup } from './types';
+
 export interface CharacterDef {
   id: string;
   name: string;
@@ -236,6 +238,21 @@ export function getCharacter(id: string): CharacterDef {
 
 /** プレイヤー番号ごとの色（頭上の目印・HUDに使う） */
 export const SLOT_COLORS = [0xff5a5a, 0x4f9dff, 0xffd23f, 0x4fd18b, 0xc77dff, 0xff9f43];
+
+/** チーム戦のチームの色と名前（赤・青・緑・黄） */
+export const TEAM_COLORS = [0xff5a5a, 0x4f9dff, 0x4fd18b, 0xffd23f];
+export const TEAM_NAMES = ['赤', '青', '緑', '黄'];
+/** 100人組手の敵の色 */
+export const HORDE_COLOR = 0x9aa3ad;
+
+/** 選手の色。チーム戦ならチームの色、100人組手の敵は灰色 */
+export function playerColor(setup: MatchSetup | null | undefined, slot: number): number {
+  const rules = setup?.rules;
+  const p = setup?.players.find((x) => x.slot === slot);
+  if (rules?.horde && p) return setup!.players[0] === p ? SLOT_COLORS[0] : HORDE_COLOR;
+  if (rules?.teams && p) return TEAM_COLORS[(p.team ?? 0) % TEAM_COLORS.length];
+  return SLOT_COLORS[slot % SLOT_COLORS.length];
+}
 
 /** キャラ選択画面で、必殺技を長押ししたときに出す説明（数値は moves.ts・sim.ts の設定どおり） */
 export const SPECIAL_DESCS: Record<string, { n: string; s: string; d: string; u: string }> = {

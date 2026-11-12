@@ -215,7 +215,7 @@ export class CpuController {
     let best: Target | null = null;
     let bestD = Infinity;
     for (const o of sim.fighters) {
-      if (o === f || !o.alive || o.out) continue;
+      if (o === f || !o.alive || o.out || sim.sameTeam(o, f)) continue;
       const d = Math.abs(o.x - f.x) + Math.abs(o.y - f.y) * 1.5;
       if (d < bestD) {
         bestD = d;
@@ -224,6 +224,8 @@ export class CpuController {
     }
     for (const e of sim.entities) {
       if (e.kind !== 'decoy' || e.owner === f.slot) continue;
+      const owner = sim.fighter(e.owner);
+      if (owner && sim.sameTeam(owner, f)) continue;
       const d = Math.abs(e.x - f.x) + Math.abs(e.y - f.y) * 1.5;
       if (d < bestD) {
         bestD = d;

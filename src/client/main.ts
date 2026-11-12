@@ -2,12 +2,12 @@
 
 import './styles.css';
 import { CpuController } from '../shared/ai';
-import { CHARACTERS, getCharacter, SLOT_COLORS, SPECIAL_DESCS } from '../shared/characters';
+import { CHARACTERS, getCharacter, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
-import { COUNTDOWN_FRAMES, Sim } from '../shared/sim';
+import { COUNTDOWN_FRAMES, HORDE, Sim } from '../shared/sim';
 import { moveOf } from '../shared/moves';
 import { STAGES, getStage } from '../shared/stages';
-import { BTN_JUMP, BTN_SHIELD, type GameEvent, type InputState, type MatchRules, type MatchSetup, type ResultEntry, type ViewState } from '../shared/types';
+import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { InputManager } from './input';
@@ -27,7 +27,7 @@ import {
 import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
 import { applyTouchLayout, currentButtonPositions } from './touchLayout';
-import { checkTitles, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
+import { checkTitles, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
 import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, type PullResult } from './wallet';
 import { COSTUMES, getCostume, rarityName } from '../shared/costumes';
 
@@ -117,6 +117,12 @@ class LocalSession implements Session {
     if (training) while (this.sim.frame <= COUNTDOWN_FRAMES) this.sim.step(new Map());
   }
 
+  /** CPUの強さ。100人組手の敵は、倒した数が増えるほど強くなる */
+  private cpuLevel(base: number): number {
+    if (!this.setup.rules.horde) return base;
+    return Math.min(9, base + Math.floor(this.sim.hordeDefeated / HORDE_LEVEL_STEP) * 2);
+  }
+
   /** 練習相手の操作（立ち止まる・歩く・ジャンプ・ガード） */
   private dummyInput(mode: DummyMode): InputState {
     const fr = this.sim.frame;
@@ -145,7 +151,7 @@ class LocalSession implements Session {
           const p = this.setup.players.find((x) => x.slot === f.slot)!;
           const tr = this.training;
           if (p.cpu && tr && tr.mode !== 'cpu') inputs.set(f.slot, this.dummyInput(tr.mode));
-          else if (p.cpu) inputs.set(f.slot, this.ai.think(this.sim, f, tr ? tr.cpuLevel : p.cpuLevel));
+          else if (p.cpu) inputs.set(f.slot, this.ai.think(this.sim, f, tr ? tr.cpuLevel : this.cpuLevel(p.cpuLevel)));
           else if (human) inputs.set(f.slot, human);
         }
         this.sim.step(inputs);
@@ -340,7 +346,9 @@ function loop(t: number): void {
       if (!(session instanceof LocalSession && session.training)) {
         const me = session.mySlot !== null ? lastView.fighters.find((f) => f.slot === session!.mySlot) : undefined;
         const timePinch = lastView.timeLeft > 0 && lastView.timeLeft < 30 * 60 && lastView.countdown <= 0;
-        const stockPinch = session.setup.rules.mode === 'stock' && !!me && me.stocks === 1 && !me.out;
+        const rules = session.setup.rules;
+        // 100人組手はいつも残り1機なので、ダメージが溜まったらピンチ
+        const stockPinch = rules.horde ? !!me && me.damage >= 100 && !me.out : rules.mode !== 'time' && !!me && me.stocks === 1 && !me.out;
         music.setPinch(!lastView.ended && (timePinch || stockPinch));
       }
       autoQ.tick(dt);
@@ -657,24 +665,47 @@ function bindStages(root: HTMLElement, onPick: (id: string) => void): void {
   requestAnimationFrame(next);
 }
 
+/** ルールの短い説明（ロビーの表示用） */
+function ruleText(r: MatchRules): string {
+  const base = r.mode === 'stock' ? `ストック ${r.stocks}` : r.mode === 'stamina' ? `体力制 HP${r.hp ?? DEFAULT_HP}・残機${r.stocks}` : `タイム ${r.timeLimit / 60}分`;
+  return r.teams ? `${base}・チーム戦（味方への攻撃${r.friendlyFire ? 'あり' : 'なし'}）` : base;
+}
+
 function ruleControls(rules: MatchRules): string {
   return `
-    <div class="opt">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム']], rules.mode)}</div>
-    <div class="opt" data-show="stock">残機 ${seg('stocks', [[1, '1'], [2, '2'], [3, '3'], [5, '5']], rules.stocks)}</div>
+    <div class="opt">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制']], rules.mode)}</div>
+    <div class="opt" data-show="stock stamina">残機 ${seg('stocks', [[1, '1'], [2, '2'], [3, '3'], [5, '5']], rules.stocks)}</div>
+    <div class="opt" data-show="stamina">HP ${seg('hp', [[100, '100'], [150, '150'], [200, '200'], [300, '300']], rules.hp ?? DEFAULT_HP)}</div>
     <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>
+    <div class="opt">チーム戦 ${seg('teams', [['on', 'あり'], ['off', 'なし']], rules.teams ? 'on' : 'off')}</div>
+    <div class="opt" data-team>味方への攻撃 ${seg('ff', [['off', '当たらない'], ['on', '当たる']], rules.friendlyFire ? 'on' : 'off')}</div>
     <div class="opt">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
     <div class="opt">ステージギミック ${seg('gim', [['on', 'あり'], ['off', 'なし']], rules.gimmicks ? 'on' : 'off')}</div>`;
 }
 
 function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): void {
   const sync = () => {
-    root.querySelectorAll<HTMLElement>('[data-show]').forEach((el) => el.classList.toggle('hidden', el.dataset.show !== rules.mode));
+    root.querySelectorAll<HTMLElement>('[data-show]').forEach((el) => el.classList.toggle('hidden', !el.dataset.show!.split(' ').includes(rules.mode)));
+    root.querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.classList.toggle('hidden', !rules.teams));
   };
   sync();
   bindSeg(root, 'mode', (v) => {
     rules.mode = v as MatchRules['mode'];
-    rules.timeLimit = rules.mode === 'stock' ? 420 : 180;
+    rules.timeLimit = rules.mode === 'time' ? 180 : 420;
     sync();
+    onChange();
+  });
+  bindSeg(root, 'hp', (v) => {
+    rules.hp = Number(v);
+    onChange();
+  });
+  bindSeg(root, 'teams', (v) => {
+    rules.teams = v === 'on';
+    sync();
+    onChange();
+  });
+  bindSeg(root, 'ff', (v) => {
+    rules.friendlyFire = v === 'on';
     onChange();
   });
   bindSeg(root, 'stocks', (v) => {
@@ -749,6 +780,7 @@ function showMenu(): void {
        <button class="btn" id="create" ${online ? '' : 'disabled'}>ルームを作る<small>友達とオンライン対戦</small></button>
        <button class="btn" id="join" ${online ? '' : 'disabled'}>コードで参加<small>4桁の合言葉を入力</small></button>
        <button class="btn" id="gacha">着せ替えガチャ<small>コインで衣装を引く</small></button>
+       <button class="btn" id="horde">100人組手<small>${progress.hordeBest ? `ベスト ${progress.hordeBest.kos}人` : '次々に来る敵を倒す'}</small></button>
        <button class="btn" id="training">練習モード<small>技やコンボを試す</small></button>
        <button class="btn" id="records">戦績・ミッション<small>${missionSummary()}</small></button>
        <button class="btn" id="howto">遊び方<small>操作とルール</small></button>
@@ -759,6 +791,9 @@ function showMenu(): void {
     'overlay',
     (root) => {
       root.querySelector('#cpu')!.addEventListener('click', showLocalSetup);
+      root.querySelector('#horde')!.addEventListener('click', () =>
+        showCharSelect({ title: '100人組手：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'はじめる', onBack: showMenu, onNext: () => startHorde() }),
+      );
       root.querySelector('#create')!.addEventListener('click', () =>
         showCharSelect({ title: 'ルームを作る：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'ルームを作る', onBack: showMenu, onNext: () => createRoom(0) }),
       );
@@ -822,6 +857,9 @@ function showLocalSetup(): void {
   });
 }
 
+/** CPU戦のチーム分け（あなた・CPU1〜5）。はじめは あなた=赤、CPUは青・赤…と交互 */
+const localTeams = [0, 1, 0, 1, 0, 1];
+
 function showLocalRules(): void {
   const rules = { ...settings.rules };
   if (!STAGES.some((s) => s.id === settings.stageId)) settings.stageId = STAGES[0].id;
@@ -833,11 +871,32 @@ function showLocalRules(): void {
        <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], settings.cpuLevel)}</div>
        ${ruleControls(rules)}
      </div>
+     <div class="team-pick" data-team></div>
      <div class="footer"><button class="btn" id="back">キャラ選択へ</button><button class="btn primary" id="start">対戦開始！</button></div>`,
     'overlay',
     (root) => {
+      // チーム分け（タップでチームが変わる）
+      const teamBox = root.querySelector<HTMLElement>('.team-pick')!;
+      const drawTeams = () => {
+        const names = ['あなた', ...Array.from({ length: settings.cpuCount }, (_, i) => `CPU${i + 1}`)];
+        teamBox.innerHTML =
+          `<div class="opt-label">チーム分け（タップで変える）</div>` +
+          names.map((n, i) => `<button type="button" class="team-chip" data-i="${i}" style="--tc:${hex(TEAM_COLORS[localTeams[i]])}">${n}<b>${TEAM_NAMES[localTeams[i]]}</b></button>`).join('');
+      };
+      drawTeams();
+      teamBox.addEventListener('click', (e) => {
+        const b = (e.target as HTMLElement).closest<HTMLElement>('.team-chip');
+        if (!b) return;
+        const i = Number(b.dataset.i);
+        localTeams[i] = (localTeams[i] + 1) % TEAM_COUNT;
+        sfx.click();
+        drawTeams();
+      });
       bindStages(root, (v) => (settings.stageId = v));
-      bindSeg(root, 'cpu', (v) => (settings.cpuCount = Number(v)));
+      bindSeg(root, 'cpu', (v) => {
+        settings.cpuCount = Number(v);
+        drawTeams();
+      });
       bindSeg(root, 'lv', (v) => (settings.cpuLevel = Number(v)));
       bindRules(root, rules, () => (settings.rules = { ...rules }));
       root.querySelector('#back')!.addEventListener('click', () => {
@@ -847,13 +906,15 @@ function showLocalRules(): void {
       });
       root.querySelector('#start')!.addEventListener('click', () => {
         settings.rules = { ...rules };
+        const teamsUsed = new Set(localTeams.slice(0, settings.cpuCount + 1));
+        if (rules.teams && teamsUsed.size < 2) return toast('チーム戦は2チーム以上に分けてください');
         saveSettings(settings);
-        const players: MatchSetup['players'] = [{ slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0, costume: myCostume(settings.charId) }];
+        const players: MatchSetup['players'] = [{ slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0, costume: myCostume(settings.charId), team: localTeams[0] }];
         // CPUは自分以外のキャラから順に選ぶ
         const others = CHARACTERS.filter((c) => c.id !== settings.charId);
         const offset = (Math.random() * others.length) | 0;
         for (let i = 1; i <= settings.cpuCount; i++) {
-          players.push({ slot: i, name: `CPU ${settings.cpuLevel}`, charId: others[(offset + i - 1) % others.length].id, cpu: true, cpuLevel: settings.cpuLevel });
+          players.push({ slot: i, name: `CPU ${settings.cpuLevel}`, charId: others[(offset + i - 1) % others.length].id, cpu: true, cpuLevel: settings.cpuLevel, team: localTeams[i] });
         }
         lastSetup = { players, stageId: settings.stageId, rules: settings.rules, seed: (Math.random() * 1e9) | 0 };
         startSession(new LocalSession(lastSetup));
@@ -862,7 +923,83 @@ function showLocalRules(): void {
   );
 }
 
+/** 100人組手を始める（自分＋敵3人。敵は倒されると次の敵が出てくる） */
+function startHorde(): void {
+  const others = CHARACTERS.filter((c) => c.id !== settings.charId);
+  const offset = (Math.random() * others.length) | 0;
+  const players: MatchSetup['players'] = [{ slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0, costume: myCostume(settings.charId) }];
+  for (let i = 1; i <= 3; i++) players.push({ slot: i, name: '組手の相手', charId: others[(offset + i - 1) % others.length].id, cpu: true, cpuLevel: HORDE_CPU_LEVEL });
+  lastSetup = { players, stageId: 'plain', rules: { mode: 'stock', stocks: 1, timeLimit: 0, horde: HORDE.size, items: false, gimmicks: false }, seed: (Math.random() * 1e9) | 0 };
+  startSession(new LocalSession(lastSetup));
+}
+
+const fmtTime = (frames: number) => {
+  const s = Math.max(0, Math.floor(frames / 60));
+  return `${Math.floor(s / 60)}分${String(s % 60).padStart(2, '0')}秒`;
+};
+
+/** 100人組手の結果：倒した数・時間・自己ベスト */
+function showHordeResults(setup: MatchSetup, view: ViewState | null): void {
+  void keepAwake(false);
+  touchEl.classList.add('hidden');
+  pauseBtn.classList.add('hidden');
+  hud.show(false);
+  const total = setup.rules.horde ?? HORDE.size;
+  const kos = view?.horde ?? 0;
+  const frames = Math.max(0, (view?.frame ?? 0) - COUNTDOWN_FRAMES);
+  const clear = kos >= total;
+  const me = view?.fighters.find((f) => f.slot === setup.players[0].slot);
+  const prev = progress.hordeBest;
+  const best = !prev || kos > prev.kos || (kos === prev.kos && clear && frames < prev.frames);
+  if (best) progress.hordeBest = { kos, frames, charId: setup.players[0].charId };
+  const coins = hordeReward(kos, total);
+  wallet.coins += coins;
+  const got = recordMatch(progress, wallet, {
+    charId: setup.players[0].charId,
+    won: clear,
+    kos: me?.kos ?? 0,
+    falls: me?.falls ?? 0,
+    dealt: 0,
+    throws: tally.throws,
+    taunts: tally.taunts,
+    specials: tally.specials,
+    smashes: tally.smashes,
+    items: tally.items,
+  });
+  saveProgress(progress);
+  saveWallet(wallet);
+  const lines = [
+    ...got.missions.map((m) => `ミッション達成：${esc(m)} +${MISSION_REWARD}`),
+    ...(got.bonus ? [`今日のミッションをすべて達成！ +${MISSION_BONUS}`] : []),
+    ...got.titles.map((t) => `称号「${esc(t.name)}」を手に入れた！ +${t.coins}`),
+  ];
+  renderer.celebrate(clear ? setup.players[0].slot : null);
+  if (clear) setTimeout(() => sfx.jingle(setup.players[0].charId), 300);
+  music.play('menu');
+  const pb = progress.hordeBest!;
+  showScreen(
+    `<h2 style="text-align:center">${clear ? '100人組手 クリア！' : '100人組手 終了'}</h2>
+     <div class="horde-res">
+       <div class="big">${kos}<small> / ${total}人</small></div>
+       <div>時間 ${fmtTime(frames)}</div>
+       ${best ? '<div class="new-best">自己ベスト更新！</div>' : `<div class="muted">自己ベスト：${pb.kos}人${pb.kos >= total ? `（${fmtTime(pb.frames)}）` : ''}</div>`}
+     </div>
+     ${coins ? `<div class="reward"><span class="coin-icon"></span>+${coins} コイン<small>（所持 ${wallet.coins.toLocaleString()}）</small></div>` : ''}
+     ${lines.length ? `<div class="reward-sub">${lines.map((l) => `<div>🎉 ${l}</div>`).join('')}</div>` : ''}
+     <div class="footer">
+       <button class="btn" id="menu">メニューへ</button>
+       <button class="btn primary" id="again">もう一度</button>
+     </div>`,
+    'overlay results-screen',
+    (root) => {
+      root.querySelector('#menu')!.addEventListener('click', endToMenu);
+      root.querySelector('#again')!.addEventListener('click', startHorde);
+    },
+  );
+}
+
 function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean): void {
+  if (setup.rules.horde) return showHordeResults(setup, lastView);
   void keepAwake(false);
   touchEl.classList.add('hidden');
   pauseBtn.classList.add('hidden');
@@ -889,7 +1026,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
       const badges = (awards.get(r.slot) ?? []).map((a) => `<span class="award">${a}</span>`).join('');
       return `<div class="res-row ${r.rank === 1 ? 'first' : ''}">
         <div class="rank">${r.rank}</div>
-        <div><span style="color:${hex(SLOT_COLORS[p.slot % SLOT_COLORS.length])}">●</span> ${esc(p.name)} <small style="color:var(--muted)">${c.name}</small>${badges ? `<div class="awards">${badges}</div>` : ''}</div>
+        <div><span style="color:${hex(playerColor(setup, p.slot))}">●</span> ${setup.rules.teams ? `<small>${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}</small> ` : ''}${esc(p.name)} <small style="color:var(--muted)">${c.name}</small>${badges ? `<div class="awards">${badges}</div>` : ''}</div>
         <div style="font-size:12px;color:var(--muted);text-align:right">撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
     })
     .join('');
@@ -938,7 +1075,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
   renderer.celebrate(win ? win.slot : null);
   music.play('menu');
   showScreen(
-    `<h2 style="text-align:center">${winner ? esc(winner.name) + ' の勝ち！' : '結果'}</h2>
+    `<h2 style="text-align:center">${winner ? (setup.rules.teams ? `${TEAM_NAMES[(winner.team ?? 0) % TEAM_NAMES.length]}チームの勝ち！` : esc(winner.name) + ' の勝ち！') : '結果'}</h2>
      ${reward}
      <div class="results">${rows}</div>
      <div class="footer">
@@ -1025,6 +1162,9 @@ function showHowTo(): void {
        <p><b>ガード：</b>押している間ガード。ガード中にスティックをはじくと回避。空中で押すと空中回避。</p>
        <p><b>つかみ：</b>ガード中にAで目の前の相手をつかみます（ガードを崩せます）。つかんでいる間はAでつかみ攻撃、スティックを倒した方向（前・後ろ・上・下）へ投げます。つかまれたらボタン連打で早く抜けられます。</p>
        <p><b>アピール：</b>ガード中にスティックを上にはじくと、キャラごとの一言（SSR衣装なら特別なセリフ）。</p>
+       <p><b>体力制：</b>%のかわりにHPで戦います。HPが0になるとその場で撃墜。ふっとびは小さめなので、HPを削り切るのが基本です。</p>
+       <p><b>チーム戦：</b>CPU戦はルール画面、オンラインはルームの枠をタップしてチームを分けます。「味方への攻撃：当たらない」なら、味方には攻撃も飛び道具も当たりません。</p>
+       <p><b>100人組手：</b>1機だけで、次々に出てくる敵を100人倒すとクリア。10人倒すごとに少し回復し、30人倒すと敵が3人に増えます。</p>
        <p><b>アイテム・ステージギミック：</b>ルールで「あり」にすると、アイテム（回復・倍速・相手を止める・無敵）が落ちてきて、触れると使えます。ギミックはキャラ別ステージごとに違う仕掛け（強風・レーザー・スクーターなど）で、来る前に予告が出ます。</p>
        <p><b>崖：</b>ステージの端に近づくと自動でつかまります。スティック上かジャンプで上がります。</p>
        <p><b>クレジット：</b>キャラクター・BGM・効果音はすべてこのゲームのプログラムで作っています。</p>
@@ -1112,7 +1252,9 @@ function showRecords(tab: 'missions' | 'records' | 'titles'): void {
       <p class="muted">3つすべて達成すると、さらに <span class="coin-icon"></span>${MISSION_BONUS}（${progress.missions.bonus ? '受け取り済み' : '未達成'}）。ミッションは毎日入れ替わります。CPU戦・オンライン対戦で進みます（練習モードは対象外）。</p>`;
   } else if (tab === 'records') {
     const t = progress.totals;
+    const hb = progress.hordeBest;
     body = `<div class="muted">通算：${t.matches}試合・${t.wins}勝・${t.kos}撃墜・投げ${t.throws}回・必殺技${t.specials}回</div>
+      <div class="muted">100人組手のベスト：${hb ? `${hb.kos}人（${esc(getCharacter(hb.charId).name)}）${hb.kos >= HORDE.size ? `・${fmtTime(hb.frames)}` : ''}` : 'まだ遊んでいません'}</div>
       <table class="rec"><tr><th>キャラ</th><th>試合</th><th>勝利</th><th>勝率</th><th>撃墜</th><th>落下</th><th>与ダメ</th></tr>${CHARACTERS.map((c) => {
         const r = progress.records[c.id] ?? { matches: 0, wins: 0, kos: 0, falls: 0, dealt: 0 };
         return `<tr><td>${c.name}</td><td>${r.matches}</td><td>${r.wins}</td><td>${r.matches ? Math.round((r.wins / r.matches) * 100) + '%' : '-'}</td><td>${r.kos}</td><td>${r.falls}</td><td>${r.dealt}%</td></tr>`;
@@ -2024,8 +2166,13 @@ function showLobby(): void {
     if (!p) return `<div class="pslot empty"><span class="dot" style="background:#555"></span>空き</div>`;
     const c = getCharacter(p.charId);
     const tags = [p.slot === l.hostSlot ? '★' : '', p.slot === net.slot ? '（あなた）' : '', !p.cpu && !p.connected ? '（通信が切れています）' : ''].join('');
-    return `<div class="pslot"><span class="dot" style="background:${hex(SLOT_COLORS[i])}"></span>
-      <div><div>${esc(p.name)}${tags}</div><div style="font-size:11px;color:var(--muted)">${c.name}</div></div></div>`;
+    // チーム戦：自分の枠（ホストは全員の枠）をタップするとチームが変わる
+    const team = p.team ?? 0;
+    const canTap = !!l.rules.teams && !l.inMatch && (p.slot === net.slot || isHost);
+    const dot = l.rules.teams ? TEAM_COLORS[team % TEAM_COLORS.length] : SLOT_COLORS[i];
+    const teamTag = l.rules.teams ? `<span class="team-tag" style="--tc:${hex(dot)}">${TEAM_NAMES[team % TEAM_NAMES.length]}${canTap ? ' ⇄' : ''}</span>` : '';
+    return `<div class="pslot ${canTap ? 'team-tap' : ''}" data-slot="${p.slot}" data-tm="${team}"><span class="dot" style="background:${hex(dot)}"></span>
+      <div><div>${esc(p.name)}${tags} ${teamTag}</div><div style="font-size:11px;color:var(--muted)">${c.name}</div></div></div>`;
   }).join('');
   const rules = { ...l.rules };
   const maxCpu = MAX_PLAYERS - humans;
@@ -2039,8 +2186,9 @@ function showLobby(): void {
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
         ${ruleControls(rules)}
       </div>`
-    : `<p class="help">ステージ：${getStage(l.stageId).name} ／ ルール：${l.rules.mode === 'stock' ? `ストック ${l.rules.stocks}` : `タイム ${l.rules.timeLimit / 60}分`} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…</p>`;
-  const canStart = l.players.length >= 2 && !l.inMatch;
+    : `<p class="help">ステージ：${getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
+  const teamCount = new Set(l.players.map((p) => p.team ?? 0)).size;
+  const canStart = l.players.length >= 2 && !l.inMatch && (!l.rules.teams || teamCount >= 2);
   showScreen(
     `<div data-lobby class="row" style="justify-content:space-between">
        <div><div style="font-size:12px;color:var(--muted)">ルームコード（友達に教えてください）</div><div class="code-big">${l.code}</div></div>
@@ -2060,11 +2208,19 @@ function showLobby(): void {
      ${hostControls}
      <div class="footer">
        <button class="btn" id="leave">抜ける</button>
+       ${isHost && l.rules.teams && teamCount < 2 ? '<span class="muted">2チーム以上に分けてください</span>' : ''}
        ${isHost ? `<button class="btn primary" id="start" ${canStart ? '' : 'disabled'}>対戦開始！</button>` : ''}
      </div>`,
     'overlay',
     (root) => {
       root.querySelector('#invite')!.addEventListener('click', () => void shareInvite(l.code));
+      root.querySelectorAll<HTMLElement>('.pslot.team-tap').forEach((el) =>
+        el.addEventListener('click', () => {
+          const slot = Number(el.dataset.slot);
+          sfx.click();
+          net.setTeam((Number(el.dataset.tm) + 1) % TEAM_COUNT, slot === net.slot ? undefined : slot);
+        }),
+      );
       root.querySelector('#change-char')?.addEventListener('click', () =>
         showCharSelect({
           title: 'キャラを変える',

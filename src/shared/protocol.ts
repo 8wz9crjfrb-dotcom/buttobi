@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -24,6 +24,8 @@ export interface LobbyPlayer {
   connected: boolean;
   /** 着ている衣装 */
   costume?: string;
+  /** チーム（0〜3） */
+  team?: number;
 }
 
 export interface LobbyInfo {
@@ -42,6 +44,8 @@ export type ClientMsg =
   /** rejoin：通信が切れた後に、同じ枠に戻る（welcome で受け取った合言葉を使う） */
   | { t: 'hello'; v: number; name: string; charId: string; create: boolean; costume?: string; rejoin?: { slot: number; token: string }; spectate?: boolean }
   | { t: 'char'; charId: string; costume?: string }
+  /** チーム戦のチームを変える（自分の枠。ホストは slot でCPUの枠も変えられる） */
+  | { t: 'team'; team: number; slot?: number }
   | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number }
   | { t: 'start' }
   /** 入力。s = 最初の入力の通し番号、i = 1フレームごとの [mx, my, ボタン] */

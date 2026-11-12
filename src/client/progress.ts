@@ -39,6 +39,17 @@ export interface Progress {
   tutorialDone: boolean;
   /** チュートリアルをやるか一度聞いた */
   tutorialAsked?: boolean;
+  /** 100人組手の自己ベスト（倒した数と、そのときの時間） */
+  hordeBest?: { kos: number; frames: number; charId: string };
+}
+
+// ---------------------------------------------------------------- 100人組手
+/** 敵のCPUの強さ（はじめ）と、何人倒すごとに強くなるか */
+export const HORDE_CPU_LEVEL = 2;
+export const HORDE_LEVEL_STEP = 25;
+/** 100人組手のコイン：10人ごとに5コイン、全員倒すと100コイン追加 */
+export function hordeReward(kos: number, total: number): number {
+  return Math.floor(kos / 10) * 5 + (kos >= total ? 100 : 0);
 }
 
 /** 1試合の自分の成績（main.ts で数える） */
@@ -76,6 +87,8 @@ export const TITLES: TitleDef[] = [
   { id: 'item30', name: 'アイテムハンター', cond: 'アイテムを30回拾う', coins: 100, check: (p) => p.totals.items >= 30 },
   { id: 'costume12', name: 'おしゃれさん', cond: '衣装を12着集める', coins: 150, check: (_p, w) => w.owned.length >= 12 },
   { id: 'costumeAll', name: 'コンプリート', cond: '衣装を全部集める', coins: 500, check: (_p, w) => GACHA_COSTUMES.every((c) => w.owned.includes(c.id)) },
+  { id: 'horde30', name: '組手の達人', cond: '100人組手で30人倒す', coins: 100, check: (p) => (p.hordeBest?.kos ?? 0) >= 30 },
+  { id: 'horde100', name: '百人斬り', cond: '100人組手をクリアする', coins: 300, check: (p) => (p.hordeBest?.kos ?? 0) >= 100 },
   { id: 'login7', name: '皆勤賞', cond: '7日連続でログイン', coins: 100, check: (_p, w) => w.streak >= 7 },
   ...CHARACTERS.map((c) => ({
     id: `master-${c.id}`,

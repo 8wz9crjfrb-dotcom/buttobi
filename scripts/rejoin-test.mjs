@@ -11,7 +11,7 @@ function client(name, hello) {
   return new Promise((resolve) => {
     const ws = new WebSocket(`${URL_BASE}/room/${code}`);
     const c = { ws, name, slot: -1, token: '', lobby: null, start: null, snaps: 0, me: 0, ack: -1, errors: [] };
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 10, name, ...hello }));
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: 11, name, ...hello }));
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
       if (m.t === 'welcome') {

@@ -102,7 +102,8 @@ export const MOVE_IDS: MoveId[] = [
   'taunt',
 ];
 
-export type RuleMode = 'stock' | 'time';
+/** stock = 残機制、time = タイム制、stamina = 体力制（HPが0になるか場外で撃墜） */
+export type RuleMode = 'stock' | 'time' | 'stamina';
 
 export interface MatchRules {
   mode: RuleMode;
@@ -113,7 +114,20 @@ export interface MatchRules {
   items?: boolean;
   /** ステージギミックが動く */
   gimmicks?: boolean;
+  /** 体力制のHP */
+  hp?: number;
+  /** チーム戦 */
+  teams?: boolean;
+  /** チーム戦で味方にも攻撃が当たる */
+  friendlyFire?: boolean;
+  /** 100人組手：倒す敵の人数（端末だけで遊ぶモード。players の先頭が自分、ほかは全員敵） */
+  horde?: number;
 }
+
+/** 体力制のHP（未指定のとき） */
+export const DEFAULT_HP = 150;
+/** チームの数（赤・青・緑・黄） */
+export const TEAM_COUNT = 4;
 
 export const DEFAULT_RULES: MatchRules = { mode: 'stock', stocks: 3, timeLimit: 180, items: false, gimmicks: false };
 
@@ -125,6 +139,8 @@ export interface PlayerSetup {
   cpuLevel: number;
   /** 衣装の id（未指定ならいつもの服） */
   costume?: string;
+  /** チーム（0〜3。チーム戦のときだけ使う） */
+  team?: number;
 }
 
 export interface MatchSetup {
@@ -222,6 +238,8 @@ export interface ViewState {
   entities: ViewEntity[];
   events: GameEvent[];
   ended: boolean;
+  /** 100人組手：倒した敵の数 */
+  horde?: number;
 }
 
 export interface ResultEntry {

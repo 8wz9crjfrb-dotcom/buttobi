@@ -1935,3 +1935,69 @@ table.rec td:first-child {
   background: var(--accent);
   color: var(--accent-ink);
 }
+
+/* ---------------------------------------------------------------- チーム戦・100人組手 */
+.team-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+.team-pick .opt-label {
+  width: 100%;
+}
+.team-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 2px solid var(--tc);
+  background: color-mix(in srgb, var(--tc) 22%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.team-chip b {
+  color: var(--tc);
+}
+.team-tag {
+  display: inline-block;
+  padding: 0 6px;
+  margin-left: 4px;
+  border-radius: 6px;
+  font-size: 11px;
+  border: 1px solid var(--tc);
+  color: var(--tc);
+}
+.pslot.team-tap {
+  cursor: pointer;
+}
+.hud-timer b {
+  font-size: 26px;
+  color: #ffd23f;
+}
+.hud-timer small {
+  font-size: 13px;
+  color: var(--muted);
+  margin-left: 6px;
+}
+.horde-res {
+  text-align: center;
+  margin: 6px 0 10px;
+}
+.horde-res .big {
+  font-size: 48px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+.horde-res .big small {
+  font-size: 18px;
+  color: var(--muted);
+}
+.horde-res .new-best {
+  color: #ffd23f;
+  font-weight: 800;
+}
