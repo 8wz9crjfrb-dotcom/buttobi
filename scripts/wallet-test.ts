@@ -1,6 +1,7 @@
 // コイン（ログインボーナス・勝利・通算勝利の節目）の計算が仕様どおりか確かめる
 import { claimLogin, GACHA_COST, PITY_LIMIT, pullGacha, recordWin, type Wallet } from '../src/client/wallet';
 import { GACHA_COSTUMES } from '../src/shared/costumes';
+import { CHARACTERS } from '../src/shared/characters';
 import { MISSION_BONUS, MISSION_REWARD, recordMatch, refreshMissions, type Progress } from '../src/client/progress';
 
 let fail = 0;
@@ -53,7 +54,7 @@ check('通算100勝でも節目のボーナス（30・50・100勝）を受け取
   const d: Wallet = { coins: 200, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [GACHA_COSTUMES.filter((c) => c.rarity === 4)[0].id], pity: 0 };
   const dr = pullGacha(d, 1, () => 0.5 * 0 + 0.2)!; // SR・一覧の先頭を引く乱数
   check('持っている衣装が出たらコインに変わる', dr[0].dup ? d.coins === 100 + 20 : true, `${dr[0].id} dup=${dr[0].dup} 残り${d.coins}`);
-  check('衣装はキャラごとにSR2着・SSR1着', ['guard', 'hacker', 'thief', 'streamer', 'dopa', 'gacha', 'courier', 'ai'].every((id) => GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 4).length === 2 && GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 5 && c.fx).length === 1));
+  check('衣装はキャラごとにSR2着・SSR1着', CHARACTERS.map((c) => c.id).every((id) => GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 4).length === 2 && GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 5 && c.fx).length === 1));
 }
 // ---- 戦績・ミッション・称号
 {

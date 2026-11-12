@@ -13,7 +13,7 @@ export interface Platform {
 }
 
 /** ステージの見た目の種類（キャラごとのステージ。sky はキャラに関係ないデフォルト） */
-export type StageKind = 'sky' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab';
+export type StageKind = 'sky' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym';
 
 export interface StageTheme {
   kind: StageKind;
@@ -240,6 +240,29 @@ STAGES.push(
     ],
     respawnY: 9,
     theme: { kind: 'lab', bright: true, sky: 0xdfeefa, skyBottom: 0xf6fbff, fog: 0xe6f1fa, accentA: 0x2aa8ff, accentB: 0x7dffcf },
+  },
+  {
+    // 24時間ジム：左右のベンチと、上下に動くバーベルの足場
+    id: 'gym',
+    name: '24時間ジム',
+    charId: 'trainer',
+    main: { x1: -9.5, x2: 9.5, top: 0, bottom: -3 },
+    platforms: [
+      { x1: -7.5, x2: -4, y: 2.6 },
+      { x1: 4, x2: 7.5, y: 2.6 },
+      { x1: -2, x2: 2, y: 4.6, moveAmpY: 1.3, movePeriod: 360 },
+    ],
+    blast: { left: -22, right: 22, top: 18, bottom: -11 },
+    spawns: [
+      { x: -6, y: 0 },
+      { x: 6, y: 0 },
+      { x: -2, y: 0 },
+      { x: 2, y: 0 },
+      { x: -4, y: 0 },
+      { x: 4, y: 0 },
+    ],
+    respawnY: 10,
+    theme: { kind: 'gym', bright: true, sky: 0xf3ece2, skyBottom: 0xfff8ee, fog: 0xf2e8da, accentA: 0xff6a3d, accentB: 0x2fbfa0 },
   },
 );
 

@@ -111,6 +111,13 @@ export const COSTUMES: Costume[] = [
     rarity: 1,
     colors: { main: 0xe8ecf4, sub: 0x2d4a7a, accent: 0x4fd8ff, hair: 0x2d3a5a, skin: 0xf3d6bd, pants: 0x3a3f4a, shoes: 0x2d3a5a },
   },
+  {
+    id: 'trainer-default',
+    charId: 'trainer',
+    name: 'いつものタンクトップ',
+    rarity: 1,
+    colors: { main: 0xff6a3d, sub: 0x1f1f2a, accent: 0xffffff, hair: 0x2a1a12, skin: 0xc98a5e, pants: 0x1f1f2a, shoes: 0xff6a3d },
+  },
 ];
 
 
@@ -172,6 +179,13 @@ COSTUMES.push(
   {
     id: 'ai-ssr', charId: 'ai', name: 'シンギュラリティ', rarity: 5, colors: c(0x0e1420, 0x0a0e16, 0x2fe8ff, 0xd8f6ff, 0xe8e0f0, 0x0a0e16, 0x2fe8ff),
     extras: ['halo'], extraColor: 0x2fe8ff, fx: { particle: 'data', color: 0x2fe8ff, hit: 0x2fe8ff },
+  },
+  // パーソナルトレーナー
+  { id: 'trainer-aerobics', charId: 'trainer', name: 'エアロビ講師', rarity: 4, colors: c(0xff4fa3, 0x2fd8ff, 0xffe14f, 0x6a3a1a, 0xe0b08a, 0x2fd8ff, 0xffffff), extras: ['headband'], extraColor: 0xffe14f },
+  { id: 'trainer-coach', charId: 'trainer', name: '鬼コーチ', rarity: 4, colors: c(0x1d2a5a, 0xffffff, 0xff3a3a, 0x111111, 0xc98a5e, 0x1d2a5a, 0x111111), extras: ['sunglasses', 'capBack'], extraColor: 0xff3a3a },
+  {
+    id: 'trainer-ssr', charId: 'trainer', name: '鋼の肉体', rarity: 5, colors: c(0x1c1c22, 0x0e0e12, 0xffd23f, 0xfff0b0, 0xd8a070, 0x0e0e12, 0xffd23f),
+    extras: ['cape'], extraColor: 0xff6a3d, fx: { particle: 'flame', color: 0xff8a1a, hit: 0xffd23f },
   },
 );
 

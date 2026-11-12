@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, type CharacterDef } from './characters';
-import { BIKE, CHARGE, DECOY, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { BIKE, CHARGE, DECOY, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SPEEDUP, SWAP, TETHER, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -13,6 +13,7 @@ import {
   DEFAULT_HP,
   EMPTY_INPUT,
   FX_BIKE,
+  FX_ARMOR,
   FX_CHARGED,
   FX_CONFUSED,
   FX_POWER,
@@ -92,6 +93,7 @@ const SNAPSHOT_KEYS = [
   'flickX', 'flickY', 'neutralXAge', 'neutralYAge', 'poison', 'poisonFrom',
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHitCd', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
+  'armor', 'armorCd', 'slamming',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -154,6 +156,11 @@ export class Fighter {
   /** 倍速再生の残り時間と、次に使えるまでの時間 */
   speedBuff = 0;
   speedCd = 0;
+  /** プロテイン（トレーナー）：ひるまない残り時間と、次に飲めるまでの時間 */
+  armor = 0;
+  armorCd = 0;
+  /** マッスルジャンプでつかんで落ちている途中（残りフレーム。0 ならしていない） */
+  slamming = 0;
   /** 課金の残り時間 */
   powerBuff = 0;
   /** 自転車に乗っている残り時間 */
@@ -270,6 +277,8 @@ export const HORDE = {
 };
 /** 体力制で、ふっとびの計算に使うダメージの上限 */
 const STAMINA_KB_CAP = 50;
+/** 24時間ジムのランニングマシンが動くフレーム数 */
+export const GYM_BELT = 240;
 
 export class Sim {
   readonly setup: MatchSetup;
@@ -451,6 +460,8 @@ export class Sim {
     if (f.state !== 'shield' && f.shield < f.shieldMax) f.shield = Math.min(f.shieldMax, f.shield + (f.def.id === 'guard' ? 0.12 : 0.08));
     if (f.speedBuff > 0) f.speedBuff--;
     if (f.speedCd > 0) f.speedCd--;
+    if (f.armor > 0) f.armor--;
+    if (f.armorCd > 0) f.armorCd--;
     if (f.powerBuff > 0) f.powerBuff--;
     if (f.confused > 0) f.confused--;
     for (let i = 0; i < f.bikeHitCd.length; i++) if (f.bikeHitCd[i] > 0) f.bikeHitCd[i]--;
@@ -942,7 +953,7 @@ export class Sim {
       const alive = this.fighters.filter((f) => f.alive);
       const target = alive[Math.floor(this.rng.next() * alive.length)];
       this.gimmickX = kind === 'lab' && target ? target.x : cx;
-      const y = kind === 'vault' || kind === 'arcade' ? m.top + 0.6 : kind === 'studio' ? m.top + 2.2 : m.top + 8;
+      const y = kind === 'vault' || kind === 'arcade' || kind === 'gym' ? m.top + 0.6 : kind === 'studio' ? m.top + 2.2 : m.top + 8;
       this.events.push({ k: 'warn', h: kind, x: this.gimmickX, y, d: this.gimmickDir });
       return;
     }
@@ -990,6 +1001,15 @@ export class Sim {
           shot(k, x, m.top + 14, 0, -6, kind === 'gacha' ? 14 : 0, 200, 0.4, 5, 4, 4, 80, false);
         }
         break;
+      case 'gym':
+        // ランニングマシン：4秒間、床（すり抜け足場ではなく本体の台）に立っている全員が横へ流される
+        if (at < GYM_BELT) {
+          for (const f of this.fighters) {
+            if (!f.alive || !f.grounded || f.groundRef !== -1 || f.state === 'grabbed') continue;
+            f.x += d * 0.07;
+          }
+        }
+        break;
       case 'lab':
         // 予告した場所に、上から光線
         if (at === 0) for (const y of [0.6, 1.6, 2.6, 3.6]) shot('beam', this.gimmickX, m.top + y, 0, 0, 0, 22, 0.75, 8, 6, 7, 80, true);
@@ -1003,7 +1023,7 @@ export class Sim {
     for (const a of this.fighters) {
       if (a.grabbing < 0) continue;
       const v = this.fighter(a.grabbing);
-      const holding = a.alive && (a.state === 'grab' || (a.state === 'attack' && (a.move === 'pummel' || this.isThrow(a.move))));
+      const holding = a.alive && (a.state === 'grab' || (a.state === 'attack' && (a.move === 'pummel' || this.isThrow(a.move) || a.slamming > 0)));
       if (!v) {
         // 先行表示では相手がいないので、つかんでいるつもりのまま進める
         if (this.solo && holding) continue;
@@ -1037,6 +1057,7 @@ export class Sim {
   /** つかみを終える（相手を少し押し離す） */
   private endGrab(a: Fighter, v: Fighter | undefined, push = false): void {
     a.grabbing = -1;
+    a.slamming = 0;
     if (a.state === 'grab') this.setState(a, 'idle');
     if (!v) return;
     if (v.grabbedBy === a.slot) v.grabbedBy = -1;
@@ -1076,8 +1097,9 @@ export class Sim {
 
   /** つかまれている人を、つかんでいる人の前に置く */
   private placeGrabbed(a: Fighter, v: Fighter): void {
-    v.x = a.x + a.facing * 0.85 * a.def.scale;
-    v.y = a.y;
+    // マッスルジャンプ中は、頭の上にかかえる
+    v.x = a.slamming > 0 ? a.x + a.facing * 0.2 : a.x + a.facing * 0.85 * a.def.scale;
+    v.y = a.slamming > 0 ? a.y + a.h * 0.75 : a.y;
     v.vx = 0;
     v.vy = 0;
     v.grounded = a.grounded;
@@ -1135,7 +1157,9 @@ export class Sim {
     v.grabbedBy = -1;
     this.placeGrabbed(a, v);
     const before = v.damage;
-    this.knock(v, a.facing, md.dmg * pm.dmg, md.base, md.growth, md.angle, pm.kb, a.slot);
+    // 筋肉は裏切らない（トレーナー）：投げが強い
+    const tm = a.def.id === 'trainer' ? TRAINER.throwMul : 1;
+    this.knock(v, a.facing, md.dmg * pm.dmg * tm, md.base, md.growth, md.angle, pm.kb * (1 + (tm - 1) * 0.5), a.slot);
     this.lifesteal(a, v.damage - before);
     a.hitlag = v.hitlag = 5;
     this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: md.dmg, s: v.slot, a: a.slot });
@@ -1173,8 +1197,9 @@ export class Sim {
 
     if (!this.held(f, BTN_A)) f.holdA = false;
     // スマッシュ攻撃・溜め攻撃の溜め（Aを押し続けている間）
-    const maxCharge = md.special === 'smash' ? 60 : md.special === 'charge' ? CHARGE.max : 0;
-    if (maxCharge && f.moveFrame === t.s - 3 && this.held(f, BTN_A) && f.charge < maxCharge) {
+    const maxCharge = md.special === 'smash' ? 60 : md.special === 'charge' ? CHARGE.max : md.special === 'curl' ? TRAINER.curlMax : 0;
+    const chargeBtn = md.special === 'curl' ? BTN_B : BTN_A;
+    if (maxCharge && f.moveFrame === t.s - 3 && this.held(f, chargeBtn) && f.charge < maxCharge) {
       f.charge++;
       // 溜め攻撃は、溜めている間に振り向ける
       if (md.special === 'charge' && Math.abs(inp.mx) > 0.5) f.facing = inp.mx > 0 ? 1 : -1;
@@ -1192,6 +1217,7 @@ export class Sim {
 
     if (mf === t.s) {
       switch (md.special) {
+        case 'slam':
         case 'recovery':
           f.vy = md.riseV ?? 15;
           f.vx = md.riseVx ? f.facing * md.riseVx + inp.mx * 1.5 : inp.mx * 3;
@@ -1232,6 +1258,17 @@ export class Sim {
           break;
         case 'scroll':
           if (!f.grounded) f.vy = Math.max(f.vy, 1);
+          break;
+        case 'armor':
+          // プロテイン：待ち時間が終わっていれば飲める
+          if (f.armorCd <= 0) {
+            f.armor = TRAINER.armor;
+            f.armorCd = TRAINER.armor + TRAINER.armorCooldown;
+            this.events.push({ k: 'buff', s: f.slot });
+          }
+          break;
+        case 'tackle':
+          if (!f.grounded) f.vy = Math.max(f.vy, 1.5);
           break;
         case 'speedup':
           if (f.speedCd <= 0) {
@@ -1403,12 +1440,30 @@ export class Sim {
       f.vy = (dy / d) * TETHER.speed;
     }
     const active = mf >= t.s && mf < t.s + t.a;
-    if ((md.special === 'dash' || md.special === 'scroll') && active) {
+    // マッスルジャンプ：つかんだまま真下へ落ちる。地面に着いたら叩きつける（land で処理）
+    if (f.slamming > 0) {
+      f.slamming--;
+      f.vx = 0;
+      f.vy = -TRAINER.slamFall;
+      f.moveFrame = Math.min(f.moveFrame, t.s + t.a - 1);
+      const v = f.grabbing >= 0 ? this.fighter(f.grabbing) : undefined;
+      if (v) this.placeGrabbed(f, v);
+      if (f.slamming === 0) {
+        // 長く落ちすぎたら（場外など）、相手を放す
+        this.endGrab(f, v);
+        if (v) {
+          v.vy = 8;
+          v.invuln = Math.max(v.invuln, 10);
+        }
+      }
+      return;
+    }
+    if ((md.special === 'dash' || md.special === 'scroll' || md.special === 'tackle') && active) {
       f.vx = f.facing * ((md.dashSpeed ?? 13) - (mf - t.s) * 0.4);
       if (!f.grounded) f.vy = Math.max(f.vy, -1);
     } else if ((md.special === 'redirect' && active) || (md.special === 'tether' && f.tetherOn)) {
       // 速さは技の処理で決めている
-    } else if ((md.special === 'recovery' || md.special === 'platform') && active) {
+    } else if ((md.special === 'recovery' || md.special === 'platform' || md.special === 'slam') && active) {
       if (!md.riseVx) {
         f.vx += inp.mx * 0.4;
         f.vx = Math.max(-4, Math.min(4, f.vx));
@@ -1797,6 +1852,10 @@ export class Sim {
     f.sideBUsed = false;
     f.airDodgeUsed = false;
     f.ledgeSide = 0;
+    if (f.slamming > 0 && f.state === 'attack') {
+      this.slamLand(f);
+      return;
+    }
     switch (f.state) {
       case 'attack': {
         const md = this.moveDef(f);
@@ -1830,6 +1889,31 @@ export class Sim {
     }
   }
 
+  /** マッスルジャンプ：かかえた相手を地面に叩きつける */
+  private slamLand(f: Fighter): void {
+    const v = f.grabbing >= 0 ? this.fighter(f.grabbing) : undefined;
+    const md = this.moveDef(f);
+    f.slamming = 0;
+    f.grabbing = -1;
+    f.move = null;
+    f.stun = 14;
+    this.setState(f, 'land');
+    this.events.push({ k: 'boom', x: f.x + f.facing * 0.5, y: f.y + 0.2 });
+    if (!v) return;
+    v.grabbedBy = -1;
+    v.x = f.x + f.facing * 0.7 * f.def.scale;
+    v.y = f.y;
+    v.grounded = true;
+    v.groundRef = f.groundRef;
+    const pm = this.powerMul(f);
+    const before = v.damage;
+    this.knock(v, f.facing, md.dmg * pm.dmg, md.base, md.growth, md.angle, pm.kb, f.slot);
+    this.lifesteal(f, v.damage - before);
+    f.throws++;
+    f.hitlag = v.hitlag = 8;
+    this.events.push({ k: 'hit', x: v.x, y: v.y + 0.4, p: md.dmg * 1.5, s: v.slot, a: f.slot });
+  }
+
   // ------------------------------------------------------------------
   private detectHits(): void {
     // 自転車：走っている自転車にぶつかった相手にダメージ
@@ -1846,7 +1930,7 @@ export class Sim {
       }
     }
     for (const a of this.fighters) {
-      if (a.state !== 'attack' || !a.move || a.hitlag > 0) continue;
+      if (a.state !== 'attack' || !a.move || a.hitlag > 0 || a.slamming > 0) continue;
       const md = this.moveDef(a);
       if (md.hitboxes.length === 0) continue;
       const t = moveTiming(md, a);
@@ -1893,13 +1977,41 @@ export class Sim {
   }
 
   private applyHit(a: Fighter, v: Fighter, md: MoveDef, hx: number, hy: number): void {
-    if (md.special === 'grab') {
-      // つかみ：ガードしていてもつかめる。すでに誰かにつかまれている人はつかめない
+    if (md.special === 'grab' || (md.special === 'tackle' && a.grounded && v.grounded)) {
+      // つかみ・タックル：ガードしていてもつかめる。すでに誰かにつかまれている人はつかめない
       if (v.grabbedBy >= 0) return;
+      if (md.special === 'tackle' && this.tryCounter(v, a, md.dmg)) return;
       this.startGrab(a, v);
+      if (md.special === 'tackle') {
+        // タックルは、つかんだ瞬間に少しダメージ
+        v.damage = Math.min(999, v.damage + md.dmg * this.powerMul(a).dmg * 0.5);
+        a.dealt += md.dmg * 0.5;
+      }
       return;
     }
-    const chargeMul = md.special === 'charge' ? 1 + (a.charge / CHARGE.max) * (CHARGE.mul - 1) : 1 + (a.charge / 60) * 0.4;
+    if (md.special === 'slam' && a.slamming === 0 && a.grabbing < 0 && v.grabbedBy < 0 && v.state !== 'ledge' && !this.tryCounter(v, a, md.dmg)) {
+      // マッスルジャンプ：つかんで、そのまま真下へ
+      if (v.grabbing >= 0) this.endGrab(v, this.fighter(v.grabbing));
+      a.grabbing = v.slot;
+      a.slamming = TRAINER.slamMax;
+      v.grabbedBy = a.slot;
+      v.move = null;
+      v.bike = 0;
+      v.hitstun = 0;
+      v.lastHitBy = a.slot;
+      v.lastHitFrame = this.frame;
+      this.setState(v, 'grabbed');
+      this.placeGrabbed(a, v);
+      a.hitlag = v.hitlag = 6;
+      this.events.push({ k: 'hit', x: v.x, y: v.y + v.h * 0.6, p: 4, s: v.slot, a: a.slot });
+      return;
+    }
+    const chargeMul =
+      md.special === 'charge'
+        ? 1 + (a.charge / CHARGE.max) * (CHARGE.mul - 1)
+        : md.special === 'curl'
+          ? 1 + (a.charge / TRAINER.curlMax) * (TRAINER.curlMul - 1)
+          : 1 + (a.charge / 60) * 0.4;
     const pm = this.powerMul(a);
     const dmg = md.dmg * pm.dmg * chargeMul;
     if (this.tryCounter(v, a, dmg)) return;
@@ -2011,6 +2123,13 @@ export class Sim {
     // 体力制：ふっとびはダメージで大きくなりにくい（HPを削り切るのが主な撃墜方法）
     const kbDamage = rules.mode === 'stamina' ? Math.min(v.damage, STAMINA_KB_CAP) : v.damage;
     const speed = ((base + (growth * KB_GROWTH_SCALE * kbDamage) / 100) * kbMul) / v.def.weight;
+    // プロテイン（トレーナー）：強いふっとばし以外ではひるまない（ダメージは少し減る）
+    if (v.armor > 0 && speed < TRAINER.armorLimit && v.state !== 'grabbed') {
+      v.damage = Math.max(0, v.damage - dmg * (1 - TRAINER.armorDamage));
+      v.lastHitBy = from;
+      v.lastHitFrame = this.frame;
+      return;
+    }
     const rad = (angle * Math.PI) / 180;
     const ax = Math.cos(rad) * dir;
     let ay = Math.sin(rad);
@@ -2338,6 +2457,7 @@ export class Sim {
           (f.bike > 0 ? FX_BIKE : 0) |
           (f.confused > 0 ? FX_CONFUSED : 0) |
           (f.absorbCharge ? FX_CHARGED : 0) |
+          (f.armor > 0 ? FX_ARMOR : 0) |
           (f.buzz << 5),
       })),
       projectiles: this.projectiles.map((p) => ({ x: p.x, y: p.y, owner: p.owner, kind: p.kind })),

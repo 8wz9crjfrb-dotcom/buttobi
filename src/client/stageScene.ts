@@ -1,4 +1,4 @@
-// ステージの見た目。キャラごとのステージ8つと、デフォルト（そらの台地）を組み立てる。
+// ステージの見た目。キャラごとのステージ9つ（ジムを含む）と、デフォルト（そらの台地）を組み立てる。
 // 当たり判定は shared/stages.ts の数値で決まっていて、ここは見た目だけ。
 
 import * as THREE from 'three';
@@ -51,6 +51,9 @@ export function buildStageScene(stage: StageDef, quality: Quality): BuiltStage {
       break;
     case 'lab':
       buildLab(kit);
+      break;
+    case 'gym':
+      buildGym(kit);
       break;
   }
   return kit.finish();
@@ -1568,4 +1571,149 @@ function buildLab(kit: Kit): void {
   // 漂う光の粒（データ）
   kit.particles({ count: high ? 50 : 20, x: [cx - 18, cx + 18], y: [m.top, m.top + 14], z: [-8, 1], color: [th.accentA, th.accentB], size: 0.14, vy: 0.4, wobble: 0.3, opacity: 0.8 });
   void rnd;
+}
+
+// ====================================================================== 24時間ジム（パーソナルトレーナー）
+function buildGym(kit: Kit): void {
+  const { cx, w, m, rnd, high } = kit;
+  const th = kit.stage.theme;
+  const orange = hex(th.accentA);
+  // 奥の壁：明るい壁と、大きな鏡、ネオンの看板
+  const wall = kit.tex(256, 256, (g) => {
+    g.fillStyle = '#efe6da';
+    g.fillRect(0, 0, 256, 256);
+    g.fillStyle = '#e4d8c8';
+    for (let y = 0; y < 256; y += 32) g.fillRect(0, y, 256, 2);
+    g.fillStyle = orange;
+    g.fillRect(0, 196, 256, 10);
+  }, [6, 3]);
+  kit.plane(130, 50, kit.toon(0xffffff, { map: wall }), cx, 10, -14);
+  const mirror = kit.std(0xdfe8ee, { roughness: 0.05, metalness: 0.6 });
+  for (const x of [-15, -5, 5, 15]) {
+    kit.box(9.2, 6.2, 0.1, kit.toon(0x3a3a44), cx + x, m.top + 4.4, -12.9);
+    kit.box(9, 6, 0.1, mirror, cx + x, m.top + 4.4, -12.8);
+    kit.plane(2, 6, kit.basic(0xffffff, { transparent: true, opacity: 0.18, depthWrite: false }), cx + x - 2.5, m.top + 4.4, -12.7).rotation.z = 0.35;
+  }
+  const sign = neonSign(kit, '24H GYM', th.accentA, 7);
+  sign.position.set(cx, m.top + 9.6, -12.6);
+  kit.add(sign);
+  // 天井の照明
+  for (let i = -3; i <= 3; i++) kit.box(3.2, 0.12, 0.6, kit.glow(0xfff6e0), cx + i * 6, m.top + 12.5, -6);
+
+  // ダンベル棚（左右の奥）
+  const iron = kit.toon(0x2a2a32);
+  for (const sd of [-1, 1]) {
+    const x0 = cx + sd * (w / 2 + 4.5);
+    kit.box(6, 0.2, 1.4, kit.toon(0x55555f), x0, m.top + 1.0, -5);
+    kit.box(6, 0.2, 1.4, kit.toon(0x55555f), x0, m.top + 2.0, -5.3);
+    for (const y of [1.0, 2.0]) {
+      for (let k = 0; k < 5; k++) {
+        const x = x0 - 2.4 + k * 1.2;
+        const z = y > 1.5 ? -5.3 : -5;
+        const bar = kit.mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 8), kit.toon(0xa0a6b0), x, m.top + y + 0.3, z);
+        bar.rotation.z = Math.PI / 2;
+        for (const e of [-0.35, 0.35]) {
+          const pl = kit.mesh(new THREE.CylinderGeometry(0.22 + k * 0.02, 0.22 + k * 0.02, 0.14, 14), k % 2 ? iron : kit.toon(th.accentA), x + e, m.top + y + 0.3, z);
+          pl.rotation.z = Math.PI / 2;
+        }
+      }
+    }
+    for (const x of [x0 - 3, x0 + 3]) kit.box(0.2, 2.6, 0.2, kit.toon(0x55555f), x, m.top + 1.3, -5.2);
+  }
+  // 奥のランニングマシン（ベルトが流れる）
+  const beltTex = kit.tex(64, 64, (g) => {
+    g.fillStyle = '#26262c';
+    g.fillRect(0, 0, 64, 64);
+    g.fillStyle = '#3a3a44';
+    for (let x = 0; x < 64; x += 16) g.fillRect(x, 0, 6, 64);
+  }, [4, 1]);
+  kit.scroll(beltTex, 1.2, 0);
+  for (let i = -2; i <= 2; i++) {
+    const x = cx + i * 5;
+    kit.box(3.6, 0.4, 1.6, kit.toon(0x3a3a44), x, m.top + 0.2, -9);
+    kit.plane(3.2, 1.3, kit.basic(0xffffff, { map: beltTex }), x, m.top + 0.42, -9).rotation.x = -Math.PI / 2;
+    kit.box(0.12, 1.6, 0.12, kit.toon(0x55555f), x - 1.5, m.top + 1.1, -9.6);
+    kit.box(0.12, 1.6, 0.12, kit.toon(0x55555f), x + 1.5, m.top + 1.1, -9.6);
+    kit.box(3.2, 0.5, 0.3, kit.toon(0x2a2a32), x, m.top + 1.9, -9.6);
+    kit.box(1.2, 0.3, 0.05, kit.glow(i % 2 ? th.accentB : th.accentA), x, m.top + 1.95, -9.43);
+  }
+  // サンドバッグ（左右の手前寄り。ゆらゆら揺れる）
+  const bags: THREE.Group[] = [];
+  for (const sd of [-1, 1]) {
+    const g = new THREE.Group();
+    g.position.set(cx + sd * (w / 2 + 2.2), m.top + 8, -2.5);
+    kit.add(g);
+    kit.box(0.05, 2.2, 0.05, kit.toon(0x888890), 0, -1.1, 0, g);
+    kit.mesh(new THREE.CylinderGeometry(0.55, 0.55, 2.4, 16), kit.toon(0xc0392b), 0, -3.4, 0, g);
+    kit.mesh(new THREE.CylinderGeometry(0.57, 0.57, 0.15, 16), kit.toon(0x2a2a32), 0, -2.4, 0, g);
+    bags.push(g);
+  }
+  kit.anim((t) => bags.forEach((g, i) => (g.rotation.z = Math.sin(t * 1.3 + i * 2) * 0.08)));
+  // ポスター
+  const poster = kit.tex(128, 192, (g) => {
+    g.fillStyle = '#1f1f2a';
+    g.fillRect(0, 0, 128, 192);
+    g.fillStyle = orange;
+    g.font = `900 30px ${FONT}`;
+    g.textAlign = 'center';
+    g.fillText('NO', 64, 60);
+    g.fillText('PAIN', 64, 96);
+    g.fillText('NO', 64, 140);
+    g.fillText('GAIN', 64, 176);
+  });
+  for (const sd of [-1, 1]) kit.plane(2, 3, kit.basic(0xffffff, { map: poster }), cx + sd * 10.5, m.top + 9.5, -12.7);
+
+  // 床：黒いゴムマット（オレンジのライン）。中央はランニングマシンのベルト
+  const mat = kit.tex(128, 128, (g) => {
+    g.fillStyle = '#2e2e36';
+    g.fillRect(0, 0, 128, 128);
+    speckle(g, 128, 128, rnd, ['#3a3a44', '#26262c'], 220, 2);
+    g.strokeStyle = '#1f1f26';
+    g.lineWidth = 3;
+    g.strokeRect(0, 0, 128, 128);
+  }, [2, 1]);
+  const front = kit.tex(256, 64, (g) => {
+    g.fillStyle = '#26262c';
+    g.fillRect(0, 0, 256, 64);
+    g.fillStyle = orange;
+    g.fillRect(0, 6, 256, 6);
+    g.fillStyle = '#3a3a44';
+    for (let x = 12; x < 256; x += 40) g.fillRect(x, 26, 20, 26);
+  }, [3, 0.75]);
+  mainSlab(kit, kit.std(0xffffff, { map: mat, roughness: 0.9 }), kit.toon(0xffffff, { map: front }), 0.7, 5);
+  // 床のランニングマシン（ギミックのとき流れる。ふだんはゆっくり）
+  const floorBelt = kit.tex(64, 64, (g) => {
+    g.fillStyle = '#1c1c22';
+    g.fillRect(0, 0, 64, 64);
+    g.fillStyle = '#34343e';
+    for (let x = 0; x < 64; x += 16) g.fillRect(x, 0, 5, 64);
+  }, [8, 1]);
+  floorBelt.wrapS = floorBelt.wrapT = THREE.RepeatWrapping;
+  const beltMesh = kit.plane(w - 3, 2.6, kit.basic(0xffffff, { map: floorBelt }), cx, m.top + 0.012, 0);
+  beltMesh.rotation.x = -Math.PI / 2;
+  for (const sd of [-1, 1]) kit.box(0.12, 0.06, 2.7, kit.toon(th.accentA), cx + sd * ((w - 3) / 2), m.top + 0.03, 0);
+  kit.anim((_t, dt) => (floorBelt.offset.x += dt * 0.3));
+  // 台の下：鉄骨
+  kit.box(w * 0.8, 2.4, 3.6, kit.toon(0x3a3a44), cx, m.top - 1.9, 0);
+  for (let i = -3; i <= 3; i++) kit.box(0.2, 2.4, 0.2, kit.toon(th.accentA), cx + i * 2.4, m.top - 1.9, 1.85);
+
+  // すり抜け足場：トレーニングベンチ（黒いクッションとオレンジの縁）
+  kit.platform((g, pw) => {
+    g.add(kit.slab(pw, 0.3, 1.6, [kit.toon(0x2a2a32), kit.toon(0x1f1f26)], { radius: 0.12, bevel: 0.06 }));
+    kit.box(pw, 0.06, 0.06, kit.toon(th.accentA), 0, -0.3, 0.8, g);
+    if (pw < 3.8) {
+      // 左右はベンチ：脚をつける
+      for (const sd of [-1, 1]) kit.box(0.18, 1.1, 0.9, kit.toon(0x55555f), sd * (pw / 2 - 0.4), -0.85, 0, g);
+    } else {
+      // 中央の動く足場はバーベル（両端にプレート）
+      for (const sd of [-1, 1]) {
+        const pl = kit.mesh(new THREE.CylinderGeometry(0.75, 0.75, 0.25, 20), iron, sd * (pw / 2 + 0.2), -0.1, 0, g);
+        pl.rotation.z = Math.PI / 2;
+        const rim = kit.mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.27, 20), kit.toon(th.accentA), sd * (pw / 2 + 0.2), -0.1, 0, g);
+        rim.rotation.z = Math.PI / 2;
+      }
+    }
+  });
+  // ほこりのきらめき
+  kit.particles({ count: high ? 36 : 14, x: [cx - 18, cx + 18], y: [m.top, m.top + 12], z: [-8, 1], color: [0xffffff, th.accentA], size: 0.1, vy: 0.2, wobble: 0.3, opacity: 0.6 });
 }

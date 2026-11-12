@@ -126,6 +126,7 @@ export class Sfx {
       gacha: [[523, 659, 784, 1047, 1319], 'square', 80],
       courier: [[587, 740, 880, 1175], 'triangle', 75],
       ai: [[440, 554, 659, 880, 1109], 'sine', 95],
+      trainer: [[392, 392, 523, 659, 784], 'square', 110],
     };
     const [notes, type, gap] = J[charId] ?? J.guard;
     notes.forEach((f, i) => setTimeout(() => this.tone(f, i === notes.length - 1 ? 0.35 : 0.12, type, 0.12), i * gap));
@@ -156,7 +157,7 @@ export class Sfx {
 // ---------------------------------------------------------------------------
 // BGM（Web Audio でその場で組み立てるオリジナル曲。音声ファイルは使わない）
 
-export type TrackId = 'menu' | 'plain' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab';
+export type TrackId = 'menu' | 'plain' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym';
 
 interface Track {
   bpm: number;
@@ -182,6 +183,8 @@ const TRACKS: Record<TrackId, Track> = {
   plain: { bpm: 140, root: 48, chords: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], scale: MAJOR, drums: 'drive', seed: 23, lead: 'square' },
   // データセンター屋上：夜景の疾走感（A短調 i-VI-VII-v）
   rooftop: { bpm: 128, root: 45, chords: [[0, 3, 7], [8, 12, 15], [10, 14, 17], [7, 10, 14]], scale: MINOR, drums: 'drive', seed: 53, lead: 'sawtooth' },
+  // 24時間ジム：力強く熱い（F音のドリアン i-VII-VI-VII）
+  gym: { bpm: 136, root: 41, chords: [[0, 3, 7], [10, 14, 17], [8, 12, 15], [10, 14, 17]], scale: DORIAN, drums: 'drive', seed: 101, lead: 'sawtooth' },
   // ネオン商店街：ゆったりしたグルーヴ（C#短調 i-iv-VII-III）
   arcade: { bpm: 112, root: 49, chords: [[0, 3, 7], [5, 8, 12], [10, 14, 17], [3, 7, 10]], scale: MINOR, drums: 'half', seed: 61, lead: 'square' },
   // 電脳空間：速い電子音（D短調 i-VI-III-VII）

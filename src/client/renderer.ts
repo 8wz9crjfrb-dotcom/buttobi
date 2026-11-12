@@ -856,6 +856,7 @@ export class GameRenderer {
       timeline: '通知の嵐！',
       gacha: 'カプセルの雨！',
       lab: 'AIの光線が来る！',
+      gym: e.d > 0 ? 'ランニングマシン始動 →→' : '←← ランニングマシン始動',
     };
     this.props.showText(`⚠ ${labels[e.h] ?? '注意！'}`, '#ffd23f', (m.x1 + m.x2) / 2, m.top + 6.5, true, 110);
     if (e.h === 'lab') {

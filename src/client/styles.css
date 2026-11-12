@@ -1307,9 +1307,9 @@ input[inputmode='numeric'] {
   font-size: 11px;
 }
 
-/* ステージは9つ：横1列に並べる（狭い画面では5列） */
+/* ステージは10個：横1列に並べる（狭い画面では5列×2段） */
 .stages {
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 6px;
 }
 

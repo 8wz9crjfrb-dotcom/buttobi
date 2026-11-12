@@ -37,7 +37,7 @@ export class CpuController {
     const out = this.decide(sim, f, level, b);
     // 同じボタンを連続で「押した」ことにするため、前フレームに押していたボタンは一度離す
     const fresh = out.buttons & ~b.lastButtons;
-    const keepHeld = out.buttons & b.lastButtons & (BTN_SHIELD | BTN_A | BTN_JUMP);
+    const keepHeld = out.buttons & b.lastButtons & (BTN_SHIELD | BTN_A | BTN_JUMP | BTN_B);
     const buttons = fresh | (b.holdFrames > 0 ? keepHeld : 0);
     b.lastButtons = buttons;
     return { mx: out.mx, my: out.my, buttons };
@@ -203,6 +203,19 @@ export class CpuController {
         if (t.state === 'sleep' && adx < 1.9 && near && Math.abs(f.input.mx) < 0.3) {
           b.hold = { mx: dir, my: 0, buttons: BTN_A };
           b.holdFrames = 20;
+          return b.hold;
+        }
+        break;
+      case 'trainer':
+        // プロテインは近くに相手がいるときに飲む。ガードしている相手や近い相手にはタックル。
+        // 上にいる相手にはマッスルジャンプ。近ければダンベルカールを溜めて殴る
+        if (f.armorCd === 0 && adx < 4 && this.rng.chance(skill * 0.5)) return { mx: 0, my: -1, buttons: BTN_B };
+        if (near && t.grounded && adx > 1 && adx < 3.2 && this.rng.chance(skill * (t.state === 'shield' ? 0.8 : 0.3))) return { mx: dir, my: 0, buttons: BTN_B };
+        if (dy > 1.2 && dy < 4 && adx < 1.5 && this.rng.chance(skill * 0.35)) return { mx: 0, my: 1, buttons: BTN_B };
+        if (near && adx < 2.2 && this.rng.chance(skill * 0.2)) {
+          if (dir !== f.facing) return { mx: dir, my: 0, buttons: 0 };
+          b.hold = { mx: 0, my: 0, buttons: BTN_B };
+          b.holdFrames = 14 + Math.round(this.rng.range(0, 30 + lv * 3));
           return b.hold;
         }
         break;

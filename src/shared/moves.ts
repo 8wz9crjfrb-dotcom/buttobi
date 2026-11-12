@@ -90,7 +90,12 @@ export type SpecialKind =
   | 'charge'
   | 'pummel'
   | 'throw'
-  | 'taunt';
+  | 'taunt'
+  // パーソナルトレーナー
+  | 'curl'
+  | 'tackle'
+  | 'slam'
+  | 'armor';
 
 export interface MoveDef {
   startup: number;
@@ -500,6 +505,58 @@ const SPECIALS: Record<string, Specials> = {
       helpless: true,
     },
   },
+  trainer: {
+    // ダンベルカール：Bを押し続けると溜めて、離すと殴る（最大1秒、威力最大1.8倍）
+    nspecial: {
+      startup: 16,
+      active: 4,
+      end: 22,
+      hitboxes: [
+        { x: 1.1, y: 1.0, r: 0.7 },
+        { x: 0.5, y: 1.0, r: 0.55 },
+      ],
+      dmg: 12,
+      base: 8,
+      growth: 13,
+      angle: 38,
+      air: true,
+      special: 'curl',
+      landLag: 12,
+    },
+    // タックル：前へ突進して、当たった相手をつかむ（ガード中でもつかめる。空中ではつかまずに当たるだけ）
+    sspecial: {
+      startup: 9,
+      active: 12,
+      end: 22,
+      hitboxes: [{ x: 0.75, y: 0.9, r: 0.62 }],
+      dmg: 7,
+      base: 6,
+      growth: 6,
+      angle: 35,
+      air: true,
+      special: 'tackle',
+      dashSpeed: 12.5,
+      landLag: 12,
+    },
+    // プロテイン：しばらくの間、攻撃を受けてもひるまない（強いふっとばしは受ける）
+    dspecial: { startup: 14, active: 1, end: 16, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'armor' },
+    // マッスルジャンプ：飛び上がりながら相手をつかみ、そのまま地面に叩きつける
+    uspecial: {
+      startup: 6,
+      active: 16,
+      end: 10,
+      hitboxes: [{ x: 0.45, y: 1.5, r: 0.8 }],
+      dmg: 13,
+      base: 8,
+      growth: 10,
+      angle: 75,
+      air: true,
+      special: 'slam',
+      riseV: 16.5,
+      riseVx: 1.5,
+      helpless: true,
+    },
+  },
 };
 
 /** そのキャラの技のデータ */
@@ -547,3 +604,22 @@ export const GRAB = { base: 50, perDamage: 0.5, max: 150, mash: 3, pummelGap: 6 
 export const ITEMS = { interval: 600, max: 2, life: 900, kinds: 4, heal: 20, freeze: 60, invuln: 240 };
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };
+
+/** パーソナルトレーナー */
+export const TRAINER = {
+  /** ダンベルカールの最大の溜め（フレーム）と、そのときの威力の倍率 */
+  curlMax: 60,
+  curlMul: 1.8,
+  /** プロテインの効く時間と、次に飲めるまでの時間 */
+  armor: 300,
+  armorCooldown: 900,
+  /** プロテイン中でも、この速さより強いふっとばしは受ける */
+  armorLimit: 17,
+  /** プロテイン中に受けるダメージの倍率 */
+  armorDamage: 0.85,
+  /** マッスルジャンプでつかんだまま落ちる速さと、つかんでいられる最長フレーム */
+  slamFall: 20,
+  slamMax: 45,
+  /** 筋肉は裏切らない：投げの威力の倍率 */
+  throwMul: 1.3,
+};

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { CharacterDef } from '../shared/characters';
 import type { Accessory, Costume, CostumeFx } from '../shared/costumes';
 import { moveOf } from '../shared/moves';
-import { FX_BIKE, FX_CHARGED, FX_POWER, FX_SPEED, type ViewFighter } from '../shared/types';
+import { FX_ARMOR, FX_BIKE, FX_CHARGED, FX_POWER, FX_SPEED, type ViewFighter } from '../shared/types';
 
 const FWD = -Math.PI / 2; // 腕・脚を前に向ける回転（x軸まわり）
 const UP = -Math.PI;
@@ -271,7 +271,7 @@ function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean,
 }
 
 /** 頭のてっぺんの高さ（帽子・髪の上。王冠や天使の輪を置く位置） */
-const HEAD_TOP: Record<string, number> = { guard: 0.67, hacker: 0.7, thief: 0.67, streamer: 0.66, dopa: 0.72, gacha: 0.66, courier: 0.66, ai: 0.64 };
+const HEAD_TOP: Record<string, number> = { guard: 0.67, hacker: 0.7, thief: 0.67, streamer: 0.66, dopa: 0.72, gacha: 0.66, courier: 0.66, ai: 0.64, trainer: 0.68 };
 
 /** SSR の粒の絵 */
 const fxTextures = new Map<string, THREE.Texture>();
@@ -359,7 +359,13 @@ const EYE_COLORS: Record<string, number> = {
   gacha: 0x7a6aa0,
   courier: 0x7a4a2a,
   ai: 0x2aa8d8,
+  trainer: 0x6a3a1a,
 };
+
+/** 体の横幅（警備員とトレーナーはがっしり、データ泥棒は細身） */
+function bodyWidth(id: string): number {
+  return id === 'guard' ? 1.22 : id === 'trainer' ? 1.2 : id === 'thief' ? 0.95 : 1;
+}
 
 /** 輪郭線用の材質：裏面だけを、法線方向に少し膨らませて黒く描く */
 function makeOutlineMaterial(thickness: number): THREE.MeshBasicMaterial {
@@ -528,7 +534,9 @@ export class FighterModel {
   /** 4体共通の体（3頭身：頭が身長の約1/3） */
   private buildBase(): void {
     const c = this.c;
-    const wide = this.def.id === 'guard' ? 1.22 : this.def.id === 'thief' ? 0.95 : 1;
+    const wide = bodyWidth(this.def.id);
+    // トレーナーは袖なし（腕が太く、肌が見える）
+    const bare = this.def.id === 'trainer';
     // 脚
     this.hips.position.y = 0.62;
     this.body.add(this.hips);
@@ -551,10 +559,19 @@ export class FighterModel {
       [this.armR, -0.29 * wide],
     ] as const) {
       g.position.set(x, 1.12, 0);
-      this.part(g, new THREE.CapsuleGeometry(0.068, 0.26, 4, 10), this.toon(c.main), [0, -0.19, 0]);
-      // 袖口
-      this.part(g, new THREE.TorusGeometry(0.066, 0.022, 6, 14), this.toon(c.sub), [0, -0.33, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
-      this.part(g, new THREE.SphereGeometry(0.086, 12, 10), this.toon(c.skin), [0, -0.41, 0]);
+      if (bare) {
+        // 太い腕・力こぶ・肩・リストバンド
+        this.part(g, new THREE.CapsuleGeometry(0.082, 0.26, 4, 10), this.toon(c.skin), [0, -0.19, 0]);
+        this.part(g, new THREE.SphereGeometry(0.098, 12, 10), this.toon(c.skin), [0, -0.13, 0.025], { scale: [1, 1.2, 1] });
+        this.part(g, new THREE.SphereGeometry(0.11, 12, 10), this.toon(c.skin), [0, -0.01, 0], { outline: false });
+        this.part(g, new THREE.TorusGeometry(0.084, 0.03, 6, 14), this.toon(c.accent), [0, -0.33, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+        this.part(g, new THREE.SphereGeometry(0.096, 12, 10), this.toon(c.skin), [0, -0.42, 0]);
+      } else {
+        this.part(g, new THREE.CapsuleGeometry(0.068, 0.26, 4, 10), this.toon(c.main), [0, -0.19, 0]);
+        // 袖口
+        this.part(g, new THREE.TorusGeometry(0.066, 0.022, 6, 14), this.toon(c.sub), [0, -0.33, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+        this.part(g, new THREE.SphereGeometry(0.086, 12, 10), this.toon(c.skin), [0, -0.41, 0]);
+      }
       this.body.add(g);
     }
     // 頭（首の付け根を中心に回す）
@@ -778,7 +795,7 @@ export class FighterModel {
     const top = HEAD_TOP[this.def.id] ?? 0.66;
     const h = this.head;
     const b = this.body;
-    const wide = this.def.id === 'guard' ? 1.22 : this.def.id === 'thief' ? 0.95 : 1;
+    const wide = bodyWidth(this.def.id);
     const gold = this.toon(col);
     for (const a of list as Accessory[]) {
       switch (a) {
@@ -973,6 +990,26 @@ export class FighterModel {
       this.part(g, new THREE.SphereGeometry(0.17, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), this.toon(0xe5484d), [0, -0.12, 0.08]);
       this.part(g, new THREE.SphereGeometry(0.17, 16, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), this.toon(0xf2f2f5), [0, -0.12, 0.08]);
       this.attackProps.push({ obj: g, moves: ['smash', 'charge'] });
+    } else if (id === 'trainer') {
+      // ダンベル（ダンベルカール・スマッシュ・溜め攻撃）
+      const hnd = this.hand(this.armR);
+      const g = new THREE.Group();
+      hnd.add(g);
+      const iron = this.toon(0x2a2a32);
+      this.part(g, new THREE.CylinderGeometry(0.03, 0.03, 0.46, 8), this.toon(0x9aa0aa), [0, -0.02, 0.04], { rot: [0, 0, Math.PI / 2] });
+      for (const x of [0.17, -0.17]) {
+        this.part(g, new THREE.CylinderGeometry(0.14, 0.14, 0.08, 16), iron, [x, -0.02, 0.04], { rot: [0, 0, Math.PI / 2] });
+        this.part(g, new THREE.CylinderGeometry(0.1, 0.1, 0.06, 16), this.toon(c.main), [x * 1.4, -0.02, 0.04], { rot: [0, 0, Math.PI / 2] });
+      }
+      this.attackProps.push({ obj: g, moves: ['nspecial', 'smash', 'charge'] });
+      // プロテインのシェイカー
+      const hnd2 = this.hand(this.armR);
+      const sh = new THREE.Group();
+      hnd2.add(sh);
+      this.part(sh, new THREE.CylinderGeometry(0.065, 0.055, 0.22, 14), this.toon(0xf2f2f5), [0, -0.04, 0.07]);
+      this.part(sh, new THREE.CylinderGeometry(0.068, 0.068, 0.06, 14), this.toon(c.main), [0, 0.09, 0.07], { outline: false });
+      this.part(sh, new THREE.BoxGeometry(0.11, 0.07, 0.005), this.toon(c.accent), [0, -0.04, 0.135], { outline: false });
+      this.attackProps.push({ obj: sh, moves: ['dspecial'] });
     }
     for (const p of this.attackProps) p.obj.visible = false;
   }
@@ -1096,6 +1133,35 @@ export class FighterModel {
       buddy.position.set(0.5, 1.85, 0);
       this.root.add(buddy);
       this.buddy = buddy;
+    } else if (id === 'trainer') {
+      // パーソナルトレーナー：短いツンツン頭・タンクトップ・ホイッスル・肩のタオル
+      this.mouth();
+      this.brows(-0.18, c.hair, 0.032, 0.365);
+      const hair = this.hairToon(c.hair);
+      this.part(h, new THREE.SphereGeometry(0.325, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.42), hair, [0, 0.32, -0.02], { rot: [-0.2, 0, 0] });
+      for (const [x, z, rx, rz] of [
+        [0.12, 0.12, 0.5, -0.5],
+        [0, 0.15, 0.55, 0],
+        [-0.12, 0.12, 0.5, 0.5],
+        [0.08, -0.06, -0.3, -0.4],
+        [-0.08, -0.06, -0.3, 0.4],
+      ]) {
+        this.part(h, new THREE.ConeGeometry(0.06, 0.15, 5), hair, [x, 0.6, z], { rot: [rx, 0, rz], outline: false });
+      }
+      for (const x of [0.29, -0.29]) this.part(h, new THREE.BoxGeometry(0.03, 0.09, 0.07), hair, [x, 0.36, 0.02], { outline: false });
+      // タンクトップの肩ひもと胸のライン・腰のベルト
+      for (const x of [0.14, -0.14]) this.part(this.body, new THREE.BoxGeometry(0.07, 0.16, 0.36), this.toon(c.main), [x, 1.13, 0], { outline: false });
+      this.part(this.body, new THREE.BoxGeometry(0.3, 0.03, 0.01), this.toon(c.sub), [0, 0.98, 0.17], { outline: false });
+      this.part(this.body, new THREE.BoxGeometry(0.02, 0.2, 0.01), this.toon(c.sub), [0, 0.86, 0.172], { outline: false });
+      this.part(this.body, new THREE.CylinderGeometry(0.235 * 1.2, 0.235 * 1.2, 0.07, 18), this.toon(c.sub), [0, 0.66, 0], { scale: [1, 1, 0.78], outline: false });
+      // ホイッスル
+      this.part(this.body, new THREE.TorusGeometry(0.15, 0.01, 5, 20, Math.PI), this.toon(c.accent), [0, 1.16, 0.06], { rot: [Math.PI / 2 + 0.9, 0, Math.PI], outline: false });
+      const wh = this.swingPivot(this.body, [0, 1.09, 0.19], 0.6);
+      this.part(wh, new THREE.CylinderGeometry(0.025, 0.025, 0.07, 10), this.toon(0xc0c4cc), [0, -0.04, 0.01], { rot: [0, 0, Math.PI / 2] });
+      // 肩のタオル
+      const towel = this.swingPivot(this.body, [0.22, 1.18, -0.05], 0.5);
+      this.part(towel, new THREE.BoxGeometry(0.13, 0.05, 0.36), this.toon(0xf4f4f6), [0, 0, 0], { rot: [0, 0, -0.25] });
+      this.part(towel, new THREE.BoxGeometry(0.13, 0.3, 0.04), this.toon(0xf4f4f6), [0.04, -0.15, -0.17], { rot: [0, 0, -0.1] });
     }
   }
 
@@ -1179,7 +1245,7 @@ export class FighterModel {
     else if (v.state === 'hitstun' || v.state === 'shieldbreak' || v.state === 'helpless' || v.state === 'grabbed') this.setExpression('hurt', 'open', false);
     else if (v.state === 'sleep' || blinking) this.setExpression('closed', 'line', false);
     // 課金・倍速・吸収などの「強化」はドヤ顔
-    else if (special === 'pay' || special === 'speedup' || special === 'absorb' || special === 'drone') this.setExpression('smug', 'smile', false);
+    else if (special === 'pay' || special === 'speedup' || special === 'absorb' || special === 'drone' || special === 'armor') this.setExpression('smug', 'smile', false);
     else if (special === 'taunt') this.setExpression(smugType ? 'smug' : 'happy', 'open', false);
     else if (v.state === 'attack') this.setExpression('angry', v.move === 'smash' || v.move === 'charge' || (v.move ?? '').endsWith('special') || (v.move ?? '').endsWith('throw') ? 'open' : 'line', false);
     // ピンチ（崖につかまっている・%が高い）は焦り顔と汗
@@ -1204,7 +1270,8 @@ export class FighterModel {
     const opacity = this.ghost > 0 ? this.ghost : invisible ? 0.12 : ghost ? 0.45 : 1;
     // 倍速（青）・課金（赤）・吸収済み（水色）は、体がほんのり光る
     const pulse = 0.5 + 0.5 * Math.sin(time * 10);
-    const fxGlow = v.fx & FX_POWER ? 0x5a1010 : v.fx & FX_CHARGED ? 0x0a4a5a : v.fx & FX_SPEED ? 0x10305a : 0;
+    // プロテイン（ひるまない）はオレンジ
+    const fxGlow = v.fx & FX_POWER ? 0x5a1010 : v.fx & FX_CHARGED ? 0x0a4a5a : v.fx & FX_ARMOR ? 0x5a2a00 : v.fx & FX_SPEED ? 0x10305a : 0;
     for (const m of this.mats) {
       m.emissive.setHex(flash ? 0x555555 : charging ? 0xffaa00 : poisoned ? 0x5a1a7a : helpless ? 0x220022 : fxGlow);
       m.emissiveIntensity = charging ? 0.12 + 0.1 * Math.sin(time * 30) : fxGlow && !flash && !poisoned ? 0.6 + 0.6 * pulse : 1;
@@ -1398,6 +1465,16 @@ export class FighterModel {
         p.lean = 0.35;
         p.bob = Math.abs(Math.cos(time * 14)) * 0.07;
         break;
+      case 'trainer':
+        // スクワットをくり返す（腕は前にそろえる）
+        p.bob = -Math.abs(Math.sin(time * 2.6)) * 0.22;
+        p.squash = 1 - Math.abs(Math.sin(time * 2.6)) * 0.08;
+        p.armL = FWD * 0.95;
+        p.armR = FWD * 0.95;
+        p.legL = Math.abs(Math.sin(time * 2.6)) * 0.35;
+        p.legR = Math.abs(Math.sin(time * 2.6)) * 0.35;
+        p.lean = Math.abs(Math.sin(time * 2.6)) * 0.25;
+        break;
       case 'ai':
         // 浮かんで目を閉じ、手のひらを上に
         p.bob = 0.3 + b * 0.06;
@@ -1482,6 +1559,16 @@ export class FighterModel {
         p.armLz = 0.55;
         p.bob = Math.abs(slow) * 0.03;
         p.lean = -0.05;
+        break;
+      case 'trainer':
+        // 両腕を上げて力こぶ（ダブルバイセップス）。ぐっと力を入れるたびに体が締まる
+        p.armL = UP * 0.55;
+        p.armLz = 1.05;
+        p.armR = UP * 0.55;
+        p.armRz = -1.05;
+        p.lean = -0.08;
+        p.squash = 1 - Math.max(0, Math.sin(time * 4)) * 0.05;
+        p.headTilt = -0.12;
         break;
       case 'ai':
         // メガネ（ヘッドセット）に手を当ててきめる
@@ -1686,6 +1773,14 @@ export class FighterModel {
         p.legL = Math.max(0, Math.sin(time * 6)) * -0.25;
         p.legR = Math.max(0, -Math.sin(time * 6)) * -0.25;
         break;
+      case 'trainer':
+        // 軽く弾みながら、腕をぐるぐる回してウォームアップ
+        p.bob = Math.abs(Math.sin(time * 5)) * 0.04;
+        p.armR = Math.sin(time * 3) * 1.2;
+        p.armL = 0.2;
+        p.armLz = 0.45;
+        p.armRz = -0.2;
+        break;
       case 'ai':
         // あごに手を当てて考える
         p.armR = FWD * 1.35;
@@ -1823,6 +1918,56 @@ export class FighterModel {
       case 'tether':
         p.armR = UP * 0.75;
         p.armL = 0.3;
+        return;
+      case 'curl':
+        if (v.charge > 0 || f < s) {
+          // ダンベルを胸の前に持ち上げて溜める（溜まるほど震える）
+          const shake = Math.sin(v.stateTime * 2.3) * 0.05 * Math.min(1, v.charge / 40);
+          p.armR = FWD * 0.35 + shake;
+          p.armRz = 0.25;
+          p.armL = 0.4;
+          p.armLz = 0.3;
+          p.lean = -0.15;
+          p.squash = 0.92;
+          p.legL = 0.3;
+          p.legR = -0.3;
+        } else {
+          p.armR = lerp(FWD * 0.35, FWD * 1.2, Math.min(1, k * 1.6));
+          p.armRz = 0;
+          p.lean = 0.5 * k;
+          p.legL = -0.6 * k;
+          p.legR = 0.5 * k;
+        }
+        return;
+      case 'tackle':
+        // 体を低くして突っ込む
+        p.lean = 0.85 * k;
+        p.armL = FWD * 0.9;
+        p.armR = FWD * 0.9;
+        p.armLz = -0.35;
+        p.armRz = 0.35;
+        p.legL = Math.sin(f * 0.9) * 0.8 * k;
+        p.legR = -Math.sin(f * 0.9) * 0.8 * k;
+        p.headTilt = 0.15;
+        return;
+      case 'slam':
+        // 両手を上げて飛び上がり、つかんだ相手を頭上にかかえる
+        p.armR = UP;
+        p.armL = UP;
+        p.armLz = 0.25;
+        p.armRz = -0.25;
+        p.legL = -0.5;
+        p.legR = 0.2;
+        p.headTilt = -0.15;
+        return;
+      case 'armor':
+        // プロテインを一気に飲む
+        p.armR = f < s ? UP * 0.62 : lerp(0.4, UP * 0.62, k);
+        p.armRz = 0.35;
+        p.armL = 0.3;
+        p.armLz = 0.55;
+        p.headTilt = -0.35 * Math.min(1, f / 6);
+        p.lean = -0.1;
         return;
       case 'taunt':
         // アピール：キャラごとの決めポーズ
@@ -2082,6 +2227,23 @@ export class FighterModel {
           p.spinY = wind ? 0.5 : -0.3 * hold;
           p.armL = 0.5;
           p.armR = -0.5;
+        }
+        return;
+      case 'trainer':
+        // 弱はジャブ、横はラリアット、スマッシュ・溜めはダンベルを振り下ろす
+        if (m === 'jab') {
+          p.armR = wind ? 0.1 : FWD * 1.1 * hold;
+          p.lean = wind ? -0.05 : 0.2 * hold;
+        } else if (m === 'side') {
+          p.armR = FWD * 0.15;
+          p.armRz = wind ? 0.2 : -1.45 * hold;
+          p.spinY = wind ? 0.6 : -0.5 * hold;
+          p.lean = 0.2 * hold;
+        } else {
+          p.armR = wind ? UP * 1.1 : FWD * 0.7 * hold;
+          p.armL = wind ? UP * 0.9 : FWD * 0.4 * hold;
+          p.lean = wind ? -0.3 : 0.6 * hold;
+          p.squash = wind ? 0.92 : 1 - 0.1 * hold;
         }
         return;
       case 'ai':
