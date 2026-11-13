@@ -2002,3 +2002,29 @@ table.rec td:first-child {
   color: #ffd23f;
   font-weight: 800;
 }
+
+/* キャラ選択・衣装一覧：一覧をスクロールしても、左のキャラの名前と回す範囲は画面に固定する */
+.charsel-screen .cs-nameplate,
+.charsel-screen .cs-drag {
+  position: fixed;
+}
+
+/* ガチャで出る衣装：タイトルと「ガチャへ」を上に固定（一覧に重ならないように） */
+.lu-head {
+  position: sticky;
+  top: calc(-12px - var(--safe-t));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: calc(-12px - var(--safe-t)) 0 0;
+  padding: calc(12px + var(--safe-t)) 0 6px;
+  background: linear-gradient(rgba(10, 12, 30, 0.95) 75%, rgba(10, 12, 30, 0));
+}
+.lu-head h2 {
+  margin: 0;
+}
+.lu-head .btn {
+  flex: none;
+}

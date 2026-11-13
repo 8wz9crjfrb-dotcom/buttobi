@@ -1459,9 +1459,11 @@ function showLineup(): void {
   showScreen(
     `<div class="cs-drag" data-charsel></div>
      <div class="cs-nameplate">${label(shown)}</div>
-     <h2>ガチャで出る衣装 <small class="h2-sub">持っている ${have} / ${pool.length}・SSR はエフェクト付き</small></h2>
-     <div class="lineup">${cards}</div>
-     <div class="footer"><button class="btn primary" id="back">ガチャへ</button></div>`,
+     <div class="lu-head">
+       <h2>ガチャで出る衣装 <small class="h2-sub">持っている ${have} / ${pool.length}</small></h2>
+       <button class="btn primary small" id="back">ガチャへ</button>
+     </div>
+     <div class="lineup">${cards}</div>`,
     'overlay charsel-screen',
     (root) => {
       root.querySelectorAll<HTMLElement>('.gcard').forEach((el) =>
