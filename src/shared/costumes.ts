@@ -16,7 +16,11 @@ export type Accessory =
   | 'wings'
   | 'capBack'
   | 'headband'
-  | 'coat';
+  | 'coat'
+  /** フェスのタオル（片方の肩にかけて垂らす。しま模様） */
+  | 'festTowel'
+  /** フェスのリストバンド（両手首） */
+  | 'fesBand';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
@@ -204,8 +208,8 @@ COSTUMES.push(
     extras: ['scarf'], extraColor: 0xff3a6a, jobHair: [0xe2e2f0, 0x1a1420, 0x16161c],
   },
   {
-    id: 'threeb-summer', charId: 'threeb', name: '夏フェス', rarity: 4, colors: c(0xfff4d6, 0x2fbfa0, 0xffd23f, 0xd9a050, 0xe8b890, 0x2f6fbf, 0xffffff),
-    extras: ['sunglasses'], jobHair: [0xf8d878, 0xe09a48, 0x16161c],
+    id: 'threeb-summer', charId: 'threeb', name: '夏フェス', rarity: 4, colors: c(0x1c1c24, 0x4a6fa5, 0xffd23f, 0xd9a050, 0xe8b890, 0x6a8cc0, 0xf4f4f6),
+    extras: ['festTowel', 'fesBand'], extraColor: 0xff4f8b, jobHair: [0xf8d878, 0xe09a48, 0x16161c],
   },
   {
     id: 'threeb-ssr', charId: 'threeb', name: 'カリスマ', rarity: 5, colors: c(0x14141a, 0x0a0a0e, 0xffd23f, 0xfff0b0, 0xf3d6bd, 0x0a0a0e, 0xffd23f),

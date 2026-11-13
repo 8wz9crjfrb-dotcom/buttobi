@@ -876,6 +876,48 @@ export class FighterModel {
           this.part(sw, new THREE.BoxGeometry(0.1, 0.36, 0.035), this.toon(col), [0, -0.17, -0.03], { rot: [0.3, 0, 0.1] });
           break;
         }
+        case 'festTowel': {
+          // フェスのタオル：片方の肩にかけて、前と後ろに垂らす（しま模様と「FES」の文字）
+          const tex = new THREE.CanvasTexture(
+            (() => {
+              const cv = document.createElement('canvas');
+              cv.width = 64;
+              cv.height = 256;
+              const g = cv.getContext('2d')!;
+              const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
+              g.fillStyle = hex(col);
+              g.fillRect(0, 0, 64, 256);
+              g.fillStyle = '#ffffff';
+              for (const y of [14, 236]) g.fillRect(0, y, 64, 8);
+              g.font = '900 30px sans-serif';
+              g.textAlign = 'center';
+              g.save();
+              g.translate(32, 128);
+              g.rotate(Math.PI / 2);
+              g.fillText('FES!', 0, 11);
+              g.restore();
+              return cv;
+            })(),
+          );
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const towel = this.toon(0xffffff);
+          towel.map = tex;
+          const plain = this.toon(col);
+          // 肩の上を通る部分と、前・後ろに垂れる部分
+          this.part(b, new THREE.BoxGeometry(0.15, 0.03, 0.4), plain, [0.2 * wide, 1.19, 0], { rot: [0, 0, -0.35] });
+          const front = this.swingPivot(b, [0.2 * wide, 1.16, 0.18], 0.35);
+          this.part(front, new THREE.BoxGeometry(0.14, 0.4, 0.022), towel, [0.01, -0.19, 0.01], { rot: [-0.1, 0, -0.08] });
+          const back = this.swingPivot(b, [0.2 * wide, 1.16, -0.18], 0.35);
+          this.part(back, new THREE.BoxGeometry(0.14, 0.36, 0.022), towel, [0.01, -0.17, -0.01], { rot: [0.1, 0, -0.08] });
+          break;
+        }
+        case 'fesBand':
+          // フェスのリストバンド（両手首。布のバンドに四角いタグ）
+          for (const arm of [this.armL, this.armR]) {
+            this.part(arm, new THREE.TorusGeometry(0.075, 0.024, 6, 14), this.toon(this.c.accent), [0, -0.355, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+            this.part(arm, new THREE.BoxGeometry(0.05, 0.04, 0.02), this.toon(0xffffff), [0, -0.355, 0.09], { outline: false });
+          }
+          break;
         case 'starClip': {
           const g = new THREE.Group();
           g.position.set(0.25, top - 0.17, 0.14);
