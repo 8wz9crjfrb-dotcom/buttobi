@@ -444,6 +444,8 @@ export class FighterModel {
   showMarker = true;
   /** 衣装一覧などで、SSR衣装の特別な待機モーションにする */
   fancyIdle = false;
+  /** ガチャ・衣装一覧：3B の仕事を一定時間ごとに切り替えて見せる */
+  cycleJobs = false;
   /** タップしたときのアクションの残り時間（秒） */
   private actionT = 0;
   private actionKind = 0;
@@ -1515,6 +1517,7 @@ export class FighterModel {
   update(v: ViewFighter, def: CharacterDef, time: number, dt: number): void {
     // 3B：仕事に合わせて見た目と性能（技の速さ）を切り替える
     if (def.id === 'threeb') {
+      if (this.cycleJobs) this.previewJob = Math.floor(time / 1.3) % 3;
       const j = this.previewJob ?? fxJob(v.fx);
       if (j !== this.job) this.setJob(j);
       def = threebDef(j);
@@ -1827,7 +1830,6 @@ export class FighterModel {
         p.armR = UP * 0.4;
         p.armLz = 0.7;
         p.armRz = -0.7;
-        this.previewJob = Math.floor(time / 1.3) % 3;
         break;
       case 'trainer':
         // スクワットをくり返す（腕は前にそろえる）

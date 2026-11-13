@@ -299,6 +299,7 @@ export class GameRenderer {
     const key = `${charId}/${costumeId ?? ''}`;
     if (pv.charId === key && pv.model) {
       pv.model.fancyIdle = fancy && getCostume(costumeId, charId).rarity >= 5;
+      pv.model.cycleJobs = fancy;
       return;
     }
     if (pv.model) {
@@ -309,6 +310,8 @@ export class GameRenderer {
     pv.model = new FighterModel(def, getCostume(costumeId, charId), SLOT_COLORS[slot % SLOT_COLORS.length]);
     pv.model.previewTurn = 0.35;
     pv.model.fancyIdle = fancy && getCostume(costumeId, charId).rarity >= 5;
+    // ガチャ・衣装一覧では、3B は仕事を順番に切り替えて見せる（レア度に関係なく。特別な動きは SSR だけ）
+    pv.model.cycleJobs = fancy;
     pv.scene.add(pv.model.root);
     pv.charId = key;
     pv.spin = 0;
