@@ -19,7 +19,7 @@ import {
 } from '../../src/shared/protocol';
 import { Sim } from '../../src/shared/sim';
 import { MAX_BYTES, makeTransferCode, normalizeTransferCode, TransferBox } from './transfer';
-import { STAGES } from '../../src/shared/stages';
+import { RANDOM_STAGE, resolveStage, STAGES } from '../../src/shared/stages';
 import { DEFAULT_HP, DEFAULT_RULES, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup } from '../../src/shared/types';
 
 export { TransferBox } from './transfer';
@@ -114,6 +114,8 @@ interface StoredLobby {
   cpuLevel: number;
   /** ホストが決めたCPUのチーム（slot → チーム） */
   cpuTeams?: Record<number, number>;
+  /** 結果画面で「もう1戦したい」を押している人（slot） */
+  again?: number[];
 }
 
 /** チームの番号を 0〜3 に収める */
@@ -251,7 +253,7 @@ export class Room extends DurableObject<Env> {
       }
     }
     players.sort((a, b) => a.slot - b.slot);
-    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount() };
+    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [] };
   }
 
   private pushLobby(): void {
@@ -431,7 +433,7 @@ export class Room extends DurableObject<Env> {
           teams: r?.teams === true,
           friendlyFire: r?.friendlyFire === true,
         };
-        if (STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;
+        if (msg.stageId === RANDOM_STAGE || STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;
         l.cpuCount = Math.max(0, Math.min(MAX_PLAYERS - l.humans.length, msg.cpuCount | 0));
         l.cpuLevel = Math.max(1, Math.min(9, msg.cpuLevel | 0 || 3));
         await this.save();
@@ -439,18 +441,21 @@ export class Room extends DurableObject<Env> {
       }
       case 'start': {
         if (this.sim || slot !== l.hostSlot) return;
-        const info = this.lobbyInfo();
-        const players = info.players.filter((p) => p.cpu || p.connected);
-        if (players.length < 2) return;
-        // チーム戦は2チーム以上いないと始められない
-        if (l.rules.teams && new Set(players.map((p) => p.team ?? 0)).size < 2) return;
-        const setup: MatchSetup = {
-          players: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel, costume: p.costume, team: p.team ?? 0 })),
-          stageId: l.stageId,
-          rules: l.rules,
-          seed: (Math.random() * 2 ** 31) | 0,
-        };
-        this.startMatch(setup);
+        this.startFromLobby();
+        return;
+      }
+      case 'again': {
+        // 結果画面の「もう1戦したい」。つながっている人が全員押したら、ホストを待たずに再戦する
+        if (this.sim) return;
+        const set = new Set(l.again ?? []);
+        if (msg.on) set.add(slot);
+        else set.delete(slot);
+        l.again = [...set];
+        const connected = this.connectedSlots();
+        const humans = l.humans.filter((h) => connected.has(h.slot));
+        if (humans.length >= 1 && humans.every((h) => set.has(h.slot)) && this.startFromLobby()) return;
+        await this.save();
+        this.pushLobby();
         return;
       }
       case 'leave':
@@ -527,8 +532,33 @@ export class Room extends DurableObject<Env> {
     this.pushLobby();
   }
 
+  /** ロビーの設定（ステージ・ルール・CPU）で試合を始める。始められたら true */
+  private startFromLobby(): boolean {
+    const l = this.lobby;
+    if (!l || this.sim) return false;
+    const info = this.lobbyInfo();
+    const players = info.players.filter((p) => p.cpu || p.connected);
+    if (players.length < 2) return false;
+    // チーム戦は2チーム以上いないと始められない
+    if (l.rules.teams && new Set(players.map((p) => p.team ?? 0)).size < 2) return false;
+    const seed = (Math.random() * 2 ** 31) | 0;
+    const setup: MatchSetup = {
+      players: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel, costume: p.costume, team: p.team ?? 0 })),
+      // おまかせなら、試合ごとにランダムなステージ
+      stageId: resolveStage(l.stageId, seed),
+      rules: l.rules,
+      seed,
+    };
+    this.startMatch(setup);
+    // 「もう1戦したい」が消えたことを全員に伝える
+    this.pushLobby();
+    this.ctx.waitUntil(this.save());
+    return true;
+  }
+
   // ---------------------------------------------------------------
   private startMatch(setup: MatchSetup): void {
+    if (this.lobby) this.lobby.again = [];
     this.setup = setup;
     this.sim = new Sim(setup);
     this.cpu = new CpuController(setup.seed);

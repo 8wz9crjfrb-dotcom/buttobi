@@ -3037,3 +3037,26 @@ table.rec td:first-child {
   text-align: center;
   color: #fff;
 }
+
+/* ステージ「おまかせ」のカード */
+.stage-card.random .thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(from 30deg, #ff5a5a, #ffd23f, #4fd18b, #4f9dff, #c77dff, #ff5a5a);
+}
+.stage-card.random .rnd {
+  font-size: 30px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.again-count {
+  font-size: 12px;
+  text-align: center;
+  min-height: 1.2em;
+  margin-top: 6px;
+}
+.results-screen .footer .btn {
+  white-space: nowrap;
+}

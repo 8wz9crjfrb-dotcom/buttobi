@@ -289,6 +289,15 @@ STAGES.push(
   },
 );
 
+/** ステージ「おまかせ」：試合ごとにランダムなステージにする */
+export const RANDOM_STAGE = 'random';
+
+/** 「おまかせ」なら、決まった値（試合の種など）からステージを選ぶ。それ以外はそのまま */
+export function resolveStage(id: string, seed: number): string {
+  if (id !== RANDOM_STAGE) return id;
+  return STAGES[Math.abs(Math.floor(seed)) % STAGES.length].id;
+}
+
 export function getStage(id: string): StageDef {
   return STAGES.find((s) => s.id === id) ?? STAGES[0];
 }

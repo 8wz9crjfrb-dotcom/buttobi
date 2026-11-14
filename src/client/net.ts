@@ -266,6 +266,11 @@ export class NetClient {
     this.send({ t: 'start' });
   }
 
+  /** 結果画面の「もう1戦したい」 */
+  again(on: boolean): void {
+    this.send({ t: 'again', on });
+  }
+
   close(): void {
     this.closedByUser = true;
     this.reconnecting = false;

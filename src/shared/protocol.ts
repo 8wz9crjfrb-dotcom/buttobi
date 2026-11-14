@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 15;
+export const PROTOCOL_VERSION = 16;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -37,6 +37,8 @@ export interface LobbyInfo {
   inMatch: boolean;
   /** 観戦している人数 */
   spectators?: number;
+  /** 結果画面で「もう1戦したい」を押している人（slot） */
+  again?: number[];
 }
 
 /** 端末 → サーバー */
@@ -48,6 +50,8 @@ export type ClientMsg =
   | { t: 'team'; team: number; slot?: number }
   | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number }
   | { t: 'start' }
+  /** 結果画面の「もう1戦したい」（on = 押した / 取り消した）。人が全員押すと再戦が始まる */
+  | { t: 'again'; on: boolean }
   /** 入力。s = 最初の入力の通し番号、i = 1フレームごとの [mx, my, ボタン] */
   | { t: 'in'; s: number; i: [number, number, number][] }
   | { t: 'ping'; c: number }

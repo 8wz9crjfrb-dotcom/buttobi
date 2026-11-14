@@ -6,7 +6,7 @@ import { CHARACTERS, getCharacter, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM
 import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
-import { STAGES, getStage } from '../shared/stages';
+import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
 import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
@@ -756,7 +756,10 @@ function costumeChips(charId: string): string {
 
 /** ステージの一覧（実際のステージの小さな画像つき） */
 function stageCards(selected: string): string {
-  return `<div class="stages">${STAGES.map((st) => {
+  const random = `<div class="stage-card random ${selected === RANDOM_STAGE ? 'on' : ''}" data-stage="${RANDOM_STAGE}">
+      <div class="thumb"><span class="rnd">?</span></div>
+      <div class="nm">おまかせ</div><div class="who">毎試合ランダム</div></div>`;
+  return `<div class="stages">${random}${STAGES.map((st) => {
     const th = st.theme;
     const bg = `linear-gradient(${hex(th.sky)}, ${hex(th.skyBottom)})`;
     return `<div class="stage-card ${st.id === selected ? 'on' : ''}" data-stage="${st.id}">
@@ -1061,7 +1064,7 @@ const localTeams = [0, 1, 0, 1, 0, 1];
 
 function showLocalRules(): void {
   const rules = { ...settings.rules };
-  if (!STAGES.some((s) => s.id === settings.stageId)) settings.stageId = STAGES[0].id;
+  if (settings.stageId !== RANDOM_STAGE && !STAGES.some((s) => s.id === settings.stageId)) settings.stageId = STAGES[0].id;
   showScreen(
     `<h2>CPUと対戦：ステージとルール <small class="h2-sub">使うキャラ：${getCharacter(settings.charId).name}</small></h2>
      ${stageCards(settings.stageId)}
@@ -1115,7 +1118,8 @@ function showLocalRules(): void {
         for (let i = 1; i <= settings.cpuCount; i++) {
           players.push({ slot: i, name: `CPU ${settings.cpuLevel}`, charId: others[(offset + i - 1) % others.length].id, cpu: true, cpuLevel: settings.cpuLevel, team: localTeams[i] });
         }
-        lastSetup = { players, stageId: settings.stageId, rules: settings.rules, seed: (Math.random() * 1e9) | 0 };
+        const seed = (Math.random() * 1e9) | 0;
+        lastSetup = { players, stageId: resolveStage(settings.stageId, seed), rules: settings.rules, seed };
         startSession(new LocalSession(lastSetup));
       });
     },
@@ -1195,6 +1199,22 @@ function showHordeResults(setup: MatchSetup, view: ViewState | null): void {
       root.querySelector('#again')!.addEventListener('click', startHorde);
     },
   );
+}
+
+/** 結果画面：「もう1戦したい」の人数と、自分が押しているか */
+function updateAgainInfo(): void {
+  const el = screensEl.querySelector<HTMLElement>('[data-again]');
+  if (!el || !lobby) return;
+  const humans = lobby.players.filter((p) => !p.cpu && p.connected);
+  const want = (lobby.again ?? []).filter((s) => humans.some((h) => h.slot === s));
+  const isHost = lobby.hostSlot === net.slot;
+  el.textContent = want.length ? `もう1戦したい：${want.length}/${humans.length}人${isHost ? '' : '（全員そろうと始まります）'}` : isHost ? '' : '全員が押すか、ホストが始めると再戦します';
+  const btn = screensEl.querySelector<HTMLElement>('#want-again');
+  if (btn) {
+    const mine = want.includes(net.slot);
+    btn.textContent = mine ? 'もう1戦したい（取り消す）' : 'もう1戦したい！';
+    btn.classList.toggle('primary', !mine);
+  }
 }
 
 function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean): void {
@@ -1277,12 +1297,13 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
     `<h2 style="text-align:center">${winner ? (setup.rules.teams ? `${TEAM_NAMES[(winner.team ?? 0) % TEAM_NAMES.length]}チームの勝ち！` : esc(winner.name) + ' の勝ち！') : '結果'}</h2>
      ${reward}
      <div class="results">${rows}</div>
+     ${online ? '<div class="again-count muted" data-again></div>' : ''}
      <div class="footer">
        <button class="btn" id="menu">メニューへ</button>
        <div class="row" style="gap:8px">
          ${online ? '<button class="btn" id="lobby">ルームへ戻る</button>' : ''}
          ${online && lobby && lobby.hostSlot === net.slot ? '<button class="btn primary" id="rematch">同じメンバーで再戦</button>' : ''}
-         ${online && !(lobby && lobby.hostSlot === net.slot) ? '<span class="muted">ホストが再戦を始めると、そのまま始まります</span>' : ''}
+         ${online && !(lobby && lobby.hostSlot === net.slot) && net.slot >= 0 ? '<button class="btn primary" id="want-again">もう1戦したい！</button>' : ''}
          ${!online ? '<button class="btn primary" id="again">もう一度</button>' : ''}
        </div>
      </div>`,
@@ -1298,9 +1319,18 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
         net.start();
         toast('再戦を始めます');
       });
+      // もう1戦したい：押すとホストに伝わり、全員が押すと自動で始まる（もう一度押すと取り消し）
+      root.querySelector('#want-again')?.addEventListener('click', () => {
+        const on = !(lobby?.again ?? []).includes(net.slot);
+        net.again(on);
+        sfx.click();
+      });
+      updateAgainInfo();
       root.querySelector('#again')?.addEventListener('click', () => {
         if (lastSetup) {
-          lastSetup = { ...lastSetup, seed: (Math.random() * 1e9) | 0 };
+          const seed = (Math.random() * 1e9) | 0;
+          // ステージ「おまかせ」なら、もう一度のたびに選び直す
+          lastSetup = { ...lastSetup, seed, stageId: settings.stageId === RANDOM_STAGE && !lastSetup.rules.horde ? resolveStage(RANDOM_STAGE, seed) : lastSetup.stageId };
           startSession(new LocalSession(lastSetup));
         }
       });
@@ -2174,7 +2204,7 @@ const combo = new ComboTracker();
 
 /** 練習モードのステージと相手を選ぶ */
 function showTrainingSetup(): void {
-  if (!STAGES.some((s) => s.id === settings.stageId)) settings.stageId = STAGES[0].id;
+  if (settings.stageId !== RANDOM_STAGE && !STAGES.some((s) => s.id === settings.stageId)) settings.stageId = STAGES[0].id;
   const chips = CHARACTERS.map((c) => `<button type="button" data-v="${c.id}" class="${c.id === training.dummyChar ? 'on' : ''}">${c.name}</button>`).join('');
   showScreen(
     `<h2>練習モード：ステージと相手 <small class="h2-sub">使うキャラ：${getCharacter(settings.charId).name}</small></h2>
@@ -2206,7 +2236,7 @@ function startTraining(): void {
       { slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0, costume: myCostume(settings.charId) },
       { slot: 1, name: '練習相手', charId: training.dummyChar, cpu: true, cpuLevel: training.cpuLevel },
     ],
-    stageId: settings.stageId,
+    stageId: resolveStage(settings.stageId, Math.random() * 1e9),
     // 時間は実質無制限（99分）、残機は毎フレーム99に戻す
     rules: { mode: 'stock', stocks: 99, timeLimit: 99 * 60 },
     seed: (Math.random() * 1e9) | 0,
@@ -2456,6 +2486,7 @@ const net = new NetClient({
   },
   onLobby(l) {
     lobby = l;
+    updateAgainInfo();
     // ロビーからキャラ選択を開いている間は画面を切り替えない（戻ったときに最新の内容を出す）
     if (screensEl.querySelector('[data-charsel]')) return;
     if (screensEl.querySelector('[data-lobby]')) showLobby();
@@ -2628,7 +2659,7 @@ function showLobby(): void {
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
         ${ruleControls(rules)}
       </div>`
-    : `<p class="help">ステージ：${getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
+    : `<p class="help">ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
   const teamCount = new Set(l.players.map((p) => p.team ?? 0)).size;
   const canStart = l.players.length >= 2 && !l.inMatch && (!l.rules.teams || teamCount >= 2);
   const lobbyEl = showScreen(
