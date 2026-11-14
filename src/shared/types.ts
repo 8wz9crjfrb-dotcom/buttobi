@@ -103,7 +103,7 @@ export const MOVE_IDS: MoveId[] = [
 ];
 
 /** stock = 残機制、time = タイム制、stamina = 体力制（HPが0になるか場外で撃墜） */
-export type RuleMode = 'stock' | 'time' | 'stamina' | 'area';
+export type RuleMode = 'stock' | 'time' | 'stamina' | 'area' | 'ball';
 /** エリアバトルのエリアの形：移動する1つ／動かない2つ／おまかせ（試合ごとにどちらか） */
 export type AreaShape = 'move' | 'fix2' | 'random';
 
@@ -126,6 +126,8 @@ export interface MatchRules {
   horde?: number;
   /** エリアバトルのエリアの形 */
   area?: AreaShape;
+  /** 玉入れ：先に何点入れたら勝ちか */
+  goals?: number;
 }
 
 /** 体力制のHP（未指定のとき） */
@@ -173,6 +175,10 @@ export type GameEvent =
   | { k: 'heal'; x: number; y: number; s: number }
   | { k: 'buff'; s: number }
   | { k: 'poof'; x: number; y: number }
+  /** 玉入れ：ゴール（t = 点を取ったチーム、s = 最後にボールに触った人） */
+  | { k: 'goal'; x: number; y: number; t: number; s: number }
+  /** 玉入れ：ボールを打った */
+  | { k: 'kick'; x: number; y: number; p: number }
   | { k: 'swap'; x: number; y: number; x2: number; y2: number; s: number }
   | { k: 'pull'; x: number; y: number; tx: number; ty: number }
   | { k: 'shot'; s: number }
@@ -252,6 +258,21 @@ export interface ViewState {
   horde?: number;
   /** エリアバトルの状態 */
   area?: AreaView;
+  /** 玉入れの状態 */
+  ball?: BallView;
+}
+
+/** 玉入れの画面用の状態 */
+export interface BallView {
+  x: number;
+  y: number;
+  vx: number;
+  /** ボールが出ている（ゴールのあとや場外のあとは、しばらく消える） */
+  on: boolean;
+  /** チーム（0 = 赤、1 = 青）ごとの点 */
+  score: [number, number];
+  /** 先に何点で勝ちか */
+  target: number;
 }
 
 /** エリア（床の上の、縦に長い範囲） */
@@ -284,6 +305,10 @@ export interface ResultEntry {
   dealt?: number;
   /** エリアバトル：ゲージ（%。チーム戦はチームのゲージ） */
   area?: number;
+  /** 玉入れ：自分が入れたゴールの数 */
+  goals?: number;
+  /** 玉入れ：チームの点 */
+  teamGoals?: number;
   /** 投げた回数 */
   throws?: number;
 }

@@ -1,6 +1,6 @@
 // 対戦中の表示（ダメージ%・残機・タイマー・カウントダウン）
 
-import { areaColor, getCharacter, playerColor, TEAM_NAMES } from '../shared/characters';
+import { areaColor, ballTeamOf, getCharacter, playerColor, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { COUNTDOWN_FRAMES } from '../shared/sim';
 import { DEFAULT_HP, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
 
@@ -23,6 +23,8 @@ export class Hud {
 
   /** 練習モード：残機とタイマーを出さない */
   private training = false;
+  /** 玉入れ：タイマーの下の点数 */
+  private ball: { root: HTMLElement; red: HTMLElement; blue: HTMLElement; last: string } | null = null;
   /** 自分の枠に出す、必殺技の待ち時間（B・横B・下B・上B） */
   private cdRow: { root: HTMLElement; bars: HTMLElement[] } | null = null;
   private lastCd = '';
@@ -68,7 +70,7 @@ export class Hud {
       stk.className = 'stk';
       const nm = document.createElement('div');
       nm.className = 'pnm';
-      const team = setup.rules.teams ? `${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}・` : '';
+      const team = setup.rules.mode === 'ball' ? `${TEAM_NAMES[ballTeamOf(setup, p.slot)]}・` : setup.rules.teams ? `${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}・` : '';
       nm.textContent = `${team}${p.name}`;
       if (portraits[p.slot]) {
         const face = document.createElement('img');
@@ -100,6 +102,15 @@ export class Hud {
     this.el.append(wrap, this.timer, this.center, this.net);
     this.lastCenter = '';
     this.area = null;
+    this.ball = null;
+    if (setup.rules.mode === 'ball') {
+      // タイマーの下に「赤 0 - 0 青」と先取点
+      const root = document.createElement('div');
+      root.className = 'hud-ball';
+      root.innerHTML = `<b class="r" style="--tc:${hex(TEAM_COLORS[0])}">0</b><span>-</span><b class="b" style="--tc:${hex(TEAM_COLORS[1])}">0</b><small>${setup.rules.goals ?? 5}点先取</small>`;
+      this.el.appendChild(root);
+      this.ball = { root, red: root.querySelector('.r')!, blue: root.querySelector('.b')!, last: '' };
+    }
     if (setup.rules.mode === 'area') {
       // タイマーの下に、ゲージを横に並べる（チーム戦はチームごと、個人戦は人ごと）
       const box = document.createElement('div');
@@ -200,6 +211,22 @@ export class Hud {
       }
     }
     this.updateArea(v);
+    if (this.ball && v.ball) {
+      const key = v.ball.score.join('-');
+      if (key !== this.ball.last) {
+        // 点が入った側を弾ませる
+        const [r0, b0] = this.ball.last ? this.ball.last.split('-').map(Number) : [0, 0];
+        this.ball.red.textContent = String(v.ball.score[0]);
+        this.ball.blue.textContent = String(v.ball.score[1]);
+        for (const [el, up] of [[this.ball.red, v.ball.score[0] > r0], [this.ball.blue, v.ball.score[1] > b0]] as const) {
+          if (!up) continue;
+          el.classList.remove('pop');
+          void el.offsetWidth;
+          el.classList.add('pop');
+        }
+        this.ball.last = key;
+      }
+    }
     const secs = Math.ceil(v.timeLeft / 60);
     if (this.horde) {
       // 100人組手：倒した数と経過時間

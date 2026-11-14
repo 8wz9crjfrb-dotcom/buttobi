@@ -80,6 +80,8 @@ export interface EncodedState {
   ev: GameEvent[];
   /** エリアバトル：[x1,x2,y1,y2,holder] のエリア、次のエリア、移るまで、ゲージ [番号,値...]、満タン */
   a?: { z: number[][]; x: number[][]; i: number; g: number[]; o: number };
+  /** 玉入れ：[x, y, vx, 出ている(1/0), 赤の点, 青の点, 先取点] */
+  b?: number[];
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -113,6 +115,7 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
     q: v.projectiles.map((p) => [Math.round(p.x * 100), Math.round(p.y * 100), p.owner, Math.max(0, SHOT_KINDS.indexOf(p.kind))]),
     n: v.entities.map((e) => [ENTITY_KINDS.indexOf(e.kind), Math.round(e.x * 100), Math.round(e.y * 100), e.owner, e.life, e.dir]),
     ev: events.map((e) => ('x' in e ? { ...e, x: r2(e.x), y: r2(e.y) } : e)),
+    ...(v.ball ? { b: [Math.round(v.ball.x * 100), Math.round(v.ball.y * 100), Math.round(v.ball.vx * 10), v.ball.on ? 1 : 0, v.ball.score[0], v.ball.score[1], v.ball.target] } : {}),
     ...(v.area
       ? {
           a: {
@@ -156,6 +159,7 @@ export function decodeState(s: EncodedState): ViewState {
     projectiles: s.q.map((a) => ({ x: a[0] / 100, y: a[1] / 100, owner: a[2], kind: SHOT_KINDS[a[3]] ?? 'bullet' })),
     entities: (s.n ?? []).map((a) => ({ kind: ENTITY_KINDS[a[0]] ?? 'wall', x: a[1] / 100, y: a[2] / 100, owner: a[3], life: a[4], dir: a[5] ?? 1 })),
     events: s.ev,
+    ball: s.b ? { x: s.b[0] / 100, y: s.b[1] / 100, vx: s.b[2] / 10, on: s.b[3] === 1, score: [s.b[4], s.b[5]], target: s.b[6] } : undefined,
     area: s.a
       ? {
           zones: s.a.z.map((a) => ({ x1: a[0] / 100, x2: a[1] / 100, y1: a[2] / 100, y2: a[3] / 100, holder: a[4] })),

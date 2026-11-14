@@ -2,7 +2,7 @@
 
 import { Rng } from './rng';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type AreaZone, type InputState } from './types';
-import type { Fighter, Sim } from './sim';
+import { ballBaskets, type Fighter, type Sim } from './sim';
 
 /** CPUが狙う相手（選手、または分身） */
 interface Target {
@@ -90,6 +90,11 @@ export class CpuController {
     // エリアバトル：エリアへ向かう。エリアの中では、外の相手を深追いしない
     if (sim.setup.rules.mode === 'area') {
       const go = this.areaMove(sim, f, lv);
+      if (go) return go;
+    }
+    // 玉入れ：ボールの後ろに回って、かごまでの距離に合う技で打つ
+    if (sim.setup.rules.mode === 'ball') {
+      const go = this.ballMove(sim, f, lv);
       if (go) return go;
     }
 
@@ -269,6 +274,54 @@ export class CpuController {
     const foeNear = sim.fighters.some((o) => o !== f && o.alive && !o.out && !sim.sameTeam(o, f) && Math.abs(o.x - f.x) < 2 && Math.abs(o.y - f.y) < 1.6);
     if (!foeNear) return { mx: out.mx, my: 0, buttons: out.buttons & ~BTN_B };
     return { mx: out.mx, my: ay > 0.5 && ay >= ax ? out.my : 0, buttons: (out.buttons & ~BTN_B) | BTN_A };
+  }
+
+  /**
+   * 玉入れの動き。null なら、ふつうに戦う。
+   * かごまで4〜6.5mなら弱攻撃、7.5〜12mなら横攻撃で山なりに打ち込む（上から入ったときだけ点）。
+   * 近すぎ・遠すぎるときは、ボールを体で押して（ドリブル）ちょうどいい距離まで運ぶ
+   */
+  private ballMove(sim: Sim, f: Fighter, lv: number): InputState | null {
+    const b = sim.ball;
+    const t = this.target(sim, f);
+    const near = t && Math.abs(t.x - f.x) < 1.6 && Math.abs(t.y - f.y) < 1.5;
+    // 近くの相手とは、ときどき戦う（強いCPUほどボールを優先する）
+    if (near && this.rng.chance(0.5 - lv * 0.04)) return null;
+    if (!b.on) {
+      const cx = (sim.stage.main.x1 + sim.stage.main.x2) / 2;
+      return Math.abs(cx - f.x) > 1.5 ? { mx: Math.sign(cx - f.x), my: 0, buttons: 0 } : null;
+    }
+    const g = ballBaskets(sim.stage)[1 - (f.team % 2)];
+    const toGoal = Math.sign(g.cx - b.x) || 1;
+    const dg = Math.abs(g.cx - b.x);
+    const m = sim.stage.main;
+    // 運ぶ向き：近すぎるならかごから離す、遠すぎるならかごへ近づける、ちょうどよければ打つ
+    const shot = dg >= 4 && dg <= 6.5 ? 'jab' : dg >= 7.5 && dg <= 12 ? 'tilt' : null;
+    const push = shot ? 0 : dg < 4 ? -toGoal : toGoal;
+    // 立つ場所：打つならボールのかごと反対側、運ぶなら運ぶ向きと反対側
+    const side = shot ? -toGoal : -push;
+    const px = b.x + side * 0.75;
+    const dx = px - f.x;
+    const ballLow = b.y < f.y + 1.3 && b.y > f.y - 0.5;
+    // ボールが高い所にある：落ちてくる所の下で待つ
+    if (!ballLow && b.y > f.y + 1.3) return { mx: Math.abs(b.x - f.x) > 0.6 ? Math.sign(b.x - f.x) : 0, my: 0, buttons: 0 };
+    // ボールが下の床にある（足場の上にいる）：降りる
+    if (b.y < f.y - 0.6 && f.grounded && f.groundRef >= 0) return { mx: Math.sign(b.x - f.x) * 0.5, my: -1, buttons: 0 };
+    // ボールの反対側にいるときは、ボールを飛び越えて回り込む
+    if (Math.sign(b.x - f.x) === side && Math.abs(b.x - f.x) < 1.6) {
+      return f.grounded ? { mx: -side, my: 0, buttons: BTN_JUMP } : { mx: -side, my: 0, buttons: 0 };
+    }
+    if (Math.abs(dx) > 0.35) {
+      // 台の端から落ちないように
+      if ((f.x + Math.sign(dx) * 0.8 < m.x1 + 0.3 || f.x + Math.sign(dx) * 0.8 > m.x2 - 0.3) && f.grounded) return { mx: 0, my: 0, buttons: 0 };
+      return { mx: Math.sign(dx), my: 0, buttons: 0 };
+    }
+    if (!shot) return { mx: push, my: 0, buttons: 0 };
+    const want = -side;
+    if (f.facing !== want) return { mx: want * 0.4, my: 0, buttons: 0 };
+    // 弱いCPUは、ときどき打つ技をまちがえる
+    const k = this.rng.chance(0.25 - lv * 0.025) ? (shot === 'jab' ? 'tilt' : 'jab') : shot;
+    return k === 'jab' ? { mx: 0, my: 0, buttons: BTN_A } : { mx: want * 0.6, my: 0, buttons: BTN_A };
   }
 
   /** エリアバトルの動き。null なら、ふつうに戦う */

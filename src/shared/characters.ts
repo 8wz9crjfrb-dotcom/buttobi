@@ -315,8 +315,17 @@ export function playerColor(setup: MatchSetup | null | undefined, slot: number):
   const rules = setup?.rules;
   const p = setup?.players.find((x) => x.slot === slot);
   if (rules?.horde && p) return setup!.players[0] === p ? SLOT_COLORS[0] : HORDE_COLOR;
+  // 玉入れはいつも赤と青の2チーム（チーム戦でなければ順番に赤・青。sim.ts と同じ決め方）
+  if (rules?.mode === 'ball' && p) return TEAM_COLORS[(rules.teams ? p.team ?? setup!.players.indexOf(p) : setup!.players.indexOf(p)) % 2];
   if (rules?.teams && p) return TEAM_COLORS[(p.team ?? 0) % TEAM_COLORS.length];
   return SLOT_COLORS[slot % SLOT_COLORS.length];
+}
+
+/** 玉入れのチーム（0 = 赤、1 = 青）。sim.ts と同じ決め方 */
+export function ballTeamOf(setup: MatchSetup, slot: number): number {
+  const i = setup.players.findIndex((p) => p.slot === slot);
+  const p = setup.players[i];
+  return ((setup.rules.teams ? p?.team ?? i : i) % 2 + 2) % 2;
 }
 
 /** エリアバトルのゲージの色（チーム戦はチームの色、個人戦はその人の色）。key はチーム番号または slot */

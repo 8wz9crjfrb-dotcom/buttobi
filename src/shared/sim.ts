@@ -24,6 +24,7 @@ import {
   type InputState,
   type MatchSetup,
   type AreaView,
+  type BallView,
   type AreaZone,
   type MoveId,
   type ResultEntry,
@@ -44,6 +45,8 @@ export const HITSTUN_DRAG = 0.98;
 
 export interface Projectile {
   owner: number;
+  /** 玉入れ：もうボールを押した */
+  ballHit?: boolean;
   kind: ShotKind;
   x: number;
   y: number;
@@ -97,7 +100,7 @@ const SNAPSHOT_KEYS = [
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHitCd', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
-  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree',
+  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'goals',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -180,6 +183,10 @@ export class Fighter {
   lockMeter = 0;
   /** ハメ防止：動けるようになってからのフレーム数 */
   lockFree = 0;
+  /** 玉入れ：今出している技が、もうボールに当たった */
+  ballHit = false;
+  /** 玉入れ：入れたゴールの数 */
+  goals = 0;
   /** 課金の残り時間 */
   powerBuff = 0;
   /** 自転車に乗っている残り時間 */
@@ -331,6 +338,29 @@ export const AREA = {
   height: 2.3,
 };
 
+/** 玉入れの数値 */
+export const BALL = {
+  r: 0.45,
+  gravity: 15,
+  bounce: 0.55,
+  /** 打ったときの速さ：基本 + 技のダメージ・ふっとばしに比例。上限あり */
+  kickBase: 7,
+  kickDmg: 0.8,
+  kickKb: 0.5,
+  maxSpeed: 22,
+  /** ゴールや場外のあと、ボールが出てくるまで（フレーム） */
+  respawn: 100,
+  /** 何点先取で勝ちか（未指定のとき） */
+  target: 5,
+};
+
+/** 玉入れのかご（0 = 赤チームが守る左、1 = 青チームが守る右）。床の端の上に、ポールで少し高く付ける */
+export function ballBaskets(stage: StageDef): { x1: number; x2: number; y1: number; y2: number; cx: number }[] {
+  const m = stage.main;
+  const w = Math.min(2.2, (m.x2 - m.x1) * 0.13);
+  return [m.x1 + 1.4, m.x2 - 1.4].map((cx) => ({ cx, x1: cx - w / 2, x2: cx + w / 2, y1: m.top + 1.8, y2: m.top + 3.4 }));
+}
+
 /** 決まった値から作る、ばらつきのある整数（エリアの場所選びに使う。試合ごとに同じ結果になる） */
 function hash32(a: number, b: number): number {
   let h = (a ^ Math.imul(b + 0x9e3779b9, 0x85ebca6b)) >>> 0;
@@ -379,8 +409,10 @@ export class Sim {
       f.y = sp.y;
       f.groundRef = sp.y > this.stage.main.top ? this.findPlatformAt(sp.x, sp.y) : -1;
       f.facing = sp.x > 0 ? -1 : 1;
-      f.stocks = setup.rules.mode === 'time' || setup.rules.mode === 'area' ? 0 : setup.rules.stocks;
+      f.stocks = setup.rules.mode === 'time' || setup.rules.mode === 'area' || setup.rules.mode === 'ball' ? 0 : setup.rules.stocks;
       if (setup.rules.teams || setup.rules.horde) f.team = setup.rules.horde ? (i === 0 ? 0 : 1) : Math.max(0, Math.min(3, p.team ?? 0));
+      // 玉入れはいつも赤と青の2チーム（チーム戦でなければ順番に赤・青）
+      if (setup.rules.mode === 'ball') f.team = (setup.rules.teams ? p.team ?? i : i) % 2;
       // 100人組手の敵は倒されても次々に出てくる（残りの人数は hordeLeft で数える）
       if (setup.rules.horde && f.team !== 0) {
         f.stocks = 1;
@@ -394,6 +426,131 @@ export class Sim {
       this.fighters.push(f);
     });
     if (setup.rules.mode === 'area') this.setupArea();
+    if (setup.rules.mode === 'ball') this.resetBall();
+  }
+
+  // ---------------------------------------------------------------- 玉入れ
+  ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1 };
+  ballScore: [number, number] = [0, 0];
+
+  get ballTarget(): number {
+    return this.setup.rules.goals ?? BALL.target;
+  }
+
+  /** ボールをステージの中央の上に出す（timer フレーム後に出てくる） */
+  private resetBall(timer = 0): void {
+    const m = this.stage.main;
+    this.ball = { x: (m.x1 + m.x2) / 2, y: m.top + 4.5, vx: 0, vy: 0, on: timer === 0, timer, last: -1 };
+  }
+
+  private kickBall(vx: number, vy: number, by: number): void {
+    const sp = Math.hypot(vx, vy);
+    const k = sp > BALL.maxSpeed ? BALL.maxSpeed / sp : 1;
+    this.ball.vx = vx * k;
+    this.ball.vy = vy * k;
+    this.ball.last = by;
+  }
+
+  private updateBall(): void {
+    const b = this.ball;
+    if (!b.on) {
+      if (--b.timer <= 0) {
+        this.resetBall();
+        this.events.push({ k: 'poof', x: b.x, y: b.y });
+      }
+      return;
+    }
+    const r = BALL.r;
+    // 攻撃が当たると、技の向き・強さでふっとぶ
+    for (const a of this.fighters) {
+      if (a.state !== 'attack' || !a.move || a.ballHit || a.hitlag > 0) continue;
+      const md = this.moveDef(a);
+      if (md.hitboxes.length === 0) continue;
+      const t = moveTiming(md, a);
+      if (a.moveFrame < t.s || a.moveFrame >= t.s + t.a) continue;
+      const s = a.def.scale;
+      for (const hb of md.hitboxes) {
+        const cx = a.x + hb.x * a.facing * s;
+        const cy = a.y + hb.y * s;
+        if (Math.hypot(cx - b.x, cy - b.y) > hb.r * s + r) continue;
+        a.ballHit = true;
+        // 真横・真下に近い技は、少し上向きに飛ばす（床を転がるだけにならないように）
+        const ang = ((md.angle <= 10 && md.angle >= -10 ? 30 : md.angle < -10 ? 20 : md.angle) * Math.PI) / 180;
+        const sp = (BALL.kickBase + md.dmg * BALL.kickDmg + md.base * BALL.kickKb) * a.def.dmgMul;
+        this.kickBall(Math.cos(ang) * sp * a.facing, Math.sin(ang) * sp, a.slot);
+        this.events.push({ k: 'kick', x: b.x, y: b.y, p: sp });
+        break;
+      }
+    }
+    // 飛び道具が当たると、進む向きに押される
+    for (const p of this.projectiles) {
+      if (Math.hypot(p.x - b.x, p.y - b.y) > r + 0.35) continue;
+      if (p.ballHit) continue;
+      p.ballHit = true;
+      this.kickBall(Math.sign(p.vx || 1) * 9, 5, p.owner);
+    }
+    // 体で押す（ドリブル）
+    for (const f of this.fighters) {
+      if (!f.alive || f.state === 'hitstun') continue;
+      const dx = b.x - f.x;
+      if (Math.abs(dx) < f.hw + r && b.y - r < f.y + f.h && b.y + r > f.y && Math.abs(b.vx) < Math.abs(f.vx) + 1) {
+        b.vx = f.vx * 1.15 + Math.sign(dx || f.facing) * 1.2;
+        b.last = f.slot;
+      }
+    }
+    // 動き：重力・空気抵抗
+    const px = b.x;
+    const py = b.y;
+    b.vy -= BALL.gravity * DT;
+    b.vx *= 0.997;
+    b.x += b.vx * DT;
+    b.y += b.vy * DT;
+    const m = this.stage.main;
+    // 床（上から落ちてきたとき）
+    if (b.vy < 0 && b.x >= m.x1 - r * 0.5 && b.x <= m.x2 + r * 0.5 && py - r >= m.top - 0.05 && b.y - r < m.top) {
+      b.y = m.top + r;
+      b.vy = Math.abs(b.vy) < 2 ? 0 : -b.vy * BALL.bounce;
+      b.vx *= 0.9;
+    } else if (b.y - r < m.top && b.y + r > m.bottom && (px < m.x1 || px > m.x2) && b.x >= m.x1 && b.x <= m.x2) {
+      // 台の横の壁ではね返る
+      b.x = px;
+      b.vx = -b.vx * 0.5;
+    }
+    // すり抜けられる足場（上から落ちてきたときだけ乗る）
+    for (const pl of this.stage.platforms) {
+      const at = platformAt(pl, this.frame);
+      if (b.vy < 0 && b.x >= at.x1 && b.x <= at.x2 && py - r >= at.y - 0.05 && b.y - r < at.y) {
+        b.y = at.y + r;
+        b.vy = Math.abs(b.vy) < 2 ? 0 : -b.vy * BALL.bounce;
+        b.vx = b.vx * 0.9 + at.dx * 60 * 0.1;
+      }
+    }
+    // 転がる摩擦
+    if (b.vy === 0) b.vx *= 0.985;
+    // 天井
+    if (b.y > this.stage.blast.top - 1.5 && b.vy > 0) b.vy = -b.vy * 0.5;
+    // ゴール：相手チームのかごに（上から）入ったら点
+    ballBaskets(this.stage).forEach((g, k) => {
+      // 玉入れらしく、上から落ちてきて入ったときだけ数える
+      if (!b.on || b.vy >= 0 || b.x < g.x1 || b.x > g.x2 || b.y < g.y1 || b.y > g.y2) return;
+      const team = 1 - k;
+      this.ballScore[team]++;
+      const by = this.fighter(b.last);
+      if (by && by.team === team) by.goals++;
+      this.events.push({ k: 'goal', x: g.cx, y: (g.y1 + g.y2) / 2, t: team, s: b.last });
+      b.on = false;
+      b.timer = BALL.respawn;
+    });
+    // 場外：中央から出し直す
+    const bl = this.stage.blast;
+    if (b.on && (b.y < bl.bottom || b.x < bl.left || b.x > bl.right)) {
+      b.on = false;
+      b.timer = BALL.respawn / 2;
+    }
+  }
+
+  private ballView(): BallView {
+    return { x: this.ball.x, y: this.ball.y, vx: this.ball.vx, on: this.ball.on, score: [...this.ballScore] as [number, number], target: this.ballTarget };
   }
 
   // ---------------------------------------------------------------- エリアバトル
@@ -596,6 +753,7 @@ export class Sim {
     for (const f of this.fighters) this.checkBlast(f);
     if (this.setup.rules.mode === 'stamina') for (const f of this.fighters) this.checkHp(f);
     if (playing && !this.solo && this.setup.rules.mode === 'area') this.updateArea();
+    if (playing && !this.solo && this.setup.rules.mode === 'ball') this.updateBall();
     for (const f of this.fighters) this.updateAntiLock(f);
     this.checkEnd();
     for (const f of this.fighters) {
@@ -1042,6 +1200,7 @@ export class Sim {
     } else f.stale = 1;
     if (id !== 'sspecial') f.chain = 0;
     f.redirected = false;
+    f.ballHit = false;
     f.rushQueued = false;
     f.crit = false;
     f.tetherOn = false;
@@ -2679,7 +2838,7 @@ export class Sim {
       }
       return;
     }
-    if (rules.mode !== 'time' && rules.mode !== 'area') {
+    if (rules.mode !== 'time' && rules.mode !== 'area' && rules.mode !== 'ball') {
       f.stocks--;
       if (f.stocks <= 0) {
         f.out = true;
@@ -2696,7 +2855,9 @@ export class Sim {
     let over = timeUp;
     // エリアバトル：だれかのゲージが満タンになったら終わり
     if (rules.mode === 'area' && [...this.areaGauge.values()].some((v) => v >= this.areaGoal)) over = true;
-    if (rules.mode !== 'time' && rules.mode !== 'area' && this.fighters.length > 1) {
+    // 玉入れ：どちらかのチームが先取点に届いたら終わり（ゴールのあと少し間をおく）
+    if (rules.mode === 'ball' && this.ballScore.some((v) => v >= this.ballTarget) && this.ball.timer < BALL.respawn - 45) over = true;
+    if (rules.mode !== 'time' && rules.mode !== 'area' && rules.mode !== 'ball' && this.fighters.length > 1) {
       // 残っているチーム（チーム戦でなければ選手）が1つ以下になったら終わり
       const teams = new Set(this.fighters.filter((f) => !f.out).map((f) => f.team));
       if (teams.size <= 1) over = true;
@@ -2710,9 +2871,12 @@ export class Sim {
   results(): ResultEntry[] {
     const time = this.setup.rules.mode === 'time';
     const area = this.setup.rules.mode === 'area';
+    const ball = this.setup.rules.mode === 'ball';
     const gauge = (f: Fighter) => this.areaGauge.get(this.areaKey(f)) ?? 0;
     const score = (f: Fighter) =>
-      area
+      ball
+        ? f.goals * 1000 + (f.kos - f.falls)
+        : area
         ? Math.floor(gauge(f)) * 1000 + (f.kos - f.falls)
         : time
           ? (f.kos - f.falls) * 10000 - f.damage
@@ -2721,7 +2885,9 @@ export class Sim {
     const teamScore = new Map<number, number>();
     for (const f of this.fighters) {
       const members = this.fighters.filter((o) => o.team === f.team);
-      const v = area
+      const v = ball
+        ? this.ballScore[f.team] * 100000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
+        : area
         ? Math.floor(gauge(f)) * 1000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
         : time
         ? members.reduce((n, o) => n + (o.kos - o.falls), 0) * 10000 - members.reduce((n, o) => n + o.damage, 0) / 1000
@@ -2748,13 +2914,14 @@ export class Sim {
         dealt: Math.round(e.f.dealt),
         throws: e.f.throws,
         ...(area ? { area: Math.floor((gauge(e.f) / this.areaGoal) * 100) } : {}),
+        ...(ball ? { goals: e.f.goals, teamGoals: this.ballScore[e.f.team] } : {}),
       };
     });
   }
 
   /** チームで順位を決める（チーム戦・100人組手） */
   get teamMode(): boolean {
-    return !!(this.setup.rules.teams || this.setup.rules.horde);
+    return !!(this.setup.rules.teams || this.setup.rules.horde || this.setup.rules.mode === 'ball');
   }
 
   toView(): ViewState {
@@ -2796,6 +2963,7 @@ export class Sim {
       ended: this.ended,
       horde: this.setup.rules.horde ? this.hordeDefeated : undefined,
       area: this.setup.rules.mode === 'area' ? this.areaView() : undefined,
+      ball: this.setup.rules.mode === 'ball' ? this.ballView() : undefined,
     };
   }
 }

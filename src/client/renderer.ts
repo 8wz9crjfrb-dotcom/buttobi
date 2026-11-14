@@ -1,10 +1,10 @@
 // three.js による描画：ステージ、キャラクター、カメラ、エフェクト
 
 import * as THREE from 'three';
-import { areaColor, getCharacter, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES } from '../shared/characters';
+import { areaColor, getCharacter, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES, TEAM_COLORS } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
-import { COUNTDOWN_FRAMES } from '../shared/sim';
+import { BALL, ballBaskets, COUNTDOWN_FRAMES } from '../shared/sim';
 import { FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
 import { getCostume } from '../shared/costumes';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -161,6 +161,7 @@ export class GameRenderer {
     this.focusSlot = null;
     this.buildStage(stage);
     this.buildModels();
+    if (setup.rules.mode === 'ball') this.buildBall(stage);
     const m = stage.main;
     this.camLook.set((m.x1 + m.x2) / 2, 3, 0);
     this.camPos.set(this.camLook.x, 5, 26);
@@ -190,6 +191,10 @@ export class GameRenderer {
   private focusSlot: number | null = null;
 
   clear(): void {
+    if (this.ballObj) {
+      this.disposeBeam(this.ballObj.root);
+      this.ballObj = null;
+    }
     for (const z of this.areaMeshes) this.disposeBeam(z.g);
     this.areaMeshes = [];
     for (const en of this.entrances) this.disposeBeam(en.beam);
@@ -495,6 +500,7 @@ export class GameRenderer {
       });
       this.updateEntrances(view);
       this.updateAreaZones(view);
+      this.updateBall(view, dt);
       for (const f of view.fighters) {
         const m = this.models.get(f.slot);
         if (!m) continue;
@@ -775,6 +781,28 @@ export class GameRenderer {
   }
 
   private effect(e: GameEvent, view: ViewState): void {
+    if (e.k === 'kick') {
+      this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.3, 12, 0.05);
+      return;
+    }
+    if (e.k === 'goal') {
+      // ゴール：点を取ったチームの色の紙ふぶきと輪、大きな文字
+      const col = TEAM_COLORS[e.t % TEAM_COLORS.length];
+      for (let i = 0; i < 4; i++) this.spawn(this.ringGeo, i % 2 ? 0xffffff : col, e.x, e.y, 0, 0, 0.4 + i * 0.3, 30 + i * 4, 0.12 + i * 0.03, true);
+      const tex = fxTexture('star');
+      for (let i = 0; i < 30; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 4 + Math.random() * 9;
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: i % 3 ? col : 0xffffff, transparent: true, depthWrite: false }));
+        sprite.position.set(e.x, e.y, 0.8);
+        sprite.scale.setScalar(0.6);
+        this.scene.add(sprite);
+        this.particles.push({ mesh: sprite as unknown as THREE.Mesh, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 4, life: 50, max: 50, grow: -0.005 });
+      }
+      this.props.showText(`${e.t === 0 ? '赤' : '青'}チーム ゴール！`, '#' + col.toString(16).padStart(6, '0'), e.x < 0 ? e.x + 3 : e.x - 3, e.y + 1.8, true, 90);
+      this.shake = Math.max(this.shake, 0.8);
+      return;
+    }
     if (e.k === 'jump') {
       const f = view.fighters.find((x) => x.slot === e.s);
       if (f) this.dust(f.x, f.y, 4, 1.5);
@@ -1027,6 +1055,78 @@ export class GameRenderer {
       this.particles.push({ mesh: sprite as unknown as THREE.Mesh, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 50, max: 50, grow: -0.01 });
     }
     this.shake = 1.6;
+  }
+
+  // ---------------------------------------------------------------- 玉入れ：ボールとかご
+  private ballObj: { root: THREE.Group; ball: THREE.Group; shadow: THREE.Mesh; spin: number } | null = null;
+
+  private buildBall(stage: StageDef): void {
+    const root = new THREE.Group();
+    this.scene.add(root);
+    const toon = (c: number) => new THREE.MeshToonMaterial({ color: c });
+    // ボール：白地に赤と青の帯（玉入れの玉らしく）
+    const ball = new THREE.Group();
+    const r = BALL.r;
+    ball.add(new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), toon(0xf6f4ee)));
+    for (const [c, rot] of [
+      [TEAM_COLORS[0], 0],
+      [TEAM_COLORS[1], Math.PI / 2],
+    ] as const) {
+      const band = new THREE.Mesh(new THREE.TorusGeometry(r * 0.995, r * 0.16, 8, 32), toon(c));
+      band.rotation.y = rot;
+      ball.add(band);
+    }
+    const ol = new THREE.Mesh(new THREE.SphereGeometry(r * 1.06, 20, 14), new THREE.MeshBasicMaterial({ color: 0x1b1b28, side: THREE.BackSide }));
+    ball.add(ol);
+    root.add(ball);
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(r * 0.9, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false }));
+    shadow.rotation.x = -Math.PI / 2;
+    root.add(shadow);
+    // かご：ポールの上に、チームの色のふちの網かご（赤＝左、青＝右）
+    ballBaskets(stage).forEach((g, k) => {
+      const col = TEAM_COLORS[k];
+      const w = (g.x2 - g.x1) / 2;
+      const h = g.y2 - g.y1;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, g.y1 - stage.main.top, 10), toon(0xd8dde6));
+      pole.position.set(g.cx, (g.y1 + stage.main.top) / 2, -0.6);
+      root.add(pole);
+      const net = new THREE.Mesh(
+        new THREE.CylinderGeometry(w, w * 0.75, h, 20, 4, true),
+        new THREE.MeshBasicMaterial({ color: col, wireframe: true, transparent: true, opacity: 0.75 }),
+      );
+      net.position.set(g.cx, g.y1 + h / 2, -0.1);
+      root.add(net);
+      const back = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.98, w * 0.73, h * 0.98, 20, 1, true), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
+      back.position.copy(net.position);
+      root.add(back);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(w, 0.08, 8, 28), toon(col));
+      rim.rotation.x = Math.PI / 2;
+      rim.position.set(g.cx, g.y2, -0.1);
+      root.add(rim);
+      // 底
+      const bottom = new THREE.Mesh(new THREE.CircleGeometry(w * 0.75, 20), toon(col));
+      bottom.rotation.x = -Math.PI / 2;
+      bottom.position.set(g.cx, g.y1 + 0.01, -0.1);
+      root.add(bottom);
+    });
+    this.ballObj = { root, ball, shadow, spin: 0 };
+  }
+
+  private updateBall(view: ViewState, dt: number): void {
+    const o = this.ballObj;
+    const b = view.ball;
+    if (!o || !b) return;
+    o.ball.visible = b.on;
+    o.shadow.visible = b.on && !!this.stage && b.x >= this.stage.main.x1 && b.x <= this.stage.main.x2 && b.y >= this.stage.main.top;
+    o.ball.position.set(b.x, b.y, 0);
+    // 転がり・飛んでいく向きに回す
+    o.spin -= (b.vx / BALL.r) * dt;
+    o.ball.rotation.z = o.spin;
+    if (this.stage) {
+      o.shadow.position.set(b.x, this.stage.main.top + 0.02, 0);
+      const hgt = Math.max(0, b.y - this.stage.main.top);
+      o.shadow.scale.setScalar(Math.max(0.3, 1 - hgt * 0.12));
+    }
   }
 
   // ---------------------------------------------------------------- エリアバトルのエリア
@@ -1395,6 +1495,20 @@ export class GameRenderer {
       maxX = Math.max(maxX, f.x + 2);
       minY = Math.min(minY, f.y - 2.5);
       maxY = Math.max(maxY, f.y + 3);
+    }
+    // 玉入れ：両方のかごとボールもいつも画面に入れる
+    if (view.ball) {
+      for (const g of ballBaskets(st)) {
+        minX = Math.min(minX, g.x1 - 1);
+        maxX = Math.max(maxX, g.x2 + 1);
+        maxY = Math.max(maxY, g.y2 + 1.2);
+      }
+      if (view.ball.on) {
+        minX = Math.min(minX, view.ball.x - 1.5);
+        maxX = Math.max(maxX, view.ball.x + 1.5);
+        maxY = Math.max(maxY, view.ball.y + 1.5);
+        minY = Math.min(minY, view.ball.y - 2);
+      }
     }
     const b = st.blast;
     minX = Math.max(minX, b.left + 2);

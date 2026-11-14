@@ -423,14 +423,16 @@ export class Room extends DurableObject<Env> {
         if (this.sim || slot !== l.hostSlot) return;
         const r = msg.rules;
         l.rules = {
-          mode: r?.mode === 'time' ? 'time' : r?.mode === 'stamina' ? 'stamina' : r?.mode === 'area' ? 'area' : 'stock',
+          mode: r?.mode === 'time' ? 'time' : r?.mode === 'stamina' ? 'stamina' : r?.mode === 'area' ? 'area' : r?.mode === 'ball' ? 'ball' : 'stock',
           stocks: Math.max(1, Math.min(5, r?.stocks | 0 || 3)),
           area: r?.area === 'fix2' ? 'fix2' : r?.area === 'random' ? 'random' : 'move',
+          goals: Math.max(1, Math.min(9, (Number(r?.goals) | 0) || 5)),
           timeLimit: Math.max(60, Math.min(600, r?.timeLimit | 0 || 180)),
           items: r?.items === true,
           gimmicks: r?.gimmicks === true,
           hp: Math.max(50, Math.min(300, (r?.hp ?? 0) | 0 || DEFAULT_HP)),
-          teams: r?.teams === true,
+          // 玉入れは参加した順に赤・青に分かれる（チーム戦の設定は使わない）
+          teams: r?.teams === true && r?.mode !== 'ball',
           friendlyFire: r?.friendlyFire === true,
         };
         if (msg.stageId === RANDOM_STAGE || STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;
@@ -540,7 +542,8 @@ export class Room extends DurableObject<Env> {
     const players = info.players.filter((p) => p.cpu || p.connected);
     if (players.length < 2) return false;
     // チーム戦は2チーム以上いないと始められない
-    if (l.rules.teams && new Set(players.map((p) => p.team ?? 0)).size < 2) return false;
+    // 玉入れは赤・青の2チーム（チームの番号を2で割った余り）
+    if (l.rules.teams && new Set(players.map((p) => (l.rules.mode === 'ball' ? (p.team ?? 0) % 2 : p.team ?? 0))).size < 2) return false;
     const seed = (Math.random() * 2 ** 31) | 0;
     const setup: MatchSetup = {
       players: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel, costume: p.costume, team: p.team ?? 0 })),

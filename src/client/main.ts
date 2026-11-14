@@ -2,12 +2,12 @@
 
 import './styles.css';
 import { CpuController } from '../shared/ai';
-import { CHARACTERS, getCharacter, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
+import { ballTeamOf, CHARACTERS, getCharacter, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
 import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
-import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type ResultEntry, type ViewState } from '../shared/types';
+import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { ICONS, iconTile } from './icons';
@@ -470,6 +470,8 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'shot') sfx.shot();
     else if (e.k === 'counter') sfx.counter();
     else if (e.k === 'boom') sfx.boom();
+    else if (e.k === 'kick') sfx.kick(e.p);
+    else if (e.k === 'goal') sfx.goal();
     else if (e.k === 'flash') sfx.shutter();
     else if (e.k === 'teleport') sfx.warp();
     else if (e.k === 'sleep') sfx.sleep();
@@ -801,19 +803,24 @@ function ruleText(r: MatchRules): string {
         ? `体力制 HP${r.hp ?? DEFAULT_HP}・残機${r.stocks}`
         : r.mode === 'area'
           ? `エリアバトル（${shape}）${r.timeLimit / 60}分`
-          : `タイム ${r.timeLimit / 60}分`;
-  return r.teams ? `${base}・チーム戦（味方への攻撃${r.friendlyFire ? 'あり' : 'なし'}）` : base;
+          : r.mode === 'ball'
+            ? `玉入れ（${r.goals ?? 5}点先取）${r.timeLimit / 60}分`
+            : `タイム ${r.timeLimit / 60}分`;
+  return r.teams && r.mode !== 'ball' ? `${base}・チーム戦（味方への攻撃${r.friendlyFire ? 'あり' : 'なし'}）` : base;
 }
 
 function ruleControls(rules: MatchRules): string {
   return `
-    <div class="opt">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア']], rules.mode)}</div>
+    <div class="opt opt-wide">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ']], rules.mode)}</div>
+    <div class="opt" data-show="ball">先取点 ${seg('goals', [[3, '3点'], [5, '5点'], [7, '7点']], rules.goals ?? 5)}</div>
+    <div class="opt" data-show="ball">時間 ${seg('btime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="area">エリア ${seg('area', [['move', '移動1つ'], ['fix2', '固定2つ'], ['random', 'おまかせ']], rules.area ?? 'move')}</div>
     <div class="opt" data-show="area">時間 ${seg('atime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="stock stamina">残機 ${seg('stocks', [[1, '1'], [2, '2'], [3, '3'], [5, '5']], rules.stocks)}</div>
     <div class="opt" data-show="stamina">HP ${seg('hp', [[100, '100'], [150, '150'], [200, '200'], [300, '300']], rules.hp ?? DEFAULT_HP)}</div>
     <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>
-    <div class="opt">チーム戦 ${seg('teams', [['on', 'あり'], ['off', 'なし']], rules.teams ? 'on' : 'off')}</div>
+    <div class="opt" data-hide="ball">チーム戦 ${seg('teams', [['on', 'あり'], ['off', 'なし']], rules.teams ? 'on' : 'off')}</div>
+    <div class="opt opt-wide" data-show="ball"><span class="muted">玉入れは、参加した順に赤・青の2チームに分かれます</span></div>
     <div class="opt" data-team>味方への攻撃 ${seg('ff', [['off', '当たらない'], ['on', '当たる']], rules.friendlyFire ? 'on' : 'off')}</div>
     <div class="opt">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
     <div class="opt">ステージギミック ${seg('gim', [['on', 'あり'], ['off', 'なし']], rules.gimmicks ? 'on' : 'off')}</div>`;
@@ -822,15 +829,22 @@ function ruleControls(rules: MatchRules): string {
 function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): void {
   const sync = () => {
     root.querySelectorAll<HTMLElement>('[data-show]').forEach((el) => el.classList.toggle('hidden', !el.dataset.show!.split(' ').includes(rules.mode)));
+    root.querySelectorAll<HTMLElement>('[data-hide]').forEach((el) => el.classList.toggle('hidden', el.dataset.hide!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.classList.toggle('hidden', !rules.teams));
   };
   sync();
   bindSeg(root, 'mode', (v) => {
     rules.mode = v as MatchRules['mode'];
-    rules.timeLimit = rules.mode === 'time' ? 180 : rules.mode === 'area' ? 120 : 420;
+    rules.timeLimit = rules.mode === 'time' ? 180 : rules.mode === 'area' || rules.mode === 'ball' ? 120 : 420;
     if (rules.mode === 'area') rules.area ??= 'move';
+    // 玉入れは参加した順に赤・青に分かれる（チーム戦の設定は使わない）
+    if (rules.mode === 'ball') {
+      rules.goals ??= 5;
+      rules.teams = false;
+      root.querySelectorAll<HTMLElement>('[data-seg="teams"] button').forEach((b) => b.classList.toggle('on', b.dataset.v === 'off'));
+    }
     // 時間の選択肢の表示を、選び直した時間に合わせる
-    root.querySelectorAll<HTMLElement>('[data-seg="time"] button, [data-seg="atime"] button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === rules.timeLimit));
+    root.querySelectorAll<HTMLElement>('[data-seg="time"] button, [data-seg="atime"] button, [data-seg="btime"] button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === rules.timeLimit));
     sync();
     onChange();
   });
@@ -857,6 +871,14 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
   });
   bindSeg(root, 'atime', (v) => {
     rules.timeLimit = Number(v);
+    onChange();
+  });
+  bindSeg(root, 'btime', (v) => {
+    rules.timeLimit = Number(v);
+    onChange();
+  });
+  bindSeg(root, 'goals', (v) => {
+    rules.goals = Number(v);
     onChange();
   });
   bindSeg(root, 'area', (v) => {
@@ -1201,6 +1223,18 @@ function showHordeResults(setup: MatchSetup, view: ViewState | null): void {
   );
 }
 
+/** 結果画面の見出し（玉入れは点数つき。同点なら引き分け） */
+function resultTitle(results: ResultEntry[], setup: MatchSetup, winner: PlayerSetup | null | undefined): string {
+  if (setup.rules.mode === 'ball') {
+    const red = results.find((r) => ballTeamOf(setup, r.slot) === 0)?.teamGoals ?? 0;
+    const blue = results.find((r) => ballTeamOf(setup, r.slot) === 1)?.teamGoals ?? 0;
+    if (red === blue) return `引き分け！ <small>${red} - ${blue}</small>`;
+    return `${TEAM_NAMES[red > blue ? 0 : 1]}チームの勝ち！ <small>${red} - ${blue}</small>`;
+  }
+  if (!winner) return '結果';
+  return setup.rules.teams ? `${TEAM_NAMES[(winner.team ?? 0) % TEAM_NAMES.length]}チームの勝ち！` : esc(winner.name) + ' の勝ち！';
+}
+
 /** 結果画面：「もう1戦したい」の人数と、自分が押しているか */
 function updateAgainInfo(): void {
   const el = screensEl.querySelector<HTMLElement>('[data-again]');
@@ -1233,6 +1267,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
     for (const r of results) if (val(r) === best) awards.set(r.slot, [...(awards.get(r.slot) ?? []), label]);
   };
   if (results.length >= 2) {
+    if (setup.rules.mode === 'ball') award('ゴールゲッター', (r) => r.goals ?? 0);
     award('最多撃墜', (r) => r.kos);
     award('最大ダメージ', (r) => r.dealt ?? 0, 30);
     award('投げ名人', (r) => r.throws ?? 0, 2);
@@ -1245,8 +1280,8 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
       const badges = (awards.get(r.slot) ?? []).map((a) => `<span class="award">${a}</span>`).join('');
       return `<div class="res-row ${r.rank === 1 ? 'first' : ''}">
         <div class="rank">${r.rank}</div>
-        <div><span style="color:${hex(playerColor(setup, p.slot))}">●</span> ${setup.rules.teams ? `<small>${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}</small> ` : ''}${esc(p.name)} <small style="color:var(--muted)">${c.name}</small>${badges ? `<div class="awards">${badges}</div>` : ''}</div>
-        <div style="font-size:12px;color:var(--muted);text-align:right">${r.area !== undefined ? `<b class="res-area">エリア ${r.area}%</b><br/>` : ''}撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
+        <div><span style="color:${hex(playerColor(setup, p.slot))}">●</span> ${setup.rules.mode === 'ball' ? `<small>${TEAM_NAMES[ballTeamOf(setup, p.slot)]}</small> ` : setup.rules.teams ? `<small>${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}</small> ` : ''}${esc(p.name)} <small style="color:var(--muted)">${c.name}</small>${badges ? `<div class="awards">${badges}</div>` : ''}</div>
+        <div style="font-size:12px;color:var(--muted);text-align:right">${r.area !== undefined ? `<b class="res-area">エリア ${r.area}%</b><br/>` : ''}${r.goals !== undefined ? `<b class="res-area">ゴール ${r.goals}</b><br/>` : ''}撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
     })
     .join('');
   const win = results.find((r) => r.rank === 1);
@@ -1294,7 +1329,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
   renderer.celebrate(win ? win.slot : null);
   music.play('menu');
   showScreen(
-    `<h2 style="text-align:center">${winner ? (setup.rules.teams ? `${TEAM_NAMES[(winner.team ?? 0) % TEAM_NAMES.length]}チームの勝ち！` : esc(winner.name) + ' の勝ち！') : '結果'}</h2>
+    `<h2 style="text-align:center">${resultTitle(results, setup, winner)}</h2>
      ${reward}
      <div class="results">${rows}</div>
      ${online ? '<div class="again-count muted" data-again></div>' : ''}
@@ -1393,6 +1428,7 @@ function showHowTo(): void {
        <p><b>アピール：</b>ガード中にスティックを上にはじくと、キャラごとの一言（SSR衣装なら特別なセリフ）。</p>
        <p><b>ハメ防止：</b>攻撃を受け続けて、ほとんど動けない状態が約2秒続くと、動けるようになった瞬間に少しの間（約0.75秒）無敵になり、抜け出せます。また、突撃する技・引き寄せる技・入れ替える技・連射しやすい技には、使ったあと少しの待ち時間があります（キャラ選択で技を長押しすると確認できます）。</p>
        <p><b>エリアバトル：</b>エリアに自分（チーム）だけが立っている間ゲージが溜まり、先に満タンにするか、時間切れでゲージの多い人の勝ち。敵が1人でもエリアにいると止まります。味方が多いほど少し速く溜まります。ふっとばされても復活します。</p>
+       <p><b>玉入れ：</b>赤と青の2チームに分かれ（参加した順に交互）、ボールを攻撃でふっとばして、相手チームのかご（赤は右、青は左）に上から入れると1点。先取点（3・5・7点）か、時間切れで点の多いチームの勝ち。弱攻撃はかごまで4〜6mくらい、横攻撃は8〜12mくらいから入りやすいです。</p>
        <p><b>体力制：</b>%のかわりにHPで戦います。HPが0になるとその場で撃墜。ふっとびは小さめなので、HPを削り切るのが基本です。</p>
        <p><b>チーム戦：</b>CPU戦はルール画面、オンラインはルームの枠をタップしてチームを分けます。「味方への攻撃：当たらない」なら、味方には攻撃も飛び道具も当たりません。</p>
        <p><b>100人組手：</b>1機だけで、次々に出てくる敵を100人倒すとクリア。10人倒すごとに少し回復し、30人倒すと敵が3人に増えます。</p>
@@ -2093,7 +2129,7 @@ function finishTutorial(): void {
   showScreen(
     `<h2>チュートリアル完了！</h2>
      <p class="help">これで基本の操作はばっちりです。${first ? '<br/><span class="coin-icon"></span>100 コインをもらいました。' : ''}<br/>キャラごとの必殺技は、キャラ選択で技を長押しすると説明が見られます。</p>
-     <p class="help"><b>ハメ防止：</b>攻撃を受け続けてほとんど動けない状態が約2秒続くと、動けるようになった瞬間に少し無敵になって抜け出せます。<br/><b>いろいろなルール：</b>CPU戦やルームでは、ストック・タイム・体力制のほかに「エリアバトル」（エリアに立ってゲージを溜める）も選べます。詳しくはメニューの「？」（遊び方）へ。</p>
+     <p class="help"><b>ハメ防止：</b>攻撃を受け続けてほとんど動けない状態が約2秒続くと、動けるようになった瞬間に少し無敵になって抜け出せます。<br/><b>いろいろなルール：</b>CPU戦やルームでは、ストック・タイム・体力制のほかに「エリアバトル」（エリアに立ってゲージを溜める）や「玉入れ」（ボールを相手のかごに入れる）も選べます。詳しくはメニューの「？」（遊び方）へ。</p>
      <div class="footer"><button class="btn" id="train">練習を続ける</button><button class="btn primary" id="menu">メニューへ</button></div>`,
     'overlay',
     (root) => {

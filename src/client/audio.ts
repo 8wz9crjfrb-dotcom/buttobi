@@ -61,6 +61,17 @@ export class Sfx {
     this.burst(0.08 + p * 0.15, 0.5 + p * 0.4, 1800 - p * 1200);
     this.tone(220 - p * 120, 0.08 + p * 0.12, 'square', 0.15 + p * 0.15, 60);
   }
+  /** 玉入れ：ボールを打った（ポンという音。強いほど低く大きい） */
+  kick(power: number): void {
+    const p = Math.min(1, power / 20);
+    this.tone(520 - p * 200, 0.09, 'sine', 0.2 + p * 0.1, 260 - p * 100);
+    this.burst(0.04, 0.3 + p * 0.2, 2400);
+  }
+  /** 玉入れ：ゴール（短いファンファーレ） */
+  goal(): void {
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.tone(f, i === 3 ? 0.35 : 0.12, 'square', 0.13), i * 90));
+    this.burst(0.3, 0.4, 3000);
+  }
   ko(): void {
     this.burst(0.6, 0.8, 500);
     this.tone(880, 0.5, 'sawtooth', 0.2, 110);
