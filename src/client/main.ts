@@ -11,6 +11,7 @@ import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type Inpu
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { ICONS, iconTile } from './icons';
+import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
 import { NetClient } from './net';
 import { Predictor } from './predictor';
@@ -446,6 +447,16 @@ function showScreen(html: string, cls = '', bind?: (root: HTMLElement) => void):
   const el = document.createElement('div');
   el.className = `screen ${cls}`;
   el.innerHTML = html;
+  // 下のボタン列（.footer）がある画面は、中身とボタンを別の段に分ける（ボタンが文字の上に重ならないように）。
+  // 中身だけがスクロールし、ボタンはいつも一番下に見える
+  const footer = [...el.children].find((c) => c.classList.contains('footer'));
+  if (footer) {
+    const body = document.createElement('div');
+    body.className = 'screen-body';
+    for (const c of [...el.children]) if (c !== footer) body.appendChild(c);
+    el.insertBefore(body, footer);
+    el.classList.add('has-footer');
+  }
   screensEl.appendChild(el);
   el.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('button')) sfx.click();
@@ -731,8 +742,7 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
 function showTitle(): void {
   const tip = isIOS && !isStandalone() ? `<p class="install-tip">Safari の共有ボタン →「ホーム画面に追加」で、全画面で遊べます。</p>` : '';
   showScreen(
-    `<div class="logo">ぶっとび<br/>アリーナ</div>
-     <div class="logo-sub">BUTTOBI ARENA</div>
+    `<img class="logo-img" src="${logoUrl}" alt="トバセ！" draggable="false"/>
      <div class="row" style="justify-content:center">
        <label class="field">なまえ<input type="text" id="name" maxlength="10" placeholder="プレイヤー" value="${esc(settings.name)}"/></label>
      </div>
@@ -807,7 +817,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
   showScreen(
     `<div class="m-char" id="m-char"></div>
      <div class="m-top">
-       <div class="m-logo">ぶっとびアリーナ<small>BUTTOBI ARENA</small></div>
+       <img class="m-logo" src="${logoUrl}" alt="トバセ！" draggable="false"/>
        <div class="grow"></div>
        ${coinBadge()}
        ${canInstall() ? `<button class="m-icon" id="install" title="ホーム画面に追加">${ICONS.install}</button>` : ''}
@@ -1423,7 +1433,7 @@ function showGachaResult(res: PullResult[], index: number): void {
      <div class="gcards ${res.length > 1 ? 'ten' : ''}">${cards}</div>
      <div class="g-detail">${c.fx ? 'SSR衣装：まわりにエフェクトが舞い、攻撃を当てると特別なエフェクトが出ます。' : ''}${!r.dup ? 'キャラ選択の「衣装」から着られます。' : ''}</div>
      <div class="footer">
-       <button class="btn" id="back">ガチャへ</button>
+       <button class="btn" id="back">もどる</button>
        <div class="row" style="gap:8px">
          ${!r.dup ? '<button class="btn" id="wear">すぐ着る</button>' : ''}
          <button class="btn primary" id="again">もう一度</button>
@@ -1465,7 +1475,7 @@ function showCollection(charId: string): void {
      <div class="seg wrap" data-seg="ch">${tabs}</div>
      <div class="gcards">${items}</div>
      <div class="footer">
-       <button class="btn" id="back">ガチャへ</button>
+       <button class="btn" id="back">もどる</button>
        <button class="btn primary" id="wear">この衣装を着る</button>
      </div>`,
     'overlay charsel-screen',
@@ -1516,7 +1526,7 @@ function showLineup(): void {
      <div class="cs-nameplate">${label(shown)}</div>
      <div class="lu-head">
        <h2>ガチャで出る衣装 <small class="h2-sub">持っている ${have} / ${pool.length}</small></h2>
-       <button class="btn primary small" id="back">ガチャへ</button>
+       <button class="btn small" id="back">もどる</button>
      </div>
      <div class="lineup">${cards}</div>`,
     'overlay charsel-screen',
@@ -2171,10 +2181,10 @@ function inviteUrl(code: string): string {
 
 async function shareInvite(code: string): Promise<void> {
   const url = inviteUrl(code);
-  const text = `ぶっとびアリーナで対戦しよう！ルームコード ${code}`;
+  const text = `「トバセ！」で対戦しよう！ルームコード ${code}`;
   try {
     if (navigator.share) {
-      await navigator.share({ title: 'ぶっとびアリーナ', text, url });
+      await navigator.share({ title: 'トバセ！', text, url });
       return;
     }
   } catch {
