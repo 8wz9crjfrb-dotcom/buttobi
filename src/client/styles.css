@@ -2366,3 +2366,34 @@ table.rec td:first-child {
 .hud-p.me .pnm {
   box-shadow: inset 0 0 0 2px #fff;
 }
+
+/* 5〜6人のときは枠を少し小さく */
+.hud-players.many {
+  gap: 4px;
+  /* 右下の操作ボタンにかからないよう、少し左に寄せる */
+  left: 45%;
+}
+.hud-players.many .hud-p {
+  width: 84px;
+}
+.hud-players.many .hud-p .face {
+  width: 34px;
+  height: 34px;
+  left: -10px;
+  top: -15px;
+}
+.hud-players.many .hud-p .job {
+  padding-left: 24px;
+  margin-right: 8px;
+}
+.hud-players.many .hud-p .dmg {
+  font-size: 21px;
+}
+.hud-players.many .hud-p .pnm {
+  font-size: 10px;
+}
+
+.hud-p .job span {
+  display: inline-block;
+  transform-origin: left center;
+}

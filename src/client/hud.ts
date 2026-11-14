@@ -40,6 +40,8 @@ export class Hud {
     wrap.className = 'hud-players';
     // 100人組手は自分の表示だけ
     const shown = this.horde ? setup.players.slice(0, 1) : setup.players;
+    // 6人（5人以上）のときは枠を少し小さくして、右下のボタンと重ならないようにする
+    wrap.classList.toggle('many', shown.length >= 5);
     for (const p of shown) {
       // 上から：職業名（キャラ名）・ダメージ%・残機・プレイヤー名の帯（プレイヤーの色。チーム戦はチームの色）
       const root = document.createElement('div');
@@ -50,7 +52,9 @@ export class Hud {
       root.style.setProperty('--pc', color);
       const job = document.createElement('div');
       job.className = 'job';
-      job.textContent = getCharacter(p.charId).name;
+      const jobText = document.createElement('span');
+      jobText.textContent = getCharacter(p.charId).name;
+      job.appendChild(jobText);
       const dmg = document.createElement('div');
       dmg.className = 'dmg';
       const stk = document.createElement('div');
@@ -85,9 +89,15 @@ export class Hud {
       if (!p.fitted && p.job.clientWidth > 0) {
         p.fitted = true;
         let size = 9;
-        while (size > 6 && p.job.scrollWidth > p.job.clientWidth) {
+        while (size > 6.5 && p.job.scrollWidth > p.job.clientWidth) {
           size -= 0.25;
           p.job.style.fontSize = `${size}px`;
+        }
+        // それでも収まらなければ、文字の横幅を詰める
+        const span = p.job.firstElementChild as HTMLElement | null;
+        if (span && span.offsetWidth > 0) {
+          const room = p.job.clientWidth - parseFloat(getComputedStyle(p.job).paddingLeft);
+          if (span.offsetWidth > room) span.style.transform = `scaleX(${(room / span.offsetWidth).toFixed(3)})`;
         }
       }
       const d = this.hp ? Math.max(0, Math.ceil(this.hp - f.damage)) : Math.floor(f.damage);
