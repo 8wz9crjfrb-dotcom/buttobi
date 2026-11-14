@@ -53,11 +53,15 @@ export type Accessory =
   /** パジャマのえりとボタン */
   | 'pajama'
   /** 左手にもう1台のスマホ（画面が光る） */
-  | 'phone2';
+  | 'phone2'
+  /** 頭をおおう透明なヘルメット */
+  | 'glassHelmet'
+  /** 背中の冷却装置（金色の段と配管。ヘルメットにつながる） */
+  | 'goldPipes';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
-  particle: 'sparkle' | 'data' | 'petal' | 'heart' | 'star' | 'coin' | 'flame' | 'pixel' | 'medal' | 'zzz';
+  particle: 'sparkle' | 'data' | 'petal' | 'heart' | 'star' | 'coin' | 'flame' | 'pixel' | 'medal' | 'zzz' | 'qubit';
   color: number;
   /** 当たったときに出す粒の色（虹色は -1） */
   hit: number;
@@ -265,6 +269,8 @@ COSTUMES.push({ id: 'dopa-arcade', charId: 'dopa', name: 'ゲーセン荒らし'
   extras: ['capFront', 'jacketRib', 'medalPouch'], extraColor: 0xe5304a, fx: { particle: 'medal', color: 0xffd23f, hit: 0xffd23f, hitText: '777' } });
 COSTUMES.push({ id: 'gacha-allnight', charId: 'gacha', name: '徹夜明けの廃人', rarity: 5, colors: c(0x9cc4e8, 0xe8f2fb, 0xffd23f, 0x3b3046, 0xead2c0, 0x9cc4e8, 0x7a8aa8),
   extras: ['nightcap', 'eyeBags', 'pajama', 'phone2'], extraColor: 0x4a6fa8, fx: { particle: 'zzz', color: 0xbfd8ff, hit: 0x3d7bff, hitText: '10連！' } });
+COSTUMES.push({ id: 'ai-quantum', charId: 'ai', name: '量子コンピュータ技師', rarity: 5, colors: c(0xf4f6fa, 0xd9b44a, 0x8ad8ff, 0x2d3a5a, 0xf3d6bd, 0xf4f6fa, 0xd9b44a),
+  extras: ['glassHelmet', 'goldPipes'], extraColor: 0xd9b44a, fx: { particle: 'qubit', color: 0xb8e8ff, hit: 0x2f8fe0, hitText: '|0〉|1〉' } });
 /** ガチャで引ける衣装 */
 export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);
 

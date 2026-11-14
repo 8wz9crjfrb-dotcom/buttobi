@@ -311,6 +311,26 @@ export function fxTexture(kind: string): THREE.Texture {
       g.fillText('★', 32, 41);
       break;
     }
+    case 'qubit':
+      // 量子ビットの球（円と、横の楕円と、上向きの矢印）
+      g.strokeStyle = '#ffffff';
+      g.lineWidth = 5;
+      g.beginPath();
+      g.arc(32, 32, 25, 0, Math.PI * 2);
+      g.stroke();
+      g.lineWidth = 3;
+      g.beginPath();
+      g.ellipse(32, 32, 25, 8, 0, 0, Math.PI * 2);
+      g.stroke();
+      g.lineWidth = 4;
+      g.beginPath();
+      g.moveTo(32, 32);
+      g.lineTo(42, 12);
+      g.stroke();
+      g.beginPath();
+      g.arc(42, 12, 5, 0, Math.PI * 2);
+      g.fill();
+      break;
     case 'zzz':
       // ねむけの「Z」（大小2つ）
       g.font = `900 34px sans-serif`;
@@ -1107,6 +1127,35 @@ export class FighterModel {
           const hnd = this.hand(this.armL);
           this.part(hnd, new THREE.BoxGeometry(0.1, 0.17, 0.02), this.toon(0x1a1a22), [0, -0.08, 0.06], { rot: [0.3, 0, 0] });
           this.part(hnd, new THREE.BoxGeometry(0.085, 0.145, 0.004), this.glow(0x9cdcff), [0, -0.08, 0.072], { rot: [0.3, 0, 0], outline: false });
+          break;
+        }
+        case 'glassHelmet': {
+          // 頭をおおう透明なヘルメット（中の顔が見えるように、うすく）
+          const glass = new THREE.MeshBasicMaterial({ color: 0xcfefff, transparent: true, opacity: 0.18, depthWrite: false });
+          this.part(h, new THREE.SphereGeometry(0.47, 24, 18), glass, [0, 0.3, 0.02], { outline: false });
+          // 光の反射
+          this.part(h, new THREE.TorusGeometry(0.4, 0.012, 4, 16, 0.9), this.glow(0xffffff), [0, 0.32, 0.18], { rot: [0, 0, 2.0], outline: false });
+          // 首の金のリング
+          this.part(h, new THREE.TorusGeometry(0.17, 0.05, 8, 24), this.toon(col), [0, -0.1, 0.0], { rot: [Math.PI / 2, 0, 0] });
+          break;
+        }
+        case 'goldPipes': {
+          // 背中の冷却装置：金色の円盤が段になり、細い配管が下にのびる
+          const gold = this.toon(col);
+          const pack = new THREE.Group();
+          pack.position.set(0, 0.95, -0.24);
+          b.add(pack);
+          for (let i = 0; i < 3; i++) {
+            this.part(pack, new THREE.CylinderGeometry(0.17 - i * 0.03, 0.17 - i * 0.03, 0.035, 18), gold, [0, 0.16 - i * 0.14, 0], { outline: i === 0 });
+          }
+          for (const [x, z] of [
+            [0.07, 0.04],
+            [-0.07, 0.04],
+            [0, -0.07],
+          ]) this.part(pack, new THREE.CylinderGeometry(0.014, 0.014, 0.42, 6), gold, [x, -0.02, z], { outline: false });
+          this.part(pack, new THREE.SphereGeometry(0.04, 10, 8), this.glow(this.c.accent), [0, -0.25, 0], { outline: false });
+          // 肩ごしにヘルメットへつながる配管
+          for (const sd of [1, -1]) this.part(b, new THREE.TorusGeometry(0.17, 0.016, 6, 14, Math.PI * 0.7), gold, [sd * 0.17, 1.2, -0.12], { rot: [0, Math.PI / 2, sd > 0 ? 0.3 : 2.4], outline: false });
           break;
         }
         case 'festTowel': {
