@@ -1,6 +1,6 @@
 // オフラインでも起動できるように、読み込んだファイルを端末に保存する。
 // 更新したら VERSION を変えると古い保存データが消える。
-const VERSION = 'tobase-v2';
+const VERSION = 'tobase-v3';
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -28,7 +28,22 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-  // それ以外（JS・画像など。ファイル名に版が入っている）：保存したものを優先
+  // ファイル名に版が入っていないもの（アプリ名を決める manifest・アイコンなど）：まずネットから取る（更新がすぐ届くように）
+  if (!url.pathname.includes('/assets/')) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(VERSION).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((r) => r || Response.error())),
+    );
+    return;
+  }
+  // ファイル名に版が入っているもの（assets/ の JS・画像）：保存したものを優先
   event.respondWith(
     caches.match(req).then(
       (hit) =>
