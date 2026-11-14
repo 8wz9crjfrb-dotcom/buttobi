@@ -134,6 +134,8 @@ export interface MoveDef {
   confuse?: number;
   /** ひるみ時間の倍率 */
   hitstunMul?: number;
+  /** 再使用までの待ち時間（フレーム。技が終わってから数える）。連打でハメられないようにする */
+  cd?: number;
 }
 
 /** 4体共通の通常技（キャラごとの攻撃力・速さの倍率がかかる） */
@@ -241,7 +243,7 @@ const SPECIALS: Record<string, Specials> = {
       growth: 0,
       angle: 0,
       air: true,
-      special: 'shot',
+      special: 'shot', cd: 30,
       shots: [0, 5, 10].map((at) => ({ at, kind: 'bullet' as const, x: 0.9, y: 1.0, vx: 16, vy: 0, life: 40, r: 0.25, dmg: 2.2, base: 2.5, growth: 2, angle: 25 })),
     },
     // 全体メール誤送信：封筒が3方向に広がって飛ぶ
@@ -303,12 +305,12 @@ const SPECIALS: Record<string, Specials> = {
       growth: 9,
       angle: 30,
       air: true,
-      special: 'dash',
+      special: 'dash', cd: 30,
       dashSpeed: 18,
       landLag: 10,
     },
     // なりすまし：近くの相手と位置を入れ替える（相手は一瞬固まる）
-    dspecial: { startup: 12, active: 1, end: 22, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'swap' },
+    dspecial: { startup: 12, active: 1, end: 22, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'swap', cd: 240 },
     // 炎上させる：炎をまとって上昇（連続ヒット）
     uspecial: {
       startup: 4,
@@ -381,7 +383,7 @@ const SPECIALS: Record<string, Specials> = {
       growth: 5.5,
       angle: 30,
       air: true,
-      special: 'scroll',
+      special: 'scroll', cd: 30,
       dashSpeed: 12,
       landLag: 8,
     },
@@ -433,7 +435,7 @@ const SPECIALS: Record<string, Specials> = {
       growth: 4,
       angle: 80,
       air: true,
-      special: 'recovery',
+      special: 'recovery', cd: 25,
       riseV: 15.5,
       helpless: true,
       shots: [
@@ -456,7 +458,7 @@ const SPECIALS: Record<string, Specials> = {
       growth: 0,
       angle: 0,
       air: true,
-      special: 'shot',
+      special: 'shot', cd: 45,
       shots: [{ at: 0, kind: 'bag', x: 0.8, y: 1.0, vx: 12, vy: 0, life: 110, r: 0.4, dmg: 6, base: 5, growth: 5, angle: 40, boomerang: 22 }],
     },
     // 自転車：乗ったまま走り回れる（ぶつかるとダメージ、ジャンプで降りる）
@@ -492,8 +494,8 @@ const SPECIALS: Record<string, Specials> = {
       growth: 0,
       angle: 0,
       air: true,
-      special: 'shot',
-      shots: [{ at: 0, kind: 'orb', x: 0.8, y: 1.2, vx: 6.5, vy: 1, life: 130, r: 0.35, dmg: 6, base: 4.5, growth: 5, angle: 40, homing: 0.06 }],
+      special: 'shot', cd: 32,
+      shots: [{ at: 0, kind: 'orb', x: 0.8, y: 1.2, vx: 6.5, vy: 1, life: 130, r: 0.35, dmg: 7, base: 4.8, growth: 5, angle: 40, homing: 0.06 }],
     },
     // 学習：構えている間に飛んできた飛び道具を吸収し、次の攻撃を強化
     sspecial: { startup: 4, active: 40, end: 16, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'absorb' },
@@ -575,7 +577,7 @@ const JOBCHANGE: MoveDef = { startup: 8, active: 6, end: 12, hitboxes: [{ x: 0, 
 const THREEB: Specials[] = [
   {
     // 美容師：シザーラッシュ（Bを連打すると続き、最後の一撃でふっとばす）
-    nspecial: { startup: 5, active: 15, end: 14, hitboxes: [{ x: 0.85, y: 1.0, r: 0.62 }], dmg: 1.6, base: 1.2, growth: 0, angle: 0, air: true, special: 'rush', rehit: 4, hitstunMul: 1.6, landLag: 8 },
+    nspecial: { startup: 5, active: 15, end: 14, hitboxes: [{ x: 0.85, y: 1.0, r: 0.62 }], dmg: 1.6, base: 1.2, growth: 0, angle: 0, air: true, special: 'rush', rehit: 4, hitstunMul: 1.6, landLag: 8, cd: 30 },
     // ブローアップ：熱風を当てながら踏み込む連続ヒット
     sspecial: { startup: 7, active: 16, end: 16, hitboxes: [{ x: 0.9, y: 0.95, r: 0.7 }], dmg: 1.8, base: 3, growth: 1, angle: 10, air: true, special: 'dash', dashSpeed: 7, rehit: 4, landLag: 10 },
     dspecial: JOBCHANGE,
@@ -595,7 +597,7 @@ const THREEB: Specials[] = [
     // バーテンダー：フレアボトル（当たった相手は酔って左右の操作が逆になる）
     nspecial: { startup: 9, active: 5, end: 16, hitboxes: [{ x: 1.0, y: 1.05, r: 0.65 }], dmg: 7, base: 5.5, growth: 7, angle: 40, air: true, special: 'bottle', confuse: 150, landLag: 8 },
     // スライド：低く滑り込む足払い（地上の相手を長くひるませる）
-    sspecial: { startup: 8, active: 12, end: 18, hitboxes: [{ x: 0.75, y: 0.25, r: 0.6 }], dmg: 6, base: 6, growth: 4, angle: 15, air: false, special: 'slide', dashSpeed: 11, hitstunMul: 3.5 },
+    sspecial: { startup: 8, active: 12, end: 18, hitboxes: [{ x: 0.75, y: 0.25, r: 0.6 }], dmg: 6, base: 6, growth: 4, angle: 15, air: false, special: 'slide', dashSpeed: 11, hitstunMul: 3.5, cd: 45 },
     dspecial: JOBCHANGE,
     // シェイカーターン：シェイカーを振りながら回転して上昇
     uspecial: { startup: 5, active: 18, end: 8, hitboxes: [{ x: 0, y: 1.1, r: 0.85 }], dmg: 2.2, base: 5, growth: 3, angle: 80, air: true, special: 'recovery', riseV: 16, rehit: 6, helpless: true },

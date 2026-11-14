@@ -15,7 +15,7 @@ let mx = 1;
 let myX = null;
 const xs = [];
 
-ws.onopen = () => send({ t: 'hello', v: 14, name: 'test', charId: 'guard', create: true });
+ws.onopen = () => send({ t: 'hello', v: 15, name: 'test', charId: 'guard', create: true });
 ws.onmessage = (ev) => {
   const m = JSON.parse(ev.data);
   if (m.t === 'welcome') {

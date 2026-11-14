@@ -97,6 +97,7 @@ const SNAPSHOT_KEYS = [
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHitCd', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
+  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -170,6 +171,15 @@ export class Fighter {
   jobCd = 0;
   /** シザーラッシュの途中でBが押された（切り終わったら、もう一度切り続ける） */
   rushQueued = false;
+  /** 必殺技（B・横B・下B・上B）を次に使えるまでの残りフレーム（連打でハメられないように） */
+  cdN = 0;
+  cdS = 0;
+  cdD = 0;
+  cdU = 0;
+  /** ハメ防止：動けない時間が詰まって続くと溜まる。溜まりきったら、動けるようになった瞬間に少し無敵になる */
+  lockMeter = 0;
+  /** ハメ防止：動けるようになってからのフレーム数 */
+  lockFree = 0;
   /** 課金の残り時間 */
   powerBuff = 0;
   /** 自転車に乗っている残り時間 */
@@ -288,6 +298,17 @@ export const HORDE = {
 };
 /** 体力制で、ふっとびの計算に使うダメージの上限 */
 const STAMINA_KB_CAP = 50;
+
+/**
+ * ハメ防止：ひるみ・眠り・固まり（ヒットストップ）で動けない間は1フレームに1溜まる。
+ * 動けるようになっても、grace フレーム（人が反応して逃げるには短すぎる時間）のうちにまた動けなくなったら減らない。
+ * それより長く動ければ、1フレームに decay ずつ減る。
+ * limit まで溜まったら（約2秒、短いすき間しかなく動けない状態が続いた）、動けるようになった瞬間に invuln フレーム無敵になる。
+ * cut まで溜まっても動けないままなら、ひるみを打ち切る（すき間なしのハメも抜けられる）
+ */
+export const ANTILOCK = { limit: 120, cut: 180, invuln: 45, grace: 20, decay: 4 };
+/** 必殺技の再使用の待ち時間を入れる場所 */
+const SPECIAL_CD = { nspecial: 'cdN', sspecial: 'cdS', dspecial: 'cdD', uspecial: 'cdU' } as const;
 
 /** エリアバトルの数値 */
 export const AREA = {
@@ -563,6 +584,7 @@ export class Sim {
     for (const f of this.fighters) this.checkBlast(f);
     if (this.setup.rules.mode === 'stamina') for (const f of this.fighters) this.checkHp(f);
     if (playing && !this.solo && this.setup.rules.mode === 'area') this.updateArea();
+    for (const f of this.fighters) this.updateAntiLock(f);
     this.checkEnd();
     for (const f of this.fighters) {
       // ヒットストップで止まっていた選手は前回の入力を更新しない（押しっぱなしなら、止まりが解けた時に押したことになる）
@@ -571,6 +593,35 @@ export class Sim {
       f.prevMx = f.input.mx;
       f.prevMy = f.input.my;
     }
+  }
+
+  /** ハメ防止（ANTILOCK を参照） */
+  private updateAntiLock(f: Fighter): void {
+    if (!f.alive) {
+      f.lockMeter = 0;
+      f.lockFree = 0;
+      return;
+    }
+    const stuck = f.hitlag > 0 || f.state === 'hitstun' || f.state === 'sleep';
+    if (stuck) {
+      f.lockFree = 0;
+      f.lockMeter++;
+      // すき間なく動けないまま長く続いたら、ひるみ・眠りを打ち切る
+      if (f.lockMeter >= ANTILOCK.cut) {
+        if (f.state === 'hitstun') f.hitstun = Math.min(f.hitstun, 1);
+        if (f.state === 'sleep') f.stun = Math.min(f.stun, 1);
+      }
+      return;
+    }
+    if (f.lockMeter >= ANTILOCK.limit) {
+      // 抜け出す：少しの間、無敵になる
+      f.invuln = Math.max(f.invuln, ANTILOCK.invuln);
+      f.lockMeter = 0;
+      this.events.push({ k: 'poof', x: f.x, y: f.y + f.h * 0.5 });
+      return;
+    }
+    f.lockFree++;
+    if (f.lockFree > ANTILOCK.grace) f.lockMeter = Math.max(0, f.lockMeter - ANTILOCK.decay);
   }
 
   private readInput(f: Fighter, inp: InputState): void {
@@ -614,6 +665,11 @@ export class Sim {
     if (f.armor > 0) f.armor--;
     if (f.jobBuff > 0) f.jobBuff--;
     if (f.jobCd > 0) f.jobCd--;
+    // 必殺技の待ち時間は、その技を出し終わってから減り始める
+    for (const id of ['nspecial', 'sspecial', 'dspecial', 'uspecial'] as const) {
+      const k = SPECIAL_CD[id];
+      if (f[k] > 0 && !(f.state === 'attack' && f.move === id)) f[k]--;
+    }
     if (f.armorCd > 0) f.armorCd--;
     if (f.powerBuff > 0) f.powerBuff--;
     if (f.confused > 0) f.confused--;
@@ -941,16 +997,20 @@ export class Sim {
     const ax = Math.abs(inp.mx);
     const ay = Math.abs(inp.my);
     if (ay > 0.5 && ay >= ax) {
+      const id = inp.my > 0 ? 'uspecial' : 'dspecial';
+      if (f[SPECIAL_CD[id]] > 0) return;
       // 上必殺技は、スティックを傾けた方向へ向き直る（斜めに飛ぶ技のため）
       if (inp.my > 0 && Math.abs(inp.mx) > 0.3) f.facing = inp.mx > 0 ? 1 : -1;
-      return this.startMove(f, inp.my > 0 ? 'uspecial' : 'dspecial');
+      return this.startMove(f, id);
     }
     if (ax > 0.5) {
+      if (f.cdS > 0) return;
       if (!f.grounded && f.sideBUsed) return;
       f.facing = inp.mx > 0 ? 1 : -1;
       if (!f.grounded) f.sideBUsed = true;
       return this.startMove(f, 'sspecial');
     }
+    if (f.cdN > 0) return;
     this.startMove(f, 'nspecial');
   }
 
@@ -978,6 +1038,8 @@ export class Sim {
       f.chargedMove = true;
       f.absorbCharge = false;
     }
+    // 必殺技の再使用の待ち時間（連打でハメられないように）
+    if (id in SPECIAL_CD && md.cd) f[SPECIAL_CD[id as keyof typeof SPECIAL_CD]] = md.cd;
     f.move = id;
     f.moveFrame = 0;
     f.moveHit = new Set();
@@ -1504,7 +1566,7 @@ export class Sim {
           let target: Fighter | null = null;
           let best: number = SWAP.range;
           for (const v of this.fighters) {
-            if (v === f || !v.alive || v.state === 'ledge' || this.friendly(f.slot, v)) continue;
+            if (v === f || !v.alive || v.invuln > 0 || v.state === 'ledge' || this.friendly(f.slot, v)) continue;
             const d = Math.hypot(v.x - f.x, v.y - f.y);
             if (d < best) {
               best = d;
