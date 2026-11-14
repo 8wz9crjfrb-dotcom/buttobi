@@ -130,6 +130,8 @@ interface InputQueue {
 }
 
 const TICK_MS = 1000 / 60;
+/** 入力の通し番号がこれ以上戻ったら、端末が数え直した（新しい試合）とみなす */
+const RESTART_GAP = 120;
 /** 待ち行列がこれより長い間は、1フレームにつき入力を1つだけ間引いて少しずつ追いつく */
 const QUEUE_SOFT = 6;
 /** これより長くなったら（通信が長く止まった等）、一気に QUEUE_SOFT まで捨てる */
@@ -375,6 +377,15 @@ export class Room extends DurableObject<Env> {
         if (!this.sim || !Array.isArray(msg.i)) return;
         const q = this.queue(slot);
         const first = Number(msg.s) | 0;
+        // 端末は試合が始まるたびに通し番号を0から数え直す。前の試合の大きな番号の入力が、再戦の開始後に
+        // 遅れて届くと、新しい番号の入力をすべて「処理済み」として捨ててしまい、動けなくなる。
+        // 番号が大きく戻ったら、数え直したとみなして受け付け直す（1つの接続の中では順番は入れ替わらない）
+        if (first < q.lastQueued - RESTART_GAP) {
+          q.items = [];
+          q.lastQueued = -1;
+          q.ack = -1;
+          q.last = { mx: 0, my: 0, buttons: 0 };
+        }
         msg.i.slice(0, MAX_INPUTS_PER_MSG).forEach((a, j) => {
           const seq = first + j;
           if (seq <= q.lastQueued || !Array.isArray(a)) return;

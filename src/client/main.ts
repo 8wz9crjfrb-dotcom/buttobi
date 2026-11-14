@@ -472,6 +472,53 @@ function showScreen(html: string, cls = '', bind?: (root: HTMLElement) => void):
   return el;
 }
 
+/** このゲームのURL（ルームコードなどは付けない。友達に教える用） */
+function gameUrl(): string {
+  return `${location.origin}${location.pathname}`;
+}
+
+/** 友達にゲームを教える：URLを表示して、コピー・共有できるようにする */
+function showGameUrl(): void {
+  const url = gameUrl();
+  showScreen(
+    `<h2>友達にゲームを教える</h2>
+     <p class="muted">このURLを送ると、友達もブラウザで遊べます（インストールは不要です）。</p>
+     <div class="url-box"><input type="text" id="game-url" readonly value="${esc(url)}"/></div>
+     <div class="row url-btns">
+       <button class="btn primary" id="copy-url">コピー</button>
+       ${typeof navigator.share === 'function' ? '<button class="btn" id="share-url">共有</button>' : ''}
+     </div>
+     <p class="muted small-note">いっしょに対戦するときは、ルームを作ったあとの画面の「招待リンクを送る」を使うと、そのルームに直接入れるリンクを送れます。</p>
+     <div class="footer"><button class="btn" id="back">もどる</button></div>`,
+    'overlay',
+    (root) => {
+      const box = root.querySelector<HTMLInputElement>('#game-url')!;
+      // タップすると全部選ばれる（長押しでコピーしやすい）
+      box.addEventListener('focus', () => box.select());
+      box.addEventListener('click', () => box.setSelectionRange(0, url.length));
+      root.querySelector('#copy-url')!.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(url);
+          toast('URLをコピーしました');
+        } catch {
+          // コピーできない環境：選んだ状態にして、手でコピーしてもらう
+          box.focus();
+          box.setSelectionRange(0, url.length);
+          toast('URLを選びました。長押しでコピーしてください', 3500);
+        }
+      });
+      root.querySelector('#share-url')?.addEventListener('click', async () => {
+        try {
+          await navigator.share({ title: 'トバセ！', text: '「トバセ！」で遊ぼう！', url });
+        } catch {
+          // 共有をやめたときなど
+        }
+      });
+      root.querySelector('#back')!.addEventListener('click', () => showMenu('multi'));
+    },
+  );
+}
+
 function toast(msg: string, ms = 2500): void {
   toastEl.textContent = msg;
   toastEl.classList.remove('hidden');
@@ -826,7 +873,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
   // アイコンの台の色（ボタンごと）
   const tile: Record<string, string> = {
     solo: '#ff8a3d', multi: '#3d8bff', gacha: '#ff4fa3', records: '#e0a800',
-    cpu: '#ff8a3d', horde: '#e5484d', training: '#2fbf71', create: '#3d8bff', join: '#8a5cff',
+    cpu: '#ff8a3d', horde: '#e5484d', training: '#2fbf71', create: '#3d8bff', join: '#8a5cff', invite: '#2fbf71',
   };
   const big = (id: string, _icon: string, title: string, desc: string, extra = '', cls = '') =>
     `<button class="m-btn ${cls}" id="${id}">${iconTile(id, tile[id] ?? '#555')}<span class="m-tx"><b>${title}</b><small>${desc}</small></span>${extra}</button>`;
@@ -839,7 +886,8 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
       : sub === 'multi'
         ? `<div class="m-subhead"><button class="btn small" id="m-back">‹ もどる</button><b>みんなで</b></div>
            ${big('create', '🏠', 'ルームを作る', online ? '友達とオンライン対戦' : 'サーバーが設定されていません', '', online ? 'primary' : 'off')}
-           ${big('join', '🔢', 'コードで参加', online ? '4桁の合言葉を入力' : 'サーバーが設定されていません', '', online ? '' : 'off')}`
+           ${big('join', '🔢', 'コードで参加', online ? '4桁の合言葉を入力' : 'サーバーが設定されていません', '', online ? '' : 'off')}
+           ${big('invite', '🔗', '友達にゲームを教える', 'このゲームのURLをコピー')}`
         : `${big('solo', '🎮', 'ひとりで', 'CPU対戦・100人組手・練習', '', 'primary')}
            ${big('multi', '🌐', 'みんなで', 'ルームを作る・コードで参加')}
            ${big('gacha', '🎁', 'ガチャ・衣装', '衣装を引く・着替える', dot(gachaBadge(progress, wallet, GACHA_COST.one)))}
@@ -874,6 +922,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
         on('create', () => toast('オンライン対戦のサーバーが設定されていません（設定画面で指定できます）'));
         on('join', () => toast('オンライン対戦のサーバーが設定されていません（設定画面で指定できます）'));
       }
+      on('invite', showGameUrl);
       on('gacha', showGacha);
       on('records', () => showRecords('missions'));
       on('howto', showHowTo);

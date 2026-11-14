@@ -2924,3 +2924,26 @@ table.rec td:first-child {
   font-size: 14px;
   color: #ffd23f;
 }
+
+/* 友達にゲームを教える：URLの欄（タップで全部選べる） */
+.url-box input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--accent);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 15px;
+  font-family: inherit;
+  user-select: all;
+  -webkit-user-select: all;
+}
+.url-btns {
+  margin-top: 10px;
+  gap: 10px;
+}
+.small-note {
+  font-size: 12px;
+  margin-top: 10px;
+}
