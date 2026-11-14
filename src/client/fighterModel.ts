@@ -1158,6 +1158,41 @@ export class FighterModel {
           for (const sd of [1, -1]) this.part(b, new THREE.TorusGeometry(0.17, 0.016, 6, 14, Math.PI * 0.7), gold, [sd * 0.17, 1.2, -0.12], { rot: [0, Math.PI / 2, sd > 0 ? 0.3 : 2.4], outline: false });
           break;
         }
+        case 'haori': {
+          // 前の開いた羽織（藍色）。丈はひざ上、そでは広め
+          const ai = this.toon(0x24305a);
+          ai.side = THREE.DoubleSide;
+          this.part(b, new THREE.CylinderGeometry(0.235 * wide, 0.3 * wide, 0.68, 18, 1, true, 0.45, Math.PI * 2 - 0.9), ai, [0, 0.78, 0], { scale: [1, 1, 0.85] });
+          // えり（前の2本の帯）
+          const eri = this.toon(0x141a33);
+          for (const x of [0.085, -0.085]) this.part(b, new THREE.BoxGeometry(0.05, 0.62, 0.02), eri, [x * wide, 0.8, 0.17], { rot: [0.05, 0, x > 0 ? -0.08 : 0.08], outline: false });
+          // 羽織ひも（金のひもと房）
+          this.part(b, new THREE.BoxGeometry(0.14, 0.022, 0.02), this.toon(col), [0, 0.98, 0.185], { outline: false });
+          this.part(b, new THREE.SphereGeometry(0.035, 10, 8), this.toon(col), [0, 0.98, 0.195], { outline: false });
+          this.part(b, new THREE.ConeGeometry(0.025, 0.07, 8), this.toon(col), [0, 0.93, 0.195], { rot: [Math.PI, 0, 0], outline: false });
+          // 広いそで
+          for (const arm of [this.armL, this.armR]) this.part(arm, new THREE.CylinderGeometry(0.1, 0.135, 0.3, 14), ai, [0, -0.17, 0]);
+          break;
+        }
+        case 'triCrest': {
+          // 背中の家紋：金の輪の中に、ハサミ・ギター・シェイカーを三角に並べる
+          const g = new THREE.Group();
+          g.position.set(0, 0.98, -0.218);
+          g.rotation.y = Math.PI;
+          g.scale.setScalar(1.35);
+          b.add(g);
+          const gold = this.glow(col);
+          this.part(g, new THREE.TorusGeometry(0.12, 0.012, 6, 28), gold, [0, 0, 0], { outline: false });
+          // ハサミ（上）
+          for (const r of [0.4, -0.4]) this.part(g, new THREE.BoxGeometry(0.012, 0.075, 0.006), gold, [0, 0.055, 0], { rot: [0, 0, r], outline: false });
+          // ギター（左下）
+          this.part(g, new THREE.CircleGeometry(0.026, 12), gold, [-0.055, -0.05, 0], { outline: false });
+          this.part(g, new THREE.BoxGeometry(0.01, 0.06, 0.006), gold, [-0.04, -0.015, 0], { rot: [0, 0, -0.5], outline: false });
+          // シェイカー（右下）
+          this.part(g, new THREE.CylinderGeometry(0.016, 0.022, 0.06, 8), gold, [0.055, -0.05, 0], { outline: false });
+          this.part(g, new THREE.ConeGeometry(0.016, 0.025, 8), gold, [0.055, -0.008, 0], { outline: false });
+          break;
+        }
         case 'festTowel': {
           // フェスのタオル：片方の肩にかけて、前と後ろに垂らす（しま模様と「FES」の文字）
           const tex = new THREE.CanvasTexture(

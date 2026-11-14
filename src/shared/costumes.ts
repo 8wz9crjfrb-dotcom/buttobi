@@ -57,7 +57,11 @@ export type Accessory =
   /** 頭をおおう透明なヘルメット */
   | 'glassHelmet'
   /** 背中の冷却装置（金色の段と配管。ヘルメットにつながる） */
-  | 'goldPipes';
+  | 'goldPipes'
+  /** 前の開いた羽織（ひざ上までの丈・広いそで・胸の羽織ひも）。色は extraColor ではなく藍色 */
+  | 'haori'
+  /** 背中の家紋：金の輪の中にハサミ・ギター・シェイカー */
+  | 'triCrest';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
@@ -271,6 +275,8 @@ COSTUMES.push({ id: 'gacha-allnight', charId: 'gacha', name: '徹夜明けの廃
   extras: ['nightcap', 'eyeBags', 'pajama', 'phone2'], extraColor: 0x4a6fa8, fx: { particle: 'zzz', color: 0xbfd8ff, hit: 0x3d7bff, hitText: '10連！' } });
 COSTUMES.push({ id: 'ai-quantum', charId: 'ai', name: '量子コンピュータ技師', rarity: 5, colors: c(0xf4f6fa, 0xd9b44a, 0x8ad8ff, 0x2d3a5a, 0xf3d6bd, 0xf4f6fa, 0xd9b44a),
   extras: ['glassHelmet', 'goldPipes'], extraColor: 0xd9b44a, fx: { particle: 'qubit', color: 0xb8e8ff, hit: 0x2f8fe0, hitText: '|0〉|1〉' } });
+COSTUMES.push({ id: 'threeb-santo', charId: 'threeb', name: '三刀流', rarity: 5, colors: c(0xece6d6, 0x24305a, 0xd9b44a, 0xf0d9a0, 0xf3d6bd, 0x1a1a22, 0x2a2a2e),
+  extras: ['haori', 'triCrest'], extraColor: 0xd9b44a, fx: { particle: 'sparkle', color: 0xffc83f, hit: 0xff8a1a, hitText: '三刀流！' }, jobHair: [0xf0d9a0, 0x8a2a3a, 0x16161c] });
 /** ガチャで引ける衣装 */
 export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);
 
