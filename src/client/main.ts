@@ -1507,20 +1507,63 @@ function playGachaOpening(res: PullResult[]): void {
        <div class="gx-text">${ten ? '10連ガチャ！' : 'ガチャ！'}</div>
        <div class="gx-cards"></div>
        <div class="gx-flash"></div>
-       <div class="go-skip">タップでとばす</div>
+       <div class="go-skip">タップで先へ進む</div>
      </div>`,
     'overlay gacha-stage',
   );
   const stage = el.querySelector<HTMLElement>('.gx')!;
   const cap = el.querySelector<HTMLElement>('.capsule')!;
-  const timers: number[] = [];
+  const box = el.querySelector<HTMLElement>('.gx-cards')!;
+  let timers: number[] = [];
   const at = (ms: number, f: () => void) => timers.push(window.setTimeout(f, ms));
-  let done = false;
-  const finish = () => {
-    if (done) return;
-    done = true;
+  const cancel = () => {
     timers.forEach(clearTimeout);
+    timers = [];
+  };
+  // 今どこまで進んだか（タップすると、とばさずに次の段階へ進む）
+  let phase: 'shake' | 'open' | 'flip' | 'shown' | 'done' = 'shake';
+  let flipped = 0;
+  const finish = () => {
+    if (phase === 'done') return;
+    phase = 'done';
+    cancel();
     showGachaResult(res, 0);
+  };
+  const flipOne = () => {
+    const i = flipped++;
+    box.children[i]?.classList.add('flip');
+    sfx.gachaFlip(res[i].rarity);
+    if (flipped >= res.length) {
+      phase = 'shown';
+      at(ssr ? 600 : 300, () => sfx.gacha(ssr ? 5 : best >= 4 ? 4 : 3));
+      // 出た衣装をしばらく見せてから結果へ（SSR は長めに）
+      at((ten ? 1800 : 1700) + (ssr ? 900 : 0), finish);
+    }
+  };
+  /** カードを並べて、gap ごとに1枚ずつめくる */
+  const flipRest = (gap: number, first: number) => {
+    phase = 'flip';
+    for (let k = flipped; k < res.length; k++) at(first + (k - flipped) * gap, flipOne);
+  };
+  const reveal = () => {
+    stage.classList.add('reveal');
+    box.innerHTML = res
+      .map((r) => {
+        const c = COSTUMES.find((x) => x.id === r.id)!;
+        return `<div class="gx-card r${r.rarity}"><div class="in"><div class="back"></div><div class="front"><b>${rarityName(r.rarity)}</b><div class="n">${c.name}</div><div class="c">${getCharacter(c.charId).name}</div>${r.dup ? '' : '<i class="new">NEW</i>'}</div></div></div>`;
+      })
+      .join('');
+    flipRest(ten ? 140 : 0, 150);
+  };
+  const open = () => {
+    phase = 'open';
+    if (best >= 4) stage.classList.add('tint');
+    if (ssr) stage.classList.add('gold');
+    cap.classList.add('open');
+    stage.classList.add('opened');
+    sfx.gachaOpen(best);
+    burstParticles(stage, ssr ? 46 : best >= 4 ? 30 : 18, ssr);
+    at(450, reveal);
   };
   // 1. 落ちてきて弾む
   stage.classList.add('drop');
@@ -1546,36 +1589,18 @@ function playGachaOpening(res: PullResult[]): void {
       sfx.gachaGold();
     });
   }
-  // 3. 開く：光って、星と紙吹雪が飛び散る
-  at(shakeEnd, () => {
-    cap.classList.add('open');
-    stage.classList.add('opened');
-    sfx.gachaOpen(best);
-    burstParticles(stage, ssr ? 46 : best >= 4 ? 30 : 18, ssr);
+  // 3. 開く → 4. カードを出して、1枚ずつめくる
+  at(shakeEnd, open);
+  // タップ：揺れている間はすぐ開く、めくっている間は残りを少し速めに順番にめくる、全部出たら結果へ
+  el.addEventListener('click', () => {
+    if (phase === 'shake') {
+      cancel();
+      open();
+    } else if (phase === 'flip') {
+      cancel();
+      flipRest(ten ? 70 : 0, 0);
+    } else if (phase === 'shown') finish();
   });
-  // 4. カードを出す（10連は1枚ずつめくる）
-  const cardsAt = shakeEnd + 450;
-  const box = el.querySelector<HTMLElement>('.gx-cards')!;
-  at(cardsAt, () => {
-    stage.classList.add('reveal');
-    box.innerHTML = res
-      .map((r) => {
-        const c = COSTUMES.find((x) => x.id === r.id)!;
-        return `<div class="gx-card r${r.rarity}"><div class="in"><div class="back"></div><div class="front"><b>${rarityName(r.rarity)}</b><div class="n">${c.name}</div><div class="c">${getCharacter(c.charId).name}</div>${r.dup ? '' : '<i class="new">NEW</i>'}</div></div></div>`;
-      })
-      .join('');
-  });
-  const step = ten ? 140 : 0;
-  res.forEach((r, i) => {
-    at(cardsAt + 150 + i * step, () => {
-      box.children[i]?.classList.add('flip');
-      sfx.gachaFlip(r.rarity);
-    });
-  });
-  at(cardsAt + 150 + (res.length - 1) * step + (ssr ? 600 : 300), () => sfx.gacha(ssr ? 5 : best >= 4 ? 4 : 3));
-  // 出た衣装をしばらく見せてから結果へ（SSR は長めに）
-  at(cardsAt + 150 + (res.length - 1) * step + (ten ? 1800 : 1700) + (ssr ? 900 : 0), finish);
-  el.addEventListener('click', finish);
 }
 
 /** ガチャが開いたときに飛び散る星と紙吹雪 */
