@@ -497,6 +497,74 @@ export class GameRenderer {
     this.built?.animate(this.time, dt);
     if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
+    this.renderMenuChar(dt);
+  }
+
+  // ---------------------------------------------------------------- メニュー画面：裏の戦闘の上に、選んでいるキャラを重ねて描く
+  private menuChar: { scene: THREE.Scene; camera: THREE.PerspectiveCamera; model: FighterModel; key: string; charId: string; spin: number; pop: number } | null = null;
+
+  /** メニュー画面に出すキャラ（null で消す） */
+  setMenuChar(charId: string | null, costumeId?: string): void {
+    const key = charId ? `${charId}/${costumeId ?? ''}` : '';
+    if (this.menuChar && this.menuChar.key === key) return;
+    if (this.menuChar) {
+      this.menuChar.model.dispose();
+      this.menuChar = null;
+    }
+    if (!charId) return;
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.7));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+    keyLight.position.set(-3, 6, 8);
+    scene.add(keyLight);
+    const model = new FighterModel(getCharacter(charId), getCostume(costumeId, charId), 0xffffff);
+    model.showMarker = false;
+    model.previewTurn = 0.35;
+    scene.add(model.root);
+    this.menuChar = { scene, camera: new THREE.PerspectiveCamera(30, 1, 0.1, 100), model, key, charId, spin: 0, pop: 0 };
+  }
+
+  /** メニューのキャラをタップしたとき：くるっと回ってアクション */
+  menuCharAction(): void {
+    if (!this.menuChar) return;
+    this.menuChar.model.playAction();
+  }
+
+  /** メニューのキャラを指でなぞって回す */
+  spinMenuChar(dx: number): void {
+    if (this.menuChar) this.menuChar.spin += dx;
+  }
+
+  private renderMenuChar(dt: number): void {
+    const mc = this.menuChar;
+    if (!mc) return;
+    const cam = mc.camera;
+    const w = window.innerWidth;
+    const h = Math.max(1, window.innerHeight);
+    cam.aspect = w / h;
+    // キャラを画面の左寄り（約 18%）に置く。縦長に近い画面（タブレット）では、少し遠くから写して大きくなりすぎないようにする
+    const dist = 8.6 * Math.max(1, 1.9 / cam.aspect);
+    const halfW = Math.tan(((cam.fov / 2) * Math.PI) / 180) * dist * cam.aspect;
+    const offset = halfW * 0.64;
+    cam.position.set(offset, 1.7, dist);
+    cam.lookAt(offset, 1.45, 0);
+    cam.updateProjectionMatrix();
+    mc.pop = Math.min(1, mc.pop + dt * 5);
+    mc.model.root.scale.setScalar(1.3 * (1 + Math.sin(mc.pop * Math.PI) * 0.1));
+    mc.spin *= Math.pow(0.15, dt);
+    mc.model.previewTurn = 0.35 + mc.spin;
+    const fake: ViewFighter = {
+      slot: 0, x: 0, y: 0, facing: 1, state: 'idle', stateTime: Math.floor(this.time * 60), move: null, moveFrame: 0,
+      damage: 0, stocks: 0, invuln: false, shield: 1, charge: 0, kos: 0, falls: 0, out: false, poison: false, fx: 0,
+    };
+    mc.model.update(fake, getCharacter(mc.charId), this.time, dt);
+    mc.model.root.position.y = 0;
+    // 戦闘の絵の上に、奥行きだけ消して重ねる
+    const auto = this.renderer.autoClear;
+    this.renderer.autoClear = false;
+    this.renderer.clearDepth();
+    this.renderer.render(mc.scene, cam);
+    this.renderer.autoClear = auto;
   }
 
   /** 分身：持ち主と同じ見た目のキャラを半透明で表示 */

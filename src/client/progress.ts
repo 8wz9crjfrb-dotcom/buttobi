@@ -41,6 +41,38 @@ export interface Progress {
   tutorialAsked?: boolean;
   /** 100人組手の自己ベスト（倒した数と、そのときの時間） */
   hordeBest?: { kos: number; frames: number; charId: string };
+  /** メニューの赤い点：最後にその画面を開いたときの状態（開くと赤い点が消える） */
+  seen?: { coins: number; missionDay: string; missionsDone: number; titles: number };
+}
+
+// ---------------------------------------------------------------- メニューの赤い点（一度見ると消える）
+function seenOf(p: Progress): NonNullable<Progress['seen']> {
+  return (p.seen ??= { coins: 0, missionDay: '', missionsDone: 0, titles: 0 });
+}
+
+/** ガチャ：前に見たときよりコインが増えていて、1回引ける */
+export function gachaBadge(p: Progress, w: Wallet, cost: number): boolean {
+  return w.coins >= cost && w.coins > (p.seen?.coins ?? 0);
+}
+
+/** 戦績・ミッション：今日のミッションをまだ見ていない／ミッションを達成した／称号が増えた */
+export function recordsBadge(p: Progress): boolean {
+  const s = p.seen;
+  const done = p.missions.list.filter((m) => m.done).length;
+  return !s || s.missionDay !== p.missions.day || done > s.missionsDone || p.titles.length > s.titles;
+}
+
+/** ガチャ画面を開いた */
+export function markGachaSeen(p: Progress, w: Wallet): void {
+  seenOf(p).coins = w.coins;
+}
+
+/** 戦績・ミッション画面を開いた */
+export function markRecordsSeen(p: Progress): void {
+  const s = seenOf(p);
+  s.missionDay = p.missions.day;
+  s.missionsDone = p.missions.list.filter((m) => m.done).length;
+  s.titles = p.titles.length;
 }
 
 // ---------------------------------------------------------------- 100人組手

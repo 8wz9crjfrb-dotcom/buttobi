@@ -27,7 +27,7 @@ import {
 import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
 import { applyTouchLayout, currentButtonPositions } from './touchLayout';
-import { checkTitles, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
+import { checkTitles, gachaBadge, markGachaSeen, markRecordsSeen, recordsBadge, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
 import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, type PullResult } from './wallet';
 import { COSTUMES, getCostume, rarityName } from '../shared/costumes';
 
@@ -438,8 +438,9 @@ function clearScreen(): void {
 }
 
 function showScreen(html: string, cls = '', bind?: (root: HTMLElement) => void): HTMLElement {
-  // キャラ選択の3D表示は、キャラ選択画面（showCharSelect）でだけ出す
+  // キャラ選択の3D表示は、キャラ選択画面（showCharSelect）でだけ出す。メニューのキャラも消す（メニューを出すときに出し直す）
   renderer.hidePreview();
+  renderer.setMenuChar(null);
   screensEl.innerHTML = '';
   const el = document.createElement('div');
   el.className = `screen ${cls}`;
@@ -746,7 +747,7 @@ function showTitle(): void {
         const room = new URLSearchParams(location.search).get('room');
         if (room && isRoomCode(room) && settings.serverUrl) {
           history.replaceState(null, '', location.pathname);
-          joinRoom(room, showMenu);
+          joinRoom(room, () => showMenu());
           return;
         }
         if (!progress.tutorialDone && !progress.tutorialAsked) {
@@ -758,7 +759,7 @@ function showTitle(): void {
              <div class="footer"><button class="btn" id="later">あとで</button><button class="btn primary" id="tut">チュートリアルをやる</button></div>`,
             'overlay',
             (r) => {
-              r.querySelector('#later')!.addEventListener('click', showMenu);
+              r.querySelector('#later')!.addEventListener('click', () => showMenu());
               r.querySelector('#tut')!.addEventListener('click', startTutorial);
             },
           );
@@ -770,42 +771,90 @@ function showTitle(): void {
   );
 }
 
-function showMenu(): void {
+/**
+ * メニュー（レイアウトA）：左に選んでいるキャラ（3D・タップで変更）、右に大きなボタン4つ。
+ * 「ひとりで」「みんなで」は、右の列がそのまま小さなメニューに切り替わる。
+ */
+function showMenu(sub: 'solo' | 'multi' | null = null): void {
   const online = !!settings.serverUrl;
-  const install = canInstall() ? `<button class="btn" id="install">ホーム画面に追加<small>アプリとしてインストール</small></button>` : '';
+  refreshMissions(progress);
+  const done = progress.missions.list.filter((m) => m.done).length;
+  const dot = (on: boolean) => (on ? '<span class="m-dot"></span>' : '');
+  const big = (id: string, icon: string, title: string, desc: string, extra = '', cls = '') =>
+    `<button class="m-btn ${cls}" id="${id}"><span class="m-ic">${icon}</span><span class="m-tx"><b>${title}</b><small>${desc}</small></span>${extra}</button>`;
+  const col =
+    sub === 'solo'
+      ? `<div class="m-subhead"><button class="btn small" id="m-back">‹ もどる</button><b>ひとりで</b></div>
+         ${big('cpu', '🤖', 'CPUと対戦', 'ステージとルールを選んで対戦', '', 'primary')}
+         ${big('horde', '🔥', '100人組手', progress.hordeBest ? `自己ベスト ${progress.hordeBest.kos}人` : '次々に来る敵を倒す')}
+         ${big('training', '🥊', '練習モード', '技やコンボを試す')}`
+      : sub === 'multi'
+        ? `<div class="m-subhead"><button class="btn small" id="m-back">‹ もどる</button><b>みんなで</b></div>
+           ${big('create', '🏠', 'ルームを作る', online ? '友達とオンライン対戦' : 'サーバーが設定されていません', '', online ? 'primary' : 'off')}
+           ${big('join', '🔢', 'コードで参加', online ? '4桁の合言葉を入力' : 'サーバーが設定されていません', '', online ? '' : 'off')}`
+        : `${big('solo', '🎮', 'ひとりで', 'CPU対戦・100人組手・練習', '', 'primary')}
+           ${big('multi', '🌐', 'みんなで', 'ルームを作る・コードで参加')}
+           ${big('gacha', '🎁', 'ガチャ・衣装', '衣装を引く・着替える', dot(gachaBadge(progress, wallet, GACHA_COST.one)))}
+           ${big('records', '🏆', '戦績・ミッション', '今日のミッション', `<span class="m-prog">${done}/3</span>${dot(recordsBadge(progress))}`)}`;
+  const c = getCharacter(settings.charId);
+  const cos = getCostume(myCostume(settings.charId), settings.charId);
   showScreen(
-    `<div class="row" style="justify-content:space-between"><h2>メニュー</h2>${coinBadge()}</div>
-     <div class="menu-grid">
-       <button class="btn primary" id="cpu">CPUと対戦<small>ひとりで練習</small></button>
-       <button class="btn" id="create" ${online ? '' : 'disabled'}>ルームを作る<small>友達とオンライン対戦</small></button>
-       <button class="btn" id="join" ${online ? '' : 'disabled'}>コードで参加<small>4桁の合言葉を入力</small></button>
-       <button class="btn" id="gacha">着せ替えガチャ<small>コインで衣装を引く</small></button>
-       <button class="btn" id="horde">100人組手<small>${progress.hordeBest ? `ベスト ${progress.hordeBest.kos}人` : '次々に来る敵を倒す'}</small></button>
-       <button class="btn" id="training">練習モード<small>技やコンボを試す</small></button>
-       <button class="btn" id="records">戦績・ミッション<small>${missionSummary()}</small></button>
-       <button class="btn" id="howto">遊び方<small>操作とルール</small></button>
-       <button class="btn" id="settings">設定<small>ボタン・画質・音</small></button>
-       ${install}
+    `<div class="m-char" id="m-char"></div>
+     <div class="m-top">
+       <div class="m-logo">ぶっとびアリーナ<small>BUTTOBI ARENA</small></div>
+       <div class="grow"></div>
+       ${coinBadge()}
+       ${canInstall() ? '<button class="m-icon" id="install" title="ホーム画面に追加">📲</button>' : ''}
+       <button class="m-icon" id="howto" title="遊び方">❓</button>
+       <button class="m-icon" id="settings" title="設定">⚙️</button>
      </div>
-     ${online ? '' : '<p class="install-tip" style="text-align:center">オンライン対戦のサーバーが設定されていません（設定画面で指定できます）。</p>'}`,
-    'overlay',
+     <div class="m-plate"><div class="r">${c.name}</div><div class="n">${cos.name}</div><div class="t">タップでキャラ・衣装を変更</div></div>
+     <div class="m-col">${col}</div>`,
+    'menu-screen',
     (root) => {
-      root.querySelector('#cpu')!.addEventListener('click', showLocalSetup);
-      root.querySelector('#horde')!.addEventListener('click', () =>
-        showCharSelect({ title: '100人組手：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'はじめる', onBack: showMenu, onNext: () => startHorde() }),
-      );
-      root.querySelector('#create')!.addEventListener('click', () =>
-        showCharSelect({ title: 'ルームを作る：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'ルームを作る', onBack: showMenu, onNext: () => createRoom(0) }),
-      );
-      root.querySelector('#join')!.addEventListener('click', showJoin);
-      root.querySelector('#howto')!.addEventListener('click', showHowTo);
-      root.querySelector('#gacha')!.addEventListener('click', showGacha);
-      root.querySelector('#records')!.addEventListener('click', () => showRecords('missions'));
-      root.querySelector('#training')!.addEventListener('click', () =>
-        showCharSelect({ title: '練習モード：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'つぎへ', onBack: showMenu, onNext: () => showTrainingSetup() }),
-      );
-      root.querySelector('#settings')!.addEventListener('click', showSettings);
-      root.querySelector('#install')?.addEventListener('click', () => void promptInstall().then(showMenu));
+      const on = (id: string, f: () => void) => root.querySelector('#' + id)?.addEventListener('click', f);
+      on('solo', () => showMenu('solo'));
+      on('multi', () => showMenu('multi'));
+      on('m-back', () => showMenu());
+      on('cpu', showLocalSetup);
+      on('horde', () => showCharSelect({ title: '100人組手：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'はじめる', onBack: () => showMenu('solo'), onNext: () => startHorde() }));
+      on('training', () => showCharSelect({ title: '練習モード：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'つぎへ', onBack: () => showMenu('solo'), onNext: () => showTrainingSetup() }));
+      if (online) {
+        on('create', () => showCharSelect({ title: 'ルームを作る：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'ルームを作る', onBack: () => showMenu('multi'), onNext: () => createRoom(0) }));
+        on('join', showJoin);
+      } else {
+        on('create', () => toast('オンライン対戦のサーバーが設定されていません（設定画面で指定できます）'));
+        on('join', () => toast('オンライン対戦のサーバーが設定されていません（設定画面で指定できます）'));
+      }
+      on('gacha', showGacha);
+      on('records', () => showRecords('missions'));
+      on('howto', showHowTo);
+      on('settings', showSettings);
+      on('install', () => void promptInstall().then(() => showMenu()));
+      // 左のキャラ：なぞると回り、タップするとキャラ・衣装の変更へ
+      const hit = root.querySelector<HTMLElement>('#m-char')!;
+      let lastX: number | null = null;
+      let startX = 0;
+      let startY = 0;
+      hit.addEventListener('pointerdown', (e) => {
+        lastX = startX = e.clientX;
+        startY = e.clientY;
+        hit.setPointerCapture(e.pointerId);
+      });
+      hit.addEventListener('pointermove', (e) => {
+        if (lastX === null) return;
+        renderer.spinMenuChar((e.clientX - lastX) * 0.02);
+        lastX = e.clientX;
+      });
+      hit.addEventListener('pointerup', (e) => {
+        if (lastX === null) return;
+        lastX = null;
+        if (Math.hypot(e.clientX - startX, e.clientY - startY) < 8) {
+          sfx.click();
+          showCharSelect({ title: 'キャラ・衣装を変える', slot: 0, current: settings.charId, nextLabel: '決定', onBack: () => showMenu(), onNext: () => showMenu() });
+        }
+      });
+      if (sub) return;
       // ログインボーナス（その日はじめてメニューを開いたとき）
       const bonus = claimLogin(wallet);
       const newTitles = checkTitles(progress, wallet);
@@ -822,6 +871,7 @@ function showMenu(): void {
       }
     },
   );
+  renderer.setMenuChar(settings.charId, myCostume(settings.charId));
 }
 
 /** ログインボーナスの知らせ（7日分のうち、今日が何日目か） */
@@ -843,7 +893,7 @@ function showLoginBonus(root: HTMLElement, day: number, amount: number): void {
   pop.querySelector('#lb-ok')!.addEventListener('click', () => pop.remove());
 }
 document.addEventListener('installable', () => {
-  if (screensEl.querySelector('.menu-grid')) showMenu();
+  if (screensEl.querySelector('.menu-screen')) showMenu();
 });
 
 function showLocalSetup(): void {
@@ -852,7 +902,7 @@ function showLocalSetup(): void {
     slot: 0,
     current: settings.charId,
     nextLabel: 'つぎへ',
-    onBack: showMenu,
+    onBack: () => showMenu('solo'),
     onNext: () => showLocalRules(),
   });
 }
@@ -1173,7 +1223,7 @@ function showHowTo(): void {
      <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="tut">チュートリアルを始める${progress.tutorialDone ? '' : '（100コイン）'}</button></div>`,
     'overlay',
     (root) => {
-      root.querySelector('#back')!.addEventListener('click', showMenu);
+      root.querySelector('#back')!.addEventListener('click', () => showMenu());
       root.querySelector('#tut')!.addEventListener('click', startTutorial);
     },
   );
@@ -1229,14 +1279,10 @@ function showSettings(): void {
 
 // ---------------------------------------------------------------------------
 // 戦績・ミッション・称号
-function missionSummary(): string {
-  refreshMissions(progress);
-  const done = progress.missions.list.filter((m) => m.done).length;
-  return `今日のミッション ${done}/3`;
-}
-
 function showRecords(tab: 'missions' | 'records' | 'titles'): void {
   refreshMissions(progress);
+  // 赤い点：戦績・ミッション画面を開いたので消す
+  markRecordsSeen(progress);
   saveProgress(progress);
   const day = progress.missions.day;
   let body = '';
@@ -1274,7 +1320,7 @@ function showRecords(tab: 'missions' | 'records' | 'titles'): void {
     'overlay',
     (root) => {
       bindSeg(root, 'tab', (v) => showRecords(v as 'missions' | 'records' | 'titles'));
-      root.querySelector('#back')!.addEventListener('click', showMenu);
+      root.querySelector('#back')!.addEventListener('click', () => showMenu());
     },
   );
 }
@@ -1282,6 +1328,9 @@ function showRecords(tab: 'missions' | 'records' | 'titles'): void {
 // ---------------------------------------------------------------------------
 // 着せ替えガチャ
 function showGacha(): void {
+  // 赤い点：ガチャ画面を開いたので消す
+  markGachaSeen(progress, wallet);
+  saveProgress(progress);
   const left = PITY_LIMIT - wallet.pity;
   showScreen(
     `<div class="row" style="justify-content:space-between"><h2>着せ替えガチャ</h2>${coinBadge()}</div>
@@ -1306,7 +1355,7 @@ function showGacha(): void {
      </div>`,
     'overlay',
     (root) => {
-      root.querySelector('#back')!.addEventListener('click', showMenu);
+      root.querySelector('#back')!.addEventListener('click', () => showMenu());
       root.querySelector('#list')!.addEventListener('click', () => showCollection(settings.charId));
       root.querySelector('#lineup')!.addEventListener('click', showLineup);
       const pull = (n: 1 | 10) => {
@@ -2048,7 +2097,7 @@ const net = new NetClient({
          <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="watch">観戦する</button></div>`,
         'overlay',
         (root) => {
-          root.querySelector('#back')!.addEventListener('click', showMenu);
+          root.querySelector('#back')!.addEventListener('click', () => showMenu());
           root.querySelector('#watch')!.addEventListener('click', () => {
             showScreen(`<h2>接続中…</h2>`, 'overlay');
             net.connect(settings.serverUrl, joinCode, false, settings.name || 'プレイヤー', settings.charId, undefined, true);
@@ -2151,7 +2200,7 @@ function showJoin(): void {
         unlockAudio();
         joinRoom(code, showJoin);
       });
-      root.querySelector('#back')!.addEventListener('click', showMenu);
+      root.querySelector('#back')!.addEventListener('click', () => showMenu('multi'));
     },
   );
 }
