@@ -331,6 +331,23 @@ export function fxTexture(kind: string): THREE.Texture {
       g.arc(42, 12, 5, 0, Math.PI * 2);
       g.fill();
       break;
+    case 'gear': {
+      // 歯車（歯のある円に、まんなかの穴）
+      g.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        const r = i % 2 ? 22 : 29;
+        g.lineTo(32 + Math.cos(a - 0.12) * r, 32 + Math.sin(a - 0.12) * r);
+        g.lineTo(32 + Math.cos(a + 0.12) * r, 32 + Math.sin(a + 0.12) * r);
+      }
+      g.closePath();
+      g.fill();
+      g.globalCompositeOperation = 'destination-out';
+      g.beginPath();
+      g.arc(32, 32, 9, 0, Math.PI * 2);
+      g.fill();
+      break;
+    }
     case 'zzz':
       // ねむけの「Z」（大小2つ）
       g.font = `900 34px sans-serif`;
@@ -1309,6 +1326,77 @@ export class FighterModel {
           this.spinners.push({ g, speed: -0.8 });
           break;
         }
+        case 'suitLines': {
+          // 胸のV字・ベルト・腕のライン（光る）
+          const ln = this.glow(col);
+          for (const sd of [1, -1]) this.part(b, new THREE.BoxGeometry(0.018, 0.26, 0.01), ln, [sd * 0.065, 1.03, 0.172], { rot: [0.1, 0, -sd * 0.45], outline: false });
+          this.part(b, new THREE.TorusGeometry(0.205 * wide, 0.014, 4, 32), ln, [0, 0.74, 0], { rot: [Math.PI / 2, 0, 0], scale: [1.08, 0.86, 1], outline: false });
+          this.part(b, new THREE.BoxGeometry(0.06, 0.05, 0.012), ln, [0, 0.74, 0.18], { outline: false });
+          for (const arm of [this.armL, this.armR]) this.part(arm, new THREE.TorusGeometry(0.075, 0.012, 4, 16), ln, [0, -0.26, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+          break;
+        }
+        case 'clockRing': {
+          // 背中の大きな時計：まわりの歯車の輪がゆっくり回り、長針と短針が進む
+          const clock = new THREE.Group();
+          clock.position.set(0, 1.05, -0.62);
+          b.add(clock);
+          const gold = this.glow(col);
+          const face = new THREE.MeshBasicMaterial({ color: 0x1a2350, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false });
+          capBrightness(face, 'basic-cap');
+          this.part(clock, new THREE.CircleGeometry(0.42, 40), face, [0, 0, -0.01], { outline: false });
+          // 歯車の輪（回る）
+          const teeth = new THREE.Group();
+          clock.add(teeth);
+          this.part(teeth, new THREE.TorusGeometry(0.44, 0.022, 6, 48), gold, [0, 0, 0], { outline: false });
+          for (let i = 0; i < 24; i++) {
+            const a = (i / 24) * Math.PI * 2;
+            this.part(teeth, new THREE.BoxGeometry(0.05, 0.05, 0.02), gold, [Math.cos(a) * 0.48, Math.sin(a) * 0.48, 0], { rot: [0, 0, a], outline: false });
+          }
+          this.spinners.push({ g: teeth, speed: 0.25, axis: 'z' });
+          // 目もり（12か所。3・6・9・12は長め）
+          for (let i = 0; i < 12; i++) {
+            const a = (i / 12) * Math.PI * 2;
+            const len = i % 3 ? 0.04 : 0.08;
+            this.part(clock, new THREE.BoxGeometry(0.018, len, 0.01), gold, [Math.sin(a) * (0.37 - len / 2), Math.cos(a) * (0.37 - len / 2), 0], { rot: [0, 0, -a], outline: false });
+          }
+          // 長針・短針（逆回り。背中側から見て時計回りに見えるように）
+          for (const [len, w, sp] of [
+            [0.3, 0.022, 1.2],
+            [0.2, 0.034, 0.1],
+          ] as const) {
+            const hand = new THREE.Group();
+            clock.add(hand);
+            this.part(hand, new THREE.BoxGeometry(w, len, 0.012), gold, [0, len / 2, 0.01], { outline: false });
+            this.spinners.push({ g: hand, speed: sp, axis: 'z' });
+          }
+          this.part(clock, new THREE.SphereGeometry(0.035, 10, 8), gold, [0, 0, 0.02], { outline: false });
+          break;
+        }
+        case 'gearOrbit': {
+          // まわりを回る小さな歯車（3つ、高さと大きさを変える）
+          const g = new THREE.Group();
+          g.position.y = 0.9;
+          b.add(g);
+          const gold = this.toon(col);
+          for (let k = 0; k < 3; k++) {
+            const pv = new THREE.Group();
+            pv.rotation.y = (k / 3) * Math.PI * 2;
+            g.add(pv);
+            const r = 0.09 + k * 0.025;
+            const gear = new THREE.Group();
+            gear.position.set(0, [-0.15, 0.25, 0.05][k], 0.78);
+            pv.add(gear);
+            this.part(gear, new THREE.CylinderGeometry(r, r, 0.03, 16), gold, [0, 0, 0], { rot: [Math.PI / 2, 0, 0] });
+            for (let i = 0; i < 8; i++) {
+              const a = (i / 8) * Math.PI * 2;
+              this.part(gear, new THREE.BoxGeometry(0.035, 0.035, 0.03), gold, [Math.cos(a) * (r + 0.015), Math.sin(a) * (r + 0.015), 0], { rot: [0, 0, a], outline: false });
+            }
+            this.part(gear, new THREE.CylinderGeometry(r * 0.35, r * 0.35, 0.035, 10), this.toon(0x0e1430), [0, 0, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+            this.spinners.push({ g: gear, speed: k % 2 ? 1.5 : -1.5, axis: 'z' });
+          }
+          this.spinners.push({ g, speed: 0.7 });
+          break;
+        }
         case 'festTowel': {
           // フェスのタオル：片方の肩にかけて、前と後ろに垂らす（しま模様と「FES」の文字）
           const tex = new THREE.CanvasTexture(
@@ -1440,7 +1528,7 @@ export class FighterModel {
   private hideEyes = false;
   private halos: THREE.Group[] = [];
   /** ゆっくり回る小物（光の盾・星の輪など）と、ふわふわ浮く小物 */
-  private spinners: { g: THREE.Group; speed: number }[] = [];
+  private spinners: { g: THREE.Group; speed: number; axis?: 'y' | 'z' }[] = [];
   private floaters: { g: THREE.Group; base: number }[] = [];
   private wingGroups: { g: THREE.Group; side: number }[] = [];
 
@@ -1451,7 +1539,8 @@ export class FighterModel {
     }
     for (const w of this.wingGroups) w.g.rotation.y = w.side * (0.25 + Math.sin(time * 3.2) * 0.25);
     for (const sp of this.spinners) {
-      sp.g.rotation.y = time * sp.speed;
+      if (sp.axis === 'z') sp.g.rotation.z = time * sp.speed;
+      else sp.g.rotation.y = time * sp.speed;
       sp.g.visible = visible;
     }
     this.floaters.forEach((f, i) => (f.g.position.y = f.base + Math.sin(time * 2.4 + i * 1.7) * 0.05));

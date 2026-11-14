@@ -71,11 +71,17 @@ export type Accessory =
   /** まわりを回るファイルのアイコン（UR） */
   | 'fileOrbit'
   /** 虹色のしまのネクタイ */
-  | 'rainbowTie';
+  | 'rainbowTie'
+  /** 背中の大きな時計の輪（歯車がまわり、長針と短針が進む）（UR） */
+  | 'clockRing'
+  /** まわりを回る小さな歯車3つ（UR） */
+  | 'gearOrbit'
+  /** 未来風のスーツの光るライン（胸のV字・ベルト・腕） */
+  | 'suitLines';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
-  particle: 'sparkle' | 'data' | 'petal' | 'heart' | 'star' | 'coin' | 'flame' | 'pixel' | 'medal' | 'zzz' | 'qubit';
+  particle: 'sparkle' | 'data' | 'petal' | 'heart' | 'star' | 'coin' | 'flame' | 'pixel' | 'medal' | 'zzz' | 'qubit' | 'gear';
   color: number;
   /** 当たったときに出す粒の色（虹色は -1） */
   hit: number;
@@ -291,6 +297,8 @@ COSTUMES.push({ id: 'hacker-ur', charId: 'hacker', name: '電脳の支配者', r
   extras: ['circuitCoat', 'monitorOrbit'], extraColor: 0x39ff88, fx: { particle: 'data', color: 0x39ff88, hit: 0x1fd870, hitText: 'ACCESS GRANTED' } });
 COSTUMES.push({ id: 'thief-ur', charId: 'thief', name: 'データの大富豪', rarity: 6, colors: c(0x111118, 0x08080c, 0xffd23f, 0x1c1424, 0xe9c3a3, 0x111118, 0xffd23f),
   extras: ['rainbowTie', 'dataSack', 'fileOrbit'], extraColor: 0xffd23f, fx: { particle: 'data', color: 0xffd23f, hit: 0xffb81f, hitText: '全部いただき！' } });
+COSTUMES.push({ id: 'courier-ur', charId: 'courier', name: '時空配達人', rarity: 6, colors: c(0x1a2350, 0x0e1430, 0xffd23f, 0x5a3a24, 0xd9a77e, 0x0e1430, 0xffd23f),
+  extras: ['suitLines', 'clockRing', 'gearOrbit'], extraColor: 0xffd23f, fx: { particle: 'gear', color: 0xffd23f, hit: 0xffb81f, hitText: '注文前にお届け' } });
 /** ガチャで引ける衣装 */
 export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);
 
