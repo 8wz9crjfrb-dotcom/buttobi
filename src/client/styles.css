@@ -2329,3 +2329,40 @@ table.rec td:first-child {
   background: rgba(255, 255, 255, 0.92);
   color: #1b1f3b;
 }
+
+/* 画面下の表示（案A）：上に職業名、真ん中に%と残機、一番下にプレイヤー名の帯 */
+.hud-p {
+  width: 104px;
+  min-width: 0;
+  padding: 2px 0 0;
+  border-bottom: 0;
+  overflow: visible;
+}
+.hud-p .job {
+  font-size: 9px;
+  color: #dfe3ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-align: left;
+  padding-left: 28px;
+  /* 右どなりの顔アイコンに隠れないように */
+  margin-right: 9px;
+  height: 14px;
+  line-height: 14px;
+}
+.hud-p .pnm {
+  margin-top: 2px;
+  background: var(--pc);
+  color: #1b1f3b;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 0 0 10px 10px;
+  padding: 1px 6px 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 自分の枠は、名前の帯を白いふちで囲んで見分けやすく */
+.hud-p.me .pnm {
+  box-shadow: inset 0 0 0 2px #fff;
+}

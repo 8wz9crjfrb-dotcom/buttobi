@@ -8,7 +8,7 @@ const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 export class Hud {
   private el: HTMLElement;
-  private panels = new Map<number, { root: HTMLElement; dmg: HTMLElement; stk: HTMLElement; last: number }>();
+  private panels = new Map<number, { root: HTMLElement; dmg: HTMLElement; stk: HTMLElement; last: number; job: HTMLElement; fitted: boolean }>();
   private timer: HTMLElement;
   private center: HTMLElement;
   private net: HTMLElement;
@@ -41,21 +41,24 @@ export class Hud {
     // 100人組手は自分の表示だけ
     const shown = this.horde ? setup.players.slice(0, 1) : setup.players;
     for (const p of shown) {
+      // 上から：職業名（キャラ名）・ダメージ%・残機・プレイヤー名の帯（プレイヤーの色。チーム戦はチームの色）
       const root = document.createElement('div');
       root.className = 'hud-p';
-      root.style.color = hex(playerColor(setup, p.slot));
-      const nm = document.createElement('div');
-      nm.className = 'nm';
-      const you = myslot === p.slot ? '（あなた）' : '';
-      const team = setup.rules.teams ? `${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}チーム ` : `P${p.slot + 1} `;
-      nm.textContent = `${team}${p.name}${you}`;
+      if (myslot === p.slot) root.classList.add('me');
+      const color = hex(playerColor(setup, p.slot));
+      root.style.color = color;
+      root.style.setProperty('--pc', color);
+      const job = document.createElement('div');
+      job.className = 'job';
+      job.textContent = getCharacter(p.charId).name;
       const dmg = document.createElement('div');
       dmg.className = 'dmg';
       const stk = document.createElement('div');
       stk.className = 'stk';
-      const ch = document.createElement('div');
-      ch.className = 'nm';
-      ch.textContent = getCharacter(p.charId).name;
+      const nm = document.createElement('div');
+      nm.className = 'pnm';
+      const team = setup.rules.teams ? `${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}・` : '';
+      nm.textContent = `${team}${p.name}`;
       if (portraits[p.slot]) {
         const face = document.createElement('img');
         face.className = 'face';
@@ -63,9 +66,9 @@ export class Hud {
         face.alt = '';
         root.appendChild(face);
       }
-      root.append(nm, dmg, stk);
+      root.append(job, dmg, stk, nm);
       wrap.appendChild(root);
-      this.panels.set(p.slot, { root, dmg, stk, last: -1 });
+      this.panels.set(p.slot, { root, dmg, stk, last: -1, job, fitted: false });
     }
     this.timer.className = 'hud-timer';
     this.center.className = 'hud-center';
@@ -78,6 +81,15 @@ export class Hud {
     for (const f of v.fighters) {
       const p = this.panels.get(f.slot);
       if (!p) continue;
+      // 長い職業名は、枠に収まるよう横に縮める（省略しない）。表示されてから一度だけ測る
+      if (!p.fitted && p.job.clientWidth > 0) {
+        p.fitted = true;
+        let size = 9;
+        while (size > 6 && p.job.scrollWidth > p.job.clientWidth) {
+          size -= 0.25;
+          p.job.style.fontSize = `${size}px`;
+        }
+      }
       const d = this.hp ? Math.max(0, Math.ceil(this.hp - f.damage)) : Math.floor(f.damage);
       if (d !== p.last) {
         // 体力制は残りHP（減るほど赤く）、ふつうはダメージ%（増えるほど赤く）
