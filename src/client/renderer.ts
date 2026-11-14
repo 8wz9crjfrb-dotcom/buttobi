@@ -1,7 +1,7 @@
 // three.js による描画：ステージ、キャラクター、カメラ、エフェクト
 
 import * as THREE from 'three';
-import { getCharacter, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES } from '../shared/characters';
+import { areaColor, getCharacter, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
 import { COUNTDOWN_FRAMES } from '../shared/sim';
@@ -190,6 +190,8 @@ export class GameRenderer {
   private focusSlot: number | null = null;
 
   clear(): void {
+    for (const z of this.areaMeshes) this.disposeBeam(z.g);
+    this.areaMeshes = [];
     for (const en of this.entrances) this.disposeBeam(en.beam);
     this.entrances = [];
     for (const { model } of this.models.values()) {
@@ -492,6 +494,7 @@ export class GameRenderer {
         this.platformMeshes[i].position.y = at.y - 0.11;
       });
       this.updateEntrances(view);
+      this.updateAreaZones(view);
       for (const f of view.fighters) {
         const m = this.models.get(f.slot);
         if (!m) continue;
@@ -1024,6 +1027,78 @@ export class GameRenderer {
       this.particles.push({ mesh: sprite as unknown as THREE.Mesh, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 50, max: 50, grow: -0.01 });
     }
     this.shake = 1.6;
+  }
+
+  // ---------------------------------------------------------------- エリアバトルのエリア
+  // 床の光る帯・下から上へうすくなる光の柱・左右のふち。色はエリアを取っている人（チーム）の色。
+  // 取り合い中は赤と淡い金色で点滅、だれもいなければ淡い金色。次のエリア（予告）は金色で点滅
+  private areaMeshes: { g: THREE.Group; floor: THREE.Mesh; col: THREE.Mesh; edges: THREE.Mesh[]; key: string }[] = [];
+  private areaGrad: THREE.CanvasTexture | null = null;
+
+  private areaGradient(): THREE.CanvasTexture {
+    if (this.areaGrad) return this.areaGrad;
+    const c = document.createElement('canvas');
+    c.width = 4;
+    c.height = 64;
+    const g = c.getContext('2d')!;
+    const gr = g.createLinearGradient(0, 64, 0, 0);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 4, 64);
+    this.areaGrad = new THREE.CanvasTexture(c);
+    return this.areaGrad;
+  }
+
+  private makeAreaMesh(): (typeof this.areaMeshes)[number] {
+    const g = new THREE.Group();
+    const mat = (o: number, map?: THREE.Texture) => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: o, depthWrite: false, side: THREE.DoubleSide, map: map ?? null });
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(1, 0.08, 2.6), mat(0.6));
+    const col = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat(0.28, this.areaGradient()));
+    col.position.z = -1.2;
+    const edges = [0, 1].map(() => {
+      const e = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 1), mat(0.55, this.areaGradient()));
+      e.position.z = 0.9;
+      return e;
+    });
+    g.add(floor, col, ...edges);
+    this.scene.add(g);
+    return { g, floor, col, edges, key: '' };
+  }
+
+  private updateAreaZones(view: ViewState): void {
+    const a = view.area;
+    const list = a ? [...a.zones.map((z) => ({ ...z, next: false })), ...a.next.map((z) => ({ ...z, holder: -1, next: true }))] : [];
+    while (this.areaMeshes.length < list.length) this.areaMeshes.push(this.makeAreaMesh());
+    this.areaMeshes.forEach((m, i) => {
+      const z = list[i];
+      m.g.visible = !!z;
+      if (!z) return;
+      const w = z.x2 - z.x1;
+      const h = z.y2 - z.y1;
+      m.g.position.set((z.x1 + z.x2) / 2, z.y1, 0);
+      m.floor.scale.set(w, 1, 1);
+      m.floor.position.y = 0.04;
+      m.col.scale.set(w, h, 1);
+      m.col.position.y = h / 2;
+      m.edges.forEach((e, k) => {
+        e.scale.set(1, h, 1);
+        e.position.set((k ? 1 : -1) * (w / 2), h / 2, 0.9);
+      });
+      const blink = Math.floor(this.time * 6) % 2 === 0;
+      // 白い床でも見えるように、だれもいないエリアは淡い金色、予告は金色にする
+      let color = z.next ? 0xffd23f : 0xfff0a0;
+      if (z.holder === -2) color = blink ? 0xff4a4a : 0xfff0a0;
+      else if (z.holder >= 0) color = areaColor(this.setup, z.holder);
+      const mats = [m.floor, m.col, ...m.edges].map((x) => x.material as THREE.MeshBasicMaterial);
+      mats.forEach((mt) => mt.color.setHex(color));
+      // 予告：全体を白く点滅させる（ゆっくり、はっきり）
+      const slow = Math.floor(this.time * 3) % 2 === 0;
+      const op = z.next ? (slow ? 1 : 0.3) : 1;
+      (m.floor.material as THREE.MeshBasicMaterial).opacity = (z.holder === -1 ? 0.8 : 0.75) * op;
+      (m.col.material as THREE.MeshBasicMaterial).opacity = (z.next ? 0.18 : z.holder === -1 ? 0.24 : 0.34) * op;
+      for (const e of m.edges) (e.material as THREE.MeshBasicMaterial).opacity = 0.85 * op;
+    });
   }
 
   // ---------------------------------------------------------------- UR の登場演出

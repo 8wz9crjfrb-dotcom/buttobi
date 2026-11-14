@@ -103,7 +103,9 @@ export const MOVE_IDS: MoveId[] = [
 ];
 
 /** stock = 残機制、time = タイム制、stamina = 体力制（HPが0になるか場外で撃墜） */
-export type RuleMode = 'stock' | 'time' | 'stamina';
+export type RuleMode = 'stock' | 'time' | 'stamina' | 'area';
+/** エリアバトルのエリアの形：移動する1つ／動かない2つ／おまかせ（試合ごとにどちらか） */
+export type AreaShape = 'move' | 'fix2' | 'random';
 
 export interface MatchRules {
   mode: RuleMode;
@@ -122,6 +124,8 @@ export interface MatchRules {
   friendlyFire?: boolean;
   /** 100人組手：倒す敵の人数（端末だけで遊ぶモード。players の先頭が自分、ほかは全員敵） */
   horde?: number;
+  /** エリアバトルのエリアの形 */
+  area?: AreaShape;
 }
 
 /** 体力制のHP（未指定のとき） */
@@ -246,6 +250,28 @@ export interface ViewState {
   ended: boolean;
   /** 100人組手：倒した敵の数 */
   horde?: number;
+  /** エリアバトルの状態 */
+  area?: AreaView;
+}
+
+/** エリア（床の上の、縦に長い範囲） */
+export interface AreaZone {
+  x1: number;
+  x2: number;
+  y1: number;
+  y2: number;
+}
+
+/** エリアバトルの画面用の状態 */
+export interface AreaView {
+  /** 今のエリアと、その状態（-1 = だれもいない、-2 = 取り合い中、それ以外 = いる人のゲージの番号） */
+  zones: (AreaZone & { holder: number })[];
+  /** 次のエリア（移動する直前の予告）と、移るまでのフレーム数 */
+  next: AreaZone[];
+  nextIn: number;
+  /** ゲージ：[番号, 値] の並び。番号はチーム戦ならチーム、個人戦なら slot。値は 0〜goal */
+  gauges: [number, number][];
+  goal: number;
 }
 
 export interface ResultEntry {
@@ -256,6 +282,8 @@ export interface ResultEntry {
   score: number;
   /** 与えたダメージ（%） */
   dealt?: number;
+  /** エリアバトル：ゲージ（%。チーム戦はチームのゲージ） */
+  area?: number;
   /** 投げた回数 */
   throws?: number;
 }

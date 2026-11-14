@@ -1,7 +1,7 @@
 // CPUの思考。強さ(level 1〜9)で反応の速さと判断の正確さが変わる。
 
 import { Rng } from './rng';
-import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type InputState } from './types';
+import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type AreaZone, type InputState } from './types';
 import type { Fighter, Sim } from './sim';
 
 /** CPUが狙う相手（選手、または分身） */
@@ -85,6 +85,12 @@ export class CpuController {
     if (b.holdFrames > 0) {
       b.holdFrames--;
       return b.hold;
+    }
+
+    // エリアバトル：エリアへ向かう。エリアの中では、外の相手を深追いしない
+    if (sim.setup.rules.mode === 'area') {
+      const go = this.areaMove(sim, f, lv);
+      if (go) return go;
     }
 
     if (b.cooldown > 0) {
@@ -242,6 +248,50 @@ export class CpuController {
         break;
     }
     return null;
+  }
+
+  /** エリアバトルの動き。null なら、ふつうに戦う */
+  private areaMove(sim: Sim, f: Fighter, lv: number): InputState | null {
+    let zones = sim.areaZones();
+    if (!zones.length) return null;
+    // 強いCPUほど、エリアが移る前に次の場所へ先回りする
+    const nx = sim.areaNext();
+    if (nx.zones.length && nx.nextIn < 40 + lv * 14) zones = nx.zones;
+    // 行き先：近いエリア。動かない2つなら、味方がもう立っているエリアは後回し
+    const key = sim.areaKey(f);
+    let goal: AreaZone | null = null;
+    let best = Infinity;
+    for (const z of zones) {
+      const ally = sim.fighters.some((o) => o !== f && sim.areaKey(o) === key && sim.inZone(o, z));
+      const d = Math.abs((z.x1 + z.x2) / 2 - f.x) + Math.abs(z.y1 - f.y) * 1.5 + (ally ? 8 : 0);
+      if (d < best) {
+        best = d;
+        goal = z;
+      }
+    }
+    if (!goal) return null;
+    const t = this.target(sim, f);
+    const near = t && Math.abs(t.x - f.x) < 1.8 && Math.abs(t.y - f.y) < 1.6;
+    const cx = (goal.x1 + goal.x2) / 2;
+    if (sim.inZone(f, goal)) {
+      // 中にいる：近くの相手や、エリアに入ってきた相手とは戦う。外の相手は追いかけない
+      if (!t || near) return null;
+      if (t.x >= goal.x1 - 0.5 && t.x <= goal.x2 + 0.5 && t.y >= goal.y1 - 0.5 && t.y <= goal.y2) return null;
+      // 端に寄りすぎていたら、まん中に戻る
+      return Math.abs(cx - f.x) > (goal.x2 - goal.x1) * 0.3 ? { mx: Math.sign(cx - f.x) * 0.6, my: 0, buttons: 0 } : { mx: 0, my: 0, buttons: 0 };
+    }
+    // 外にいる：じゃまな相手とは戦い、それ以外はエリアへ向かう
+    if (near) return null;
+    const dx = cx - f.x;
+    const dir = Math.sign(dx) || 1;
+    // エリアが上の足場：下まで来たらジャンプ
+    if (goal.y1 > f.y + 0.6) {
+      if (Math.abs(dx) < 2.6 && (f.grounded || (f.jumpsLeft > 0 && f.vy < 0))) return { mx: dir * 0.6, my: 0, buttons: BTN_JUMP };
+      return { mx: dir, my: 0, buttons: 0 };
+    }
+    // エリアが下の床：足場から降りる
+    if (f.y > goal.y2 - 0.2 && f.grounded && f.groundRef >= 0) return { mx: Math.abs(dx) > 1 ? dir * 0.5 : 0, my: -1, buttons: 0 };
+    return { mx: dir, my: 0, buttons: 0 };
   }
 
   /** いちばん近い相手。分身（ハルシネーション）にもだまされる */

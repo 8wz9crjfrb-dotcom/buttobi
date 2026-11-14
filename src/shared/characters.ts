@@ -319,6 +319,18 @@ export function playerColor(setup: MatchSetup | null | undefined, slot: number):
   return SLOT_COLORS[slot % SLOT_COLORS.length];
 }
 
+/** エリアバトルのゲージの色（チーム戦はチームの色、個人戦はその人の色）。key はチーム番号または slot */
+export function areaColor(setup: MatchSetup | null | undefined, key: number): number {
+  if (setup?.rules.teams) return TEAM_COLORS[key % TEAM_COLORS.length];
+  return playerColor(setup, key);
+}
+
+/** エリアバトルのゲージの名前（チーム戦は「赤チーム」、個人戦はプレイヤー名） */
+export function areaName(setup: MatchSetup | null | undefined, key: number): string {
+  if (setup?.rules.teams) return `${TEAM_NAMES[key % TEAM_NAMES.length]}チーム`;
+  return setup?.players.find((p) => p.slot === key)?.name ?? '';
+}
+
 /** キャラ選択画面で、必殺技を長押ししたときに出す説明（数値は moves.ts・sim.ts の設定どおり） */
 export const SPECIAL_DESCS: Record<string, { n: string; s: string; d: string; u: string }> = {
   guard: {

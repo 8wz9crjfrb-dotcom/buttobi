@@ -691,13 +691,23 @@ function bindStages(root: HTMLElement, onPick: (id: string) => void): void {
 
 /** ルールの短い説明（ロビーの表示用） */
 function ruleText(r: MatchRules): string {
-  const base = r.mode === 'stock' ? `ストック ${r.stocks}` : r.mode === 'stamina' ? `体力制 HP${r.hp ?? DEFAULT_HP}・残機${r.stocks}` : `タイム ${r.timeLimit / 60}分`;
+  const shape = r.area === 'fix2' ? '動かない2つ' : r.area === 'random' ? 'おまかせ' : '移動する1つ';
+  const base =
+    r.mode === 'stock'
+      ? `ストック ${r.stocks}`
+      : r.mode === 'stamina'
+        ? `体力制 HP${r.hp ?? DEFAULT_HP}・残機${r.stocks}`
+        : r.mode === 'area'
+          ? `エリアバトル（${shape}）${r.timeLimit / 60}分`
+          : `タイム ${r.timeLimit / 60}分`;
   return r.teams ? `${base}・チーム戦（味方への攻撃${r.friendlyFire ? 'あり' : 'なし'}）` : base;
 }
 
 function ruleControls(rules: MatchRules): string {
   return `
-    <div class="opt">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制']], rules.mode)}</div>
+    <div class="opt">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア']], rules.mode)}</div>
+    <div class="opt" data-show="area">エリア ${seg('area', [['move', '移動1つ'], ['fix2', '固定2つ'], ['random', 'おまかせ']], rules.area ?? 'move')}</div>
+    <div class="opt" data-show="area">時間 ${seg('atime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="stock stamina">残機 ${seg('stocks', [[1, '1'], [2, '2'], [3, '3'], [5, '5']], rules.stocks)}</div>
     <div class="opt" data-show="stamina">HP ${seg('hp', [[100, '100'], [150, '150'], [200, '200'], [300, '300']], rules.hp ?? DEFAULT_HP)}</div>
     <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>
@@ -715,7 +725,10 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
   sync();
   bindSeg(root, 'mode', (v) => {
     rules.mode = v as MatchRules['mode'];
-    rules.timeLimit = rules.mode === 'time' ? 180 : 420;
+    rules.timeLimit = rules.mode === 'time' ? 180 : rules.mode === 'area' ? 120 : 420;
+    if (rules.mode === 'area') rules.area ??= 'move';
+    // 時間の選択肢の表示を、選び直した時間に合わせる
+    root.querySelectorAll<HTMLElement>('[data-seg="time"] button, [data-seg="atime"] button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === rules.timeLimit));
     sync();
     onChange();
   });
@@ -738,6 +751,14 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
   });
   bindSeg(root, 'time', (v) => {
     rules.timeLimit = Number(v);
+    onChange();
+  });
+  bindSeg(root, 'atime', (v) => {
+    rules.timeLimit = Number(v);
+    onChange();
+  });
+  bindSeg(root, 'area', (v) => {
+    rules.area = v as MatchRules['area'];
     onChange();
   });
   bindSeg(root, 'items', (v) => {
@@ -1104,7 +1125,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
       return `<div class="res-row ${r.rank === 1 ? 'first' : ''}">
         <div class="rank">${r.rank}</div>
         <div><span style="color:${hex(playerColor(setup, p.slot))}">●</span> ${setup.rules.teams ? `<small>${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}</small> ` : ''}${esc(p.name)} <small style="color:var(--muted)">${c.name}</small>${badges ? `<div class="awards">${badges}</div>` : ''}</div>
-        <div style="font-size:12px;color:var(--muted);text-align:right">撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
+        <div style="font-size:12px;color:var(--muted);text-align:right">${r.area !== undefined ? `<b class="res-area">エリア ${r.area}%</b><br/>` : ''}撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
     })
     .join('');
   const win = results.find((r) => r.rank === 1);

@@ -464,6 +464,77 @@ input[inputmode='numeric'] {
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
 }
 
+.hud-area {
+  position: absolute;
+  top: calc(34px + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+/* エリアバトルのゲージ：色の帯がのび、数字（%）を重ねる */
+.hud-area .ab {
+  position: relative;
+  width: 64px;
+  height: 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 0 2px var(--ac);
+  overflow: hidden;
+}
+.hud-area.many .ab {
+  width: 46px;
+}
+.hud-area .ab i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--ac);
+  transition: width 0.2s linear;
+}
+.hud-area .ab b {
+  position: relative;
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.hud-area .ab.on {
+  animation: ab-on 0.6s ease-in-out infinite alternate;
+}
+@keyframes ab-on {
+  to {
+    box-shadow: inset 0 0 0 2px #fff, 0 0 10px var(--ac);
+  }
+}
+.hud-area-notice {
+  position: absolute;
+  top: calc(56px + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.hud-area-notice.move {
+  color: #ffd23f;
+  animation: blink-notice 0.5s steps(2) infinite;
+}
+.hud-area-notice.fight {
+  color: #ff7a7a;
+}
+@keyframes blink-notice {
+  50% {
+    opacity: 0.35;
+  }
+}
+
 .hud-net {
   position: absolute;
   top: calc(8px + var(--safe-t));
@@ -2846,4 +2917,10 @@ table.rec td:first-child {
 }
 .gx-card.r6:only-child .front b {
   font-size: 40px;
+}
+
+/* 結果画面：エリアバトルのゲージ */
+.res-area {
+  font-size: 14px;
+  color: #ffd23f;
 }

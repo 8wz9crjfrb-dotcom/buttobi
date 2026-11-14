@@ -410,8 +410,9 @@ export class Room extends DurableObject<Env> {
         if (this.sim || slot !== l.hostSlot) return;
         const r = msg.rules;
         l.rules = {
-          mode: r?.mode === 'time' ? 'time' : r?.mode === 'stamina' ? 'stamina' : 'stock',
+          mode: r?.mode === 'time' ? 'time' : r?.mode === 'stamina' ? 'stamina' : r?.mode === 'area' ? 'area' : 'stock',
           stocks: Math.max(1, Math.min(5, r?.stocks | 0 || 3)),
+          area: r?.area === 'fix2' ? 'fix2' : r?.area === 'random' ? 'random' : 'move',
           timeLimit: Math.max(60, Math.min(600, r?.timeLimit | 0 || 180)),
           items: r?.items === true,
           gimmicks: r?.gimmicks === true,

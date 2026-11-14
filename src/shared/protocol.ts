@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 13;
+export const PROTOCOL_VERSION = 14;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -74,6 +74,8 @@ export interface EncodedState {
   q: number[][]; // projectiles
   n: number[][]; // entities
   ev: GameEvent[];
+  /** エリアバトル：[x1,x2,y1,y2,holder] のエリア、次のエリア、移るまで、ゲージ [番号,値...]、満タン */
+  a?: { z: number[][]; x: number[][]; i: number; g: number[]; o: number };
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -107,6 +109,17 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
     q: v.projectiles.map((p) => [Math.round(p.x * 100), Math.round(p.y * 100), p.owner, Math.max(0, SHOT_KINDS.indexOf(p.kind))]),
     n: v.entities.map((e) => [ENTITY_KINDS.indexOf(e.kind), Math.round(e.x * 100), Math.round(e.y * 100), e.owner, e.life, e.dir]),
     ev: events.map((e) => ('x' in e ? { ...e, x: r2(e.x), y: r2(e.y) } : e)),
+    ...(v.area
+      ? {
+          a: {
+            z: v.area.zones.map((z) => [Math.round(z.x1 * 100), Math.round(z.x2 * 100), Math.round(z.y1 * 100), Math.round(z.y2 * 100), z.holder]),
+            x: v.area.next.map((z) => [Math.round(z.x1 * 100), Math.round(z.x2 * 100), Math.round(z.y1 * 100), Math.round(z.y2 * 100)]),
+            i: v.area.nextIn,
+            g: v.area.gauges.flat(),
+            o: v.area.goal,
+          },
+        }
+      : {}),
   };
 }
 
@@ -139,6 +152,15 @@ export function decodeState(s: EncodedState): ViewState {
     projectiles: s.q.map((a) => ({ x: a[0] / 100, y: a[1] / 100, owner: a[2], kind: SHOT_KINDS[a[3]] ?? 'bullet' })),
     entities: (s.n ?? []).map((a) => ({ kind: ENTITY_KINDS[a[0]] ?? 'wall', x: a[1] / 100, y: a[2] / 100, owner: a[3], life: a[4], dir: a[5] ?? 1 })),
     events: s.ev,
+    area: s.a
+      ? {
+          zones: s.a.z.map((a) => ({ x1: a[0] / 100, x2: a[1] / 100, y1: a[2] / 100, y2: a[3] / 100, holder: a[4] })),
+          next: s.a.x.map((a) => ({ x1: a[0] / 100, x2: a[1] / 100, y1: a[2] / 100, y2: a[3] / 100 })),
+          nextIn: s.a.i,
+          gauges: Array.from({ length: Math.floor(s.a.g.length / 2) }, (_, k) => [s.a!.g[k * 2], s.a!.g[k * 2 + 1]] as [number, number]),
+          goal: s.a.o,
+        }
+      : undefined,
   };
 }
 

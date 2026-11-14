@@ -23,6 +23,8 @@ import {
   type GameEvent,
   type InputState,
   type MatchSetup,
+  type AreaView,
+  type AreaZone,
   type MoveId,
   type ResultEntry,
   type ViewState,
@@ -286,6 +288,30 @@ export const HORDE = {
 };
 /** 体力制で、ふっとびの計算に使うダメージの上限 */
 const STAMINA_KB_CAP = 50;
+
+/** エリアバトルの数値 */
+export const AREA = {
+  /** ゲージの満タン（1人で邪魔されずに立ち続けて約50秒） */
+  goal: 50 * 60,
+  /** 味方が1人増えるごとに増える速さ（2人で1.2倍、3人で1.4倍） */
+  perAlly: 0.2,
+  /** 移動するエリア：移る間かくと、予告を出す時間（フレーム） */
+  moveEvery: 20 * 60,
+  warn: 3 * 60,
+  /** 移動するエリアの幅（大きめ）と、動かない2つのエリアの幅 */
+  bigWidth: 5.6,
+  fixWidth: 3.8,
+  /** エリアの高さ（床から。上の足場に乗ると外れる） */
+  height: 2.3,
+};
+
+/** 決まった値から作る、ばらつきのある整数（エリアの場所選びに使う。試合ごとに同じ結果になる） */
+function hash32(a: number, b: number): number {
+  let h = (a ^ Math.imul(b + 0x9e3779b9, 0x85ebca6b)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
 /** 飽き性（ドパガキ）：違う技を1つ続けるごとの威力アップと、その回数の上限（最大 1 + 0.08×3 = 1.24倍） */
 const DOPA_STEP = 0.08;
 const DOPA_STREAK_MAX = 3;
@@ -327,7 +353,7 @@ export class Sim {
       f.y = sp.y;
       f.groundRef = sp.y > this.stage.main.top ? this.findPlatformAt(sp.x, sp.y) : -1;
       f.facing = sp.x > 0 ? -1 : 1;
-      f.stocks = setup.rules.mode === 'time' ? 0 : setup.rules.stocks;
+      f.stocks = setup.rules.mode === 'time' || setup.rules.mode === 'area' ? 0 : setup.rules.stocks;
       if (setup.rules.teams || setup.rules.horde) f.team = setup.rules.horde ? (i === 0 ? 0 : 1) : Math.max(0, Math.min(3, p.team ?? 0));
       // 100人組手の敵は倒されても次々に出てくる（残りの人数は hordeLeft で数える）
       if (setup.rules.horde && f.team !== 0) {
@@ -341,6 +367,118 @@ export class Sim {
       f.shield = f.shieldMax;
       this.fighters.push(f);
     });
+    if (setup.rules.mode === 'area') this.setupArea();
+  }
+
+  // ---------------------------------------------------------------- エリアバトル
+  /** エリアの形（おまかせは、試合の種から決める） */
+  areaShape: 'move' | 'fix2' = 'move';
+  /** 移動するエリアの候補（床の左・中央・右と、動かない足場） */
+  private areaSpots: AreaZone[] = [];
+  /** ゲージ（番号 → 値）。番号はチーム戦ならチーム、個人戦なら slot */
+  areaGauge = new Map<number, number>();
+
+  private setupArea(): void {
+    const r = this.setup.rules;
+    this.areaShape = r.area === 'fix2' ? 'fix2' : r.area === 'random' ? (hash32(this.setup.seed, 7) & 1 ? 'fix2' : 'move') : 'move';
+    const m = this.stage.main;
+    const cx = (m.x1 + m.x2) / 2;
+    const half = (m.x2 - m.x1) / 2;
+    const floor = (c: number, w: number): AreaZone => {
+      const ww = Math.min(w, half * 0.9);
+      const x1 = Math.max(m.x1, c - ww / 2);
+      const x2 = Math.min(m.x2, x1 + ww);
+      return { x1: x2 - ww, x2, y1: m.top, y2: m.top + AREA.height };
+    };
+    if (this.areaShape === 'fix2') {
+      this.areaSpots = [floor(cx - half * 0.55, AREA.fixWidth), floor(cx + half * 0.55, AREA.fixWidth)];
+    } else {
+      // 最初は床の中央。そのあとは床の左右と、動かない広めの足場から選ぶ
+      this.areaSpots = [floor(cx, AREA.bigWidth), floor(cx - half * 0.55, AREA.bigWidth), floor(cx + half * 0.55, AREA.bigWidth)];
+      for (const p of this.stage.platforms) {
+        if (p.movePeriod || p.x2 - p.x1 < 3) continue;
+        this.areaSpots.push({ x1: p.x1, x2: p.x2, y1: p.y, y2: p.y + AREA.height });
+      }
+    }
+    for (const f of this.fighters) this.areaGauge.set(this.areaKey(f), 0);
+  }
+
+  /** その人のゲージの番号 */
+  areaKey(f: Fighter): number {
+    return this.setup.rules.teams ? f.team : f.slot;
+  }
+
+  /** 移動するエリアの、何回目の場所か（0 = 最初） */
+  private areaPhase(frame: number): number {
+    return Math.max(0, Math.floor((frame - COUNTDOWN_FRAMES) / AREA.moveEvery));
+  }
+
+  /** phase 回目のエリアの場所（候補の番号）。同じ場所が続かないようにする */
+  private areaSpotIndex(phase: number): number {
+    if (phase <= 0) return 0;
+    const n = this.areaSpots.length;
+    const prev = this.areaSpotIndex(phase - 1);
+    let i = hash32(this.setup.seed, phase) % (n - 1);
+    if (i >= prev) i++;
+    return i;
+  }
+
+  /** 今のエリア */
+  areaZones(frame = this.frame): AreaZone[] {
+    if (this.setup.rules.mode !== 'area') return [];
+    if (this.areaShape === 'fix2') return this.areaSpots;
+    return [this.areaSpots[this.areaSpotIndex(this.areaPhase(frame))]];
+  }
+
+  /** 次のエリア（移る前の予告の間だけ）と、移るまでのフレーム数 */
+  areaNext(): { zones: AreaZone[]; nextIn: number } {
+    if (this.setup.rules.mode !== 'area' || this.areaShape === 'fix2' || this.frame <= COUNTDOWN_FRAMES) return { zones: [], nextIn: 0 };
+    const into = (this.frame - COUNTDOWN_FRAMES) % AREA.moveEvery;
+    const nextIn = AREA.moveEvery - into;
+    if (nextIn > AREA.warn) return { zones: [], nextIn };
+    return { zones: [this.areaSpots[this.areaSpotIndex(this.areaPhase(this.frame) + 1)]], nextIn };
+  }
+
+  /** f がエリア z の中にいるか（復活中・やられ中は数えない） */
+  inZone(f: Fighter, z: AreaZone): boolean {
+    return f.alive && !f.out && f.x >= z.x1 && f.x <= z.x2 && f.y >= z.y1 - 0.3 && f.y <= z.y2;
+  }
+
+  /** それぞれのエリアにいる人の番号（-1 = だれもいない、-2 = 取り合い中） */
+  areaHolders(): number[] {
+    return this.areaZones().map((z) => {
+      const keys = new Set(this.fighters.filter((f) => this.inZone(f, z)).map((f) => this.areaKey(f)));
+      return keys.size === 0 ? -1 : keys.size > 1 ? -2 : [...keys][0];
+    });
+  }
+
+  /** ゲージを進める：敵のいないエリアに立っている味方の数で速さが決まる（1人 1倍、1人増えるごとに +0.2倍） */
+  private updateArea(): void {
+    const zones = this.areaZones();
+    const holders = this.areaHolders();
+    const count = new Map<number, number>();
+    zones.forEach((z, i) => {
+      const k = holders[i];
+      if (k < 0) return;
+      const n = this.fighters.filter((f) => this.inZone(f, z)).length;
+      count.set(k, (count.get(k) ?? 0) + n);
+    });
+    for (const [k, n] of count) {
+      const v = Math.min(AREA.goal, (this.areaGauge.get(k) ?? 0) + 1 + AREA.perAlly * (n - 1));
+      this.areaGauge.set(k, v);
+    }
+  }
+
+  private areaView(): AreaView {
+    const holders = this.areaHolders();
+    const nx = this.areaNext();
+    return {
+      zones: this.areaZones().map((z, i) => ({ ...z, holder: holders[i] })),
+      next: nx.zones,
+      nextIn: nx.nextIn,
+      gauges: [...this.areaGauge.entries()].map(([k, v]) => [k, Math.floor(v)] as [number, number]),
+      goal: AREA.goal,
+    };
   }
 
   private findPlatformAt(x: number, y: number): number {
@@ -424,6 +562,7 @@ export class Sim {
     this.detectHits();
     for (const f of this.fighters) this.checkBlast(f);
     if (this.setup.rules.mode === 'stamina') for (const f of this.fighters) this.checkHp(f);
+    if (playing && !this.solo && this.setup.rules.mode === 'area') this.updateArea();
     this.checkEnd();
     for (const f of this.fighters) {
       // ヒットストップで止まっていた選手は前回の入力を更新しない（押しっぱなしなら、止まりが解けた時に押したことになる）
@@ -2464,7 +2603,7 @@ export class Sim {
       }
       return;
     }
-    if (rules.mode !== 'time') {
+    if (rules.mode !== 'time' && rules.mode !== 'area') {
       f.stocks--;
       if (f.stocks <= 0) {
         f.out = true;
@@ -2479,7 +2618,9 @@ export class Sim {
     // 制限時間 0 は時間切れなし（100人組手）
     const timeUp = rules.timeLimit > 0 && this.frame > COUNTDOWN_FRAMES && this.timeLeftFrames <= 0;
     let over = timeUp;
-    if (rules.mode !== 'time' && this.fighters.length > 1) {
+    // エリアバトル：だれかのゲージが満タンになったら終わり
+    if (rules.mode === 'area' && [...this.areaGauge.values()].some((v) => v >= AREA.goal)) over = true;
+    if (rules.mode !== 'time' && rules.mode !== 'area' && this.fighters.length > 1) {
       // 残っているチーム（チーム戦でなければ選手）が1つ以下になったら終わり
       const teams = new Set(this.fighters.filter((f) => !f.out).map((f) => f.team));
       if (teams.size <= 1) over = true;
@@ -2492,13 +2633,21 @@ export class Sim {
 
   results(): ResultEntry[] {
     const time = this.setup.rules.mode === 'time';
+    const area = this.setup.rules.mode === 'area';
+    const gauge = (f: Fighter) => this.areaGauge.get(this.areaKey(f)) ?? 0;
     const score = (f: Fighter) =>
-      time ? (f.kos - f.falls) * 10000 - f.damage : f.stocks * 10000 + (f.out ? f.outFrame : 999999) - Math.floor(f.damage) / 1000;
+      area
+        ? Math.floor(gauge(f)) * 1000 + (f.kos - f.falls)
+        : time
+          ? (f.kos - f.falls) * 10000 - f.damage
+          : f.stocks * 10000 + (f.out ? f.outFrame : 999999) - Math.floor(f.damage) / 1000;
     // チームの点：タイム制は合計、残機制・体力制は残機の合計と最後まで残った時間
     const teamScore = new Map<number, number>();
     for (const f of this.fighters) {
       const members = this.fighters.filter((o) => o.team === f.team);
-      const v = time
+      const v = area
+        ? Math.floor(gauge(f)) * 1000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
+        : time
         ? members.reduce((n, o) => n + (o.kos - o.falls), 0) * 10000 - members.reduce((n, o) => n + o.damage, 0) / 1000
         : members.reduce((n, o) => n + o.stocks, 0) * 10000 + Math.max(...members.map((o) => (o.out ? o.outFrame : 999999)));
       teamScore.set(f.team, v);
@@ -2514,7 +2663,16 @@ export class Sim {
       const same = prev && (teamMode ? prev.f.team === e.f.team || prev.team === e.team : prev.score === e.score);
       if (!same) rank = i + 1;
       prev = e;
-      return { slot: e.f.slot, rank, kos: e.f.kos, falls: e.f.falls, score: e.f.kos - e.f.falls, dealt: Math.round(e.f.dealt), throws: e.f.throws };
+      return {
+        slot: e.f.slot,
+        rank,
+        kos: e.f.kos,
+        falls: e.f.falls,
+        score: e.f.kos - e.f.falls,
+        dealt: Math.round(e.f.dealt),
+        throws: e.f.throws,
+        ...(area ? { area: Math.floor((gauge(e.f) / AREA.goal) * 100) } : {}),
+      };
     });
   }
 
@@ -2561,6 +2719,7 @@ export class Sim {
       events: this.events,
       ended: this.ended,
       horde: this.setup.rules.horde ? this.hordeDefeated : undefined,
+      area: this.setup.rules.mode === 'area' ? this.areaView() : undefined,
     };
   }
 }

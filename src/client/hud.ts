@@ -1,6 +1,6 @@
 // 対戦中の表示（ダメージ%・残機・タイマー・カウントダウン）
 
-import { getCharacter, playerColor, TEAM_NAMES } from '../shared/characters';
+import { areaColor, getCharacter, playerColor, TEAM_NAMES } from '../shared/characters';
 import { COUNTDOWN_FRAMES } from '../shared/sim';
 import { DEFAULT_HP, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
 
@@ -18,6 +18,8 @@ export class Hud {
   private hp = 0;
   /** 100人組手：倒す人数 */
   private horde = 0;
+  /** エリアバトル：タイマーの下のゲージ（番号ごと）と、エリアが移る予告 */
+  private area: { setup: MatchSetup; teams: boolean; bars: Map<number, { root: HTMLElement; fill: HTMLElement; num: HTMLElement }>; box: HTMLElement; notice: HTMLElement; last: string } | null = null;
 
   /** 練習モード：残機とタイマーを出さない */
   private training = false;
@@ -33,7 +35,7 @@ export class Hud {
     this.training = training;
     this.el.innerHTML = '';
     this.panels.clear();
-    this.stockMode = setup.rules.mode !== 'time';
+    this.stockMode = setup.rules.mode !== 'time' && setup.rules.mode !== 'area';
     this.hp = setup.rules.mode === 'stamina' ? setup.rules.hp ?? DEFAULT_HP : 0;
     this.horde = setup.rules.horde ?? 0;
     const wrap = document.createElement('div');
@@ -79,6 +81,55 @@ export class Hud {
     this.net.className = 'hud-net';
     this.el.append(wrap, this.timer, this.center, this.net);
     this.lastCenter = '';
+    this.area = null;
+    if (setup.rules.mode === 'area') {
+      // タイマーの下に、ゲージを横に並べる（チーム戦はチームごと、個人戦は人ごと）
+      const box = document.createElement('div');
+      box.className = 'hud-area';
+      const keys = setup.rules.teams ? [...new Set(setup.players.map((p) => p.team ?? 0))].sort((a, b) => a - b) : setup.players.map((p) => p.slot);
+      const bars = new Map<number, { root: HTMLElement; fill: HTMLElement; num: HTMLElement }>();
+      for (const k of keys) {
+        const root = document.createElement('div');
+        root.className = 'ab';
+        root.style.setProperty('--ac', hex(areaColor(setup, k)));
+        const fill = document.createElement('i');
+        const num = document.createElement('b');
+        num.textContent = '0';
+        root.append(fill, num);
+        box.appendChild(root);
+        bars.set(k, { root, fill, num });
+      }
+      box.classList.toggle('many', keys.length >= 5);
+      const notice = document.createElement('div');
+      notice.className = 'hud-area-notice';
+      this.el.append(box, notice);
+      this.area = { setup, teams: !!setup.rules.teams, bars, box, notice, last: '' };
+    }
+  }
+
+  /** エリアバトル：ゲージとエリアの予告 */
+  private updateArea(v: ViewState): void {
+    const a = this.area;
+    if (!a || !v.area) return;
+    const holders = new Set(v.area.zones.map((z) => z.holder));
+    for (const [k, val] of v.area.gauges) {
+      const bar = a.bars.get(k);
+      if (!bar) continue;
+      const pct = Math.min(100, Math.floor((val / v.area.goal) * 100));
+      bar.fill.style.width = `${pct}%`;
+      bar.num.textContent = `${pct}`;
+      // エリアを取っている人（チーム）のゲージは光らせる
+      bar.root.classList.toggle('on', holders.has(k));
+    }
+    // 取り合い中・エリアの移動の予告
+    const contested = holders.has(-2);
+    const sec = Math.ceil(v.area.nextIn / 60);
+    const msg = v.ended ? '' : v.area.next.length ? `エリア移動まで ${sec}` : contested ? '取り合い中！' : '';
+    if (msg !== a.last) {
+      a.notice.textContent = msg;
+      a.notice.className = `hud-area-notice ${v.area.next.length ? 'move' : contested ? 'fight' : ''}`;
+      a.last = msg;
+    }
   }
 
   update(v: ViewState, events: GameEvent[]): void {
@@ -108,7 +159,7 @@ export class Hud {
         p.dmg.style.color = `rgb(255, ${Math.round(255 - heat * 170)}, ${Math.round(255 - heat * 230)})`;
         p.last = d;
       }
-      p.stk.textContent = this.training ? '' : this.stockMode ? '●'.repeat(Math.max(0, f.stocks)) : `${f.kos - f.falls >= 0 ? '+' : ''}${f.kos - f.falls}`;
+      p.stk.textContent = this.training || this.area ? '' : this.stockMode ? '●'.repeat(Math.max(0, f.stocks)) : `${f.kos - f.falls >= 0 ? '+' : ''}${f.kos - f.falls}`;
       p.root.classList.toggle('out', f.out);
     }
     for (const e of events) {
@@ -130,6 +181,7 @@ export class Hud {
         }
       }
     }
+    this.updateArea(v);
     const secs = Math.ceil(v.timeLeft / 60);
     if (this.horde) {
       // 100人組手：倒した数と経過時間
