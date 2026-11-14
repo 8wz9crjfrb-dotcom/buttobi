@@ -17,6 +17,8 @@ import { PropRenderer } from './props';
 export type Quality = 'low' | 'high';
 
 /** 撃墜確定の演出：ふっとび始めてからのスローの長さと、元の速さへ戻すまでの長さ（秒） */
+/** カメラの高さ（距離に対する割合。大きいほど上から見下ろす）。決めていないステージは 0.12 */
+const CAM_LIFT: Record<string, number> = { rooftop: 0.2 };
 const FINISH_SLOW = 0.5;
 const FINISH_BACK = 0.3;
 
@@ -1167,7 +1169,9 @@ export class GameRenderer {
     this.camLook.x += (cx - this.camLook.x) * k;
     this.camLook.y += (cy - this.camLook.y) * k;
     this.camPos.x += (cx - this.camPos.x) * k;
-    this.camPos.y += (cy + dist * 0.12 - this.camPos.y) * k;
+    // カメラの高さ（見下ろす角度）。ステージによっては少し高くする
+    const lift = CAM_LIFT[st.id] ?? 0.12;
+    this.camPos.y += (cy + dist * lift - this.camPos.y) * k;
     this.camPos.z += (dist - this.camPos.z) * k;
     this.shake *= Math.pow(0.02, dt);
     const sx = (Math.random() - 0.5) * this.shake;

@@ -10,3 +10,12 @@ class_name = "Room"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+# データ引き継ぎ（引き継ぎコードごとに、データを一時的に預かる）
+[[durable_objects.bindings]]
+name = "TRANSFERS"
+class_name = "TransferBox"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["TransferBox"]

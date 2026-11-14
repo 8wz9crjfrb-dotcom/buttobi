@@ -11,6 +11,7 @@ import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type Inpu
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { ICONS, iconTile } from './icons';
+import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
 import { NetClient } from './net';
@@ -276,6 +277,8 @@ const autoQ = {
 
 function startSession(s: Session): void {
   renderer.hidePreview();
+  // メニューのキャラは、本番の試合が始まったら消す（裏の戦闘＝デモの入れ替わりでは消さない）
+  if (s.kind !== 'demo') renderer.setMenuChar(null);
   if (!(s instanceof LocalSession && s.training && tutorialStarting)) stopTutorial();
   session = s;
   resultsShown = false;
@@ -436,6 +439,7 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
 // 画面
 function clearScreen(): void {
   renderer.hidePreview();
+  renderer.setMenuChar(null);
   screensEl.innerHTML = '';
 }
 
@@ -1261,6 +1265,9 @@ function showSettings(): void {
        <div class="opt">フレームレート表示（対戦中） ${seg('fps', [['on', 'する'], ['off', 'しない']], settings.showFps ? 'on' : 'off')}</div>
        <div class="opt">効果音 ${seg('vol', [[0, 'なし'], [0.4, '小'], [0.7, '中'], [1, '大']], settings.volume)}</div>
        <div class="opt">BGM ${seg('bgm', [[0, 'なし'], [0.3, '小'], [0.5, '中'], [0.8, '大']], settings.bgmVolume)}</div>
+       <div class="opt" style="grid-column:1/-1">データ引き継ぎ（機種変更など） <span class="row" style="gap:8px">
+         <button type="button" class="btn small" id="xfer-out">引き継ぎコードを発行</button>
+         <button type="button" class="btn small" id="xfer-in">コードを入力して引き継ぐ</button></span></div>
        <label class="field" style="grid-column:1/-1">対戦サーバーのURL（wss://〜）<input type="url" id="server" value="${esc(settings.serverUrl)}" placeholder="wss://buttobi-server.あなたのアカウント.workers.dev"/></label>
      </div>
      <div class="footer"><button class="btn primary" id="back">保存してもどる</button></div>`,
@@ -1293,8 +1300,96 @@ function showSettings(): void {
         saveSettings(settings);
         showMenu();
       });
+      root.querySelector('#xfer-out')!.addEventListener('click', () => {
+        settings.serverUrl = (root.querySelector('#server') as HTMLInputElement).value.trim();
+        saveSettings(settings);
+        showTransferOut(root);
+      });
+      root.querySelector('#xfer-in')!.addEventListener('click', () => {
+        settings.serverUrl = (root.querySelector('#server') as HTMLInputElement).value.trim();
+        saveSettings(settings);
+        showTransferIn(root);
+      });
     },
   );
+}
+
+/** 画面の上に小さな窓を出す（閉じる関数を返す） */
+function popup(root: HTMLElement, html: string): { el: HTMLElement; close: () => void } {
+  const el = document.createElement('div');
+  el.className = 'lb-pop';
+  el.innerHTML = `<div class="lb-card xfer-card">${html}</div>`;
+  root.appendChild(el);
+  return { el, close: () => el.remove() };
+}
+
+/** 引き継ぎコードを発行する */
+function showTransferOut(root: HTMLElement): void {
+  if (!settings.serverUrl) return void toast('対戦サーバーのURLが設定されていないため、引き継ぎができません');
+  const p = popup(
+    root,
+    `<div class="lb-title">引き継ぎコードを発行</div>
+     <div class="xfer-note">今のデータ（コイン・衣装・戦績・称号・ミッション・設定）をサーバーに預けて、引き継ぎコードを作ります。<br/>
+     新しい端末の「設定 → コードを入力して引き継ぐ」で入力してください。</div>
+     <ul class="xfer-list"><li>コードは<b>1回だけ</b>使えます（使うとサーバーから消えます）</li><li>使わなければ<b>30日</b>で消えます</li><li>この端末のデータはそのまま残ります</li></ul>
+     <div class="row" style="justify-content:center;gap:10px"><button class="btn" id="x-cancel">やめる</button><button class="btn primary" id="x-go">発行する</button></div>`,
+  );
+  p.el.querySelector('#x-cancel')!.addEventListener('click', p.close);
+  p.el.querySelector('#x-go')!.addEventListener('click', async () => {
+    const card = p.el.querySelector('.lb-card')!;
+    card.innerHTML = '<div class="lb-title">発行しています…</div>';
+    try {
+      const r = await issueTransfer(settings.serverUrl);
+      const d = new Date(r.expires);
+      card.innerHTML = `<div class="lb-title">引き継ぎコード</div>
+        <div class="xfer-code" id="x-code">${r.code}</div>
+        <div class="xfer-note">新しい端末で入力してください。期限：${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日まで・1回だけ使えます。<br/>
+        <b>このコードは他の人に教えないでください</b>（入力した人にデータが渡ります）。</div>
+        <div class="row" style="justify-content:center;gap:10px"><button class="btn" id="x-copy">コピー</button><button class="btn primary" id="x-ok">閉じる</button></div>`;
+      card.querySelector('#x-ok')!.addEventListener('click', p.close);
+      card.querySelector('#x-copy')!.addEventListener('click', () => {
+        navigator.clipboard?.writeText(r.code).then(
+          () => toast('コピーしました'),
+          () => toast('コピーできませんでした。メモしてください'),
+        );
+      });
+    } catch (e) {
+      card.innerHTML = `<div class="lb-title">発行できませんでした</div><div class="xfer-note">${esc((e as Error).message)}<br/>通信できる場所でもう一度お試しください。</div>
+        <div class="row" style="justify-content:center"><button class="btn primary" id="x-ok">閉じる</button></div>`;
+      card.querySelector('#x-ok')!.addEventListener('click', p.close);
+    }
+  });
+}
+
+/** 引き継ぎコードを入力して、この端末にデータを移す */
+function showTransferIn(root: HTMLElement): void {
+  if (!settings.serverUrl) return void toast('対戦サーバーのURLが設定されていないため、引き継ぎができません');
+  const p = popup(
+    root,
+    `<div class="lb-title">コードを入力して引き継ぐ</div>
+     <input class="xfer-input" id="x-code" maxlength="20" placeholder="ABCD-EFGH-JKMN" autocomplete="off" autocapitalize="characters" spellcheck="false"/>
+     <div class="xfer-note warn">この端末の今のデータ（コイン・衣装・戦績など）は、<b>引き継いだデータで上書きされます</b>。元に戻せません。</div>
+     <div class="row" style="justify-content:center;gap:10px"><button class="btn" id="x-cancel">やめる</button><button class="btn primary" id="x-go">引き継ぐ</button></div>`,
+  );
+  const input = p.el.querySelector<HTMLInputElement>('#x-code')!;
+  input.focus();
+  p.el.querySelector('#x-cancel')!.addEventListener('click', p.close);
+  p.el.querySelector('#x-go')!.addEventListener('click', async () => {
+    const code = input.value.trim();
+    if (!code) return toast('コードを入力してください');
+    const card = p.el.querySelector('.lb-card')!;
+    card.innerHTML = '<div class="lb-title">受け取っています…</div>';
+    try {
+      const data = await takeTransfer(settings.serverUrl, code);
+      applyData(data, settings.serverUrl);
+      card.innerHTML = '<div class="lb-title">引き継ぎました！</div><div class="xfer-note">読み込み直します…</div>';
+      setTimeout(() => location.reload(), 900);
+    } catch (e) {
+      card.innerHTML = `<div class="lb-title">引き継げませんでした</div><div class="xfer-note">${esc((e as Error).message)}</div>
+        <div class="row" style="justify-content:center"><button class="btn primary" id="x-ok">閉じる</button></div>`;
+      card.querySelector('#x-ok')!.addEventListener('click', p.close);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

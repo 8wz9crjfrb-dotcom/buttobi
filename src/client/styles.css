@@ -2279,3 +2279,53 @@ table.rec td:first-child {
 .charsel-screen .screen-body::-webkit-scrollbar {
   display: none;
 }
+
+/* データ引き継ぎの窓 */
+.xfer-card {
+  max-width: 460px;
+  text-align: left;
+}
+.xfer-note {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 8px 0;
+  line-height: 1.6;
+}
+.xfer-note.warn {
+  color: #ffb4b4;
+}
+.xfer-note b {
+  color: #fff;
+}
+.xfer-list {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 4px 0 12px 1.2em;
+  line-height: 1.7;
+}
+.xfer-code {
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-align: center;
+  color: var(--accent);
+  margin: 10px 0;
+  user-select: all;
+  -webkit-user-select: all;
+  font-variant-numeric: tabular-nums;
+}
+.xfer-input {
+  width: 100%;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 10px;
+  margin: 10px 0 4px;
+  border-radius: 12px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1b1f3b;
+}

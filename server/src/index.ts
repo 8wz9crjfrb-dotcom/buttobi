@@ -18,16 +18,62 @@ import {
   type ServerMsg,
 } from '../../src/shared/protocol';
 import { Sim } from '../../src/shared/sim';
+import { MAX_BYTES, makeTransferCode, normalizeTransferCode, TransferBox } from './transfer';
 import { STAGES } from '../../src/shared/stages';
 import { DEFAULT_HP, DEFAULT_RULES, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup } from '../../src/shared/types';
 
+export { TransferBox } from './transfer';
+
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
+  TRANSFERS: DurableObjectNamespace<TransferBox>;
+}
+
+/** ブラウザ（別のドメインのページ）から呼べるようにするヘッダー */
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Cache-Control': 'no-store',
+};
+const cors = (res: Response) => {
+  const r = new Response(res.body, res);
+  for (const [k, v] of Object.entries(CORS)) r.headers.set(k, v);
+  return r;
+};
+
+/** データ引き継ぎ（transfer.ts） */
+async function handleTransfer(req: Request, env: Env, path: string): Promise<Response> {
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  if (req.method !== 'POST') return cors(new Response('POST only', { status: 405 }));
+  if (path === '/transfer') {
+    const body = await req.text();
+    if (body.length > MAX_BYTES) return cors(new Response('too large', { status: 413 }));
+    try {
+      JSON.parse(body);
+    } catch {
+      return cors(new Response('bad', { status: 400 }));
+    }
+    // まれにコードがかぶったら作り直す
+    for (let i = 0; i < 3; i++) {
+      const code = makeTransferCode();
+      const res = await env.TRANSFERS.get(env.TRANSFERS.idFromName(code)).fetch('https://box/put', { method: 'POST', body });
+      if (res.status === 409) continue;
+      const { expires } = (await res.json()) as { expires: number };
+      return cors(Response.json({ code, expires }));
+    }
+    return cors(new Response('busy', { status: 503 }));
+  }
+  const code = normalizeTransferCode(decodeURIComponent(path.slice('/transfer/'.length)));
+  if (!code) return cors(new Response('bad code', { status: 400 }));
+  const res = await env.TRANSFERS.get(env.TRANSFERS.idFromName(code)).fetch('https://box/take', { method: 'POST' });
+  return cors(res);
 }
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+    if (url.pathname === '/transfer' || url.pathname.startsWith('/transfer/')) return handleTransfer(req, env, url.pathname);
     const m = url.pathname.match(/^\/room\/(\d{4})$/);
     if (m) {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('WebSocket only', { status: 426 });
