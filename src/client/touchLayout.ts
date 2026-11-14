@@ -8,6 +8,8 @@ export function applyTouchLayout(s: Pick<Settings, 'leftHanded' | 'btnPos'>): vo
   const box = document.getElementById('buttons');
   if (!touch || !box) return;
   touch.classList.toggle('left-handed', s.leftHanded);
+  // 画面下の表示（5〜6人のとき）をボタンの反対側へ寄せるため、画面全体にも印を付ける
+  document.getElementById('app')?.classList.toggle('left-handed', s.leftHanded);
   const custom = Object.keys(s.btnPos).length > 0;
   box.classList.toggle('custom', custom);
   document.querySelectorAll<HTMLElement>('.pad-btn').forEach((el) => {

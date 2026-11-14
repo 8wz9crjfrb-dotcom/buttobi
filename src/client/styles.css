@@ -2397,3 +2397,8 @@ table.rec td:first-child {
   display: inline-block;
   transform-origin: left center;
 }
+
+/* 左利き（ボタンが左側）のときは、5〜6人の表示を右に寄せる */
+#app.left-handed .hud-players.many {
+  left: 55%;
+}
