@@ -1326,6 +1326,61 @@ export class FighterModel {
           this.spinners.push({ g, speed: -0.8 });
           break;
         }
+        case 'goldStripes': {
+          // ジャージの金のライン（胴の両わき・ズボンの両わき）
+          const gold = this.toon(col);
+          for (const sd of [1, -1]) {
+            this.part(b, new THREE.BoxGeometry(0.03, 0.42, 0.06), gold, [sd * 0.222 * wide, 0.9, 0], { outline: false });
+            const leg = sd > 0 ? this.legL : this.legR;
+            this.part(leg, new THREE.BoxGeometry(0.025, 0.36, 0.05), gold, [sd * 0.083, -0.25, 0], { outline: false });
+          }
+          break;
+        }
+        case 'powderCrown': {
+          // 頭の上で、プロテインの粉がうずを巻いて王冠の形になる（ゆっくり回る）
+          const g = new THREE.Group();
+          g.position.set(0, top - 0.1, 0);
+          h.add(g);
+          const powder = this.toon(0xf4ecd8);
+          // 金の台
+          this.part(g, new THREE.CylinderGeometry(0.24, 0.26, 0.06, 20, 1, true), this.toon(col), [0, 0, 0], { outline: false });
+          // うず（下から上へ、まわりながら小さくなる粉のかたまり）
+          for (let i = 0; i < 16; i++) {
+            const a = i * 0.85;
+            const r = 0.19 * (1 - i / 22);
+            this.part(g, new THREE.SphereGeometry(0.06 * (1 - i / 30), 10, 8), powder, [Math.cos(a) * r, 0.04 + i * 0.016, Math.sin(a) * r], { outline: false });
+          }
+          // 王冠のとがり（5つ、粉の上に金の玉）
+          for (let k = 0; k < 5; k++) {
+            const a = (k / 5) * Math.PI * 2;
+            this.part(g, new THREE.ConeGeometry(0.045, 0.13, 8), powder, [Math.cos(a) * 0.19, 0.1, Math.sin(a) * 0.19], { outline: false });
+            this.part(g, new THREE.SphereGeometry(0.025, 8, 6), this.glow(0xffd23f), [Math.cos(a) * 0.19, 0.18, Math.sin(a) * 0.19], { outline: false });
+          }
+          this.spinners.push({ g, speed: 0.8 });
+          break;
+        }
+        case 'shakerOrbit': {
+          // まわりを回る、プロテインのシェイカー（3本、ふたの色ちがい）
+          const g = new THREE.Group();
+          g.position.y = 1.0;
+          b.add(g);
+          const caps = [0xd9b44a, 0x2a2a32, 0xe5304a];
+          for (let k = 0; k < 3; k++) {
+            const pv = new THREE.Group();
+            pv.rotation.y = (k / 3) * Math.PI * 2;
+            g.add(pv);
+            const sh = new THREE.Group();
+            sh.position.set(0, [0.1, -0.15, 0.25][k], 0.85);
+            sh.rotation.z = [0.3, -0.25, 0.1][k];
+            pv.add(sh);
+            this.part(sh, new THREE.CylinderGeometry(0.07, 0.06, 0.24, 14), this.toon(0xf6f4ee), [0, 0, 0]);
+            this.part(sh, new THREE.CylinderGeometry(0.073, 0.073, 0.06, 14), this.toon(caps[k]), [0, 0.15, 0]);
+            this.part(sh, new THREE.CylinderGeometry(0.02, 0.025, 0.04, 8), this.toon(caps[k]), [0, 0.2, 0], { outline: false });
+            this.part(sh, new THREE.BoxGeometry(0.1, 0.07, 0.005), this.toon(0xd9b44a), [0, -0.01, 0.068], { outline: false });
+          }
+          this.spinners.push({ g, speed: 0.9 });
+          break;
+        }
         case 'suitLines': {
           // 胸のV字・ベルト・腕のライン（光る）
           const ln = this.glow(col);
