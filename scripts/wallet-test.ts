@@ -41,7 +41,7 @@ check('通算100勝でも節目のボーナス（30・50・100勝）を受け取
   const r = pullGacha(g, 10)!;
   check('10回引くと10着出て、900コイン使う', r.length === 10 && g.coins === r.reduce((a, x) => a + x.refund, 0), `残り${g.coins}`);
   check('出た衣装（重複以外）を持っている', r.filter((x) => !x.dup).every((x) => g.owned.includes(x.id)));
-  check('出るのはSRかSSRだけ', r.every((x) => x.rarity === 4 || x.rarity === 5));
+  check('出るのはSR・SSR・URだけ', r.every((x) => x.rarity >= 4 && x.rarity <= 6));
   // 天井：SSRが出ない乱数でも、50回目は必ずSSR
   const p: Wallet = { coins: 100 * PITY_LIMIT, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
   let ssrAt = -1;
