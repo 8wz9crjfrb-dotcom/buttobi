@@ -316,6 +316,11 @@ export const AREA = {
   goal: 50 * 60,
   /** 味方が1人増えるごとに増える速さ（2人で1.2倍、3人で1.4倍） */
   perAlly: 0.2,
+  /**
+   * 満タンの量の倍率（添え字＝ゲージの数：個人戦は人数、チーム戦はチーム数）。
+   * 移動する1つのエリアは、人数が多いほど取り合いばかりになって溜まりにくいので、大きく減らす
+   */
+  goalScale: { move: [1, 1, 0.9, 0.5, 0.32, 0.25, 0.2], fix2: [1, 1, 1, 1, 1, 0.9, 0.8] } as Record<'move' | 'fix2', number[]>,
   /** 移動するエリア：移る間かくと、予告を出す時間（フレーム） */
   moveEvery: 20 * 60,
   warn: 3 * 60,
@@ -424,6 +429,13 @@ export class Sim {
     for (const f of this.fighters) this.areaGauge.set(this.areaKey(f), 0);
   }
 
+  /** ゲージの満タンの量。ゲージの数（個人戦は人数、チーム戦はチーム数）が多いほど取り合いが増えるので少なくする */
+  get areaGoal(): number {
+    const k = Math.max(2, this.areaGauge.size);
+    const t = AREA.goalScale[this.areaShape];
+    return Math.round(AREA.goal * (t[Math.min(k, t.length - 1)] ?? 1));
+  }
+
   /** その人のゲージの番号 */
   areaKey(f: Fighter): number {
     return this.setup.rules.teams ? f.team : f.slot;
@@ -485,7 +497,7 @@ export class Sim {
       count.set(k, (count.get(k) ?? 0) + n);
     });
     for (const [k, n] of count) {
-      const v = Math.min(AREA.goal, (this.areaGauge.get(k) ?? 0) + 1 + AREA.perAlly * (n - 1));
+      const v = Math.min(this.areaGoal, (this.areaGauge.get(k) ?? 0) + 1 + AREA.perAlly * (n - 1));
       this.areaGauge.set(k, v);
     }
   }
@@ -498,7 +510,7 @@ export class Sim {
       next: nx.zones,
       nextIn: nx.nextIn,
       gauges: [...this.areaGauge.entries()].map(([k, v]) => [k, Math.floor(v)] as [number, number]),
-      goal: AREA.goal,
+      goal: this.areaGoal,
     };
   }
 
@@ -2683,7 +2695,7 @@ export class Sim {
     const timeUp = rules.timeLimit > 0 && this.frame > COUNTDOWN_FRAMES && this.timeLeftFrames <= 0;
     let over = timeUp;
     // エリアバトル：だれかのゲージが満タンになったら終わり
-    if (rules.mode === 'area' && [...this.areaGauge.values()].some((v) => v >= AREA.goal)) over = true;
+    if (rules.mode === 'area' && [...this.areaGauge.values()].some((v) => v >= this.areaGoal)) over = true;
     if (rules.mode !== 'time' && rules.mode !== 'area' && this.fighters.length > 1) {
       // 残っているチーム（チーム戦でなければ選手）が1つ以下になったら終わり
       const teams = new Set(this.fighters.filter((f) => !f.out).map((f) => f.team));
@@ -2735,7 +2747,7 @@ export class Sim {
         score: e.f.kos - e.f.falls,
         dealt: Math.round(e.f.dealt),
         throws: e.f.throws,
-        ...(area ? { area: Math.floor((gauge(e.f) / AREA.goal) * 100) } : {}),
+        ...(area ? { area: Math.floor((gauge(e.f) / this.areaGoal) * 100) } : {}),
       };
     });
   }

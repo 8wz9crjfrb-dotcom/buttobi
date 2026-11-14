@@ -126,7 +126,7 @@ const gauge = (sim: Sim, key: number) => sim.areaGauge.get(key) ?? 0;
 // ---- 勝ち負け
 {
   const sim = make([P(0, 'guard'), P(1, 'hacker')]);
-  sim.areaGauge.set(0, AREA.goal - 30);
+  sim.areaGauge.set(0, sim.areaGoal - 30);
   putIn(sim, 0);
   putOut(sim, 1);
   run(sim, 40);
@@ -152,6 +152,14 @@ const gauge = (sim: Sim, key: number) => sim.areaGauge.get(key) ?? 0;
   f.y = 3;
   run(sim, 400);
   check('場外に出ても負けにならず、復活する', !sim.ended && !f.out && f.falls === 1 && f.alive);
+}
+
+// ---- 人数が多いほど満タンの量が少ない（移動する1つは取り合いが増えるため）
+{
+  const goal = (n: number, area: 'move' | 'fix2', teams = false) =>
+    make(Array.from({ length: n }, (_, i) => P(i, 'guard', i % 2)), { area, teams }).areaGoal;
+  check('満タンの量：移動1つの個人戦は、人数が多いほど少ない', goal(2, 'move') > goal(3, 'move') && goal(3, 'move') > goal(4, 'move') && goal(4, 'move') > goal(6, 'move'), [2, 3, 4, 6].map((n) => goal(n, 'move')).join(' / '));
+  check('満タンの量：チーム戦はチームの数で決まる（6人でも2チームなら2人と同じ）', goal(6, 'move', true) === goal(2, 'move'));
 }
 
 // ---- 通信：エリアの状態が送れる
@@ -189,7 +197,7 @@ const gauge = (sim: Sim, key: number) => sim.areaGauge.get(key) ?? 0;
     const g = [...sim.areaGauge.values()];
     total += g.reduce((a, b) => a + b, 0);
     if (sim.ended) wins++;
-    check(`CPU（${stage}）：試合の多くの時間、だれかがエリアにいる`, inside / frames > 0.5, `${Math.round((inside / frames) * 100)}%  ゲージ ${g.map((v) => Math.round((v / AREA.goal) * 100) + '%').join(' / ')}`);
+    check(`CPU（${stage}）：試合の多くの時間、だれかがエリアにいる`, inside / frames > 0.5, `${Math.round((inside / frames) * 100)}%  ゲージ ${g.map((v) => Math.round((v / sim.areaGoal) * 100) + '%').join(' / ')}`);
   }
   check('CPU：試合がきちんと終わる', wins === 3);
 }
