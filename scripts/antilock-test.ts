@@ -54,6 +54,39 @@ for (const [c, name] of [['hacker', 'ハッカー'], ['ai', 'AIエンジニア']
   check('データ泥棒の下B（入れ替え）：連打しても約4秒に1回しか入れ替わらない', swaps >= 2 && swaps <= 3, `10秒で${swaps}回`);
 }
 
+// ---- 突撃する技・引き寄せる技には待ち時間がある
+{
+  const rush: [string, 'sspecial' | 'uspecial' | 'dspecial', number, number][] = [
+    ['thief', 'sspecial', 0, 60], ['streamer', 'sspecial', 0, 60], ['dopa', 'sspecial', 0, 60], ['gacha', 'sspecial', 0, 60],
+    ['courier', 'sspecial', 0, 60], ['trainer', 'sspecial', 0, 60], ['threeb', 'sspecial', 0, 60], ['threeb', 'sspecial', 1, 60],
+    ['threeb', 'sspecial', 2, 60], ['guard', 'uspecial', 0, 40], ['dopa', 'dspecial', 0, 180], ['thief', 'dspecial', 0, 240],
+  ];
+  const short = rush.filter(([c, id, job, min]) => (moveOf(c, id, job).cd ?? 0) < min).map(([c, id, job]) => `${c}${job || ''} ${id}`);
+  check('突撃する技・引き寄せる技・入れ替える技に待ち時間がある', short.length === 0, short.join(' / '));
+  // 実際に連打しても続けて出ない（トレーナーのタックル）
+  const sim = make('trainer');
+  sim.fighters[1].x = 9;
+  let starts = 0;
+  let prev = '';
+  for (let i = 0; i < 300; i++) {
+    sim.step(new Map([[0, i % 3 === 0 ? { mx: 1, my: 0, buttons: BTN_B } : N]]));
+    const f = sim.fighters[0];
+    const now = f.state === 'attack' ? String(f.move) : '';
+    if (now === 'sspecial' && prev !== 'sspecial') starts++;
+    prev = now;
+    if (f.x > 6) f.x = -6;
+  }
+  check('トレーナーのタックル：連打しても続けて突撃できない', starts <= 3, `5秒で${starts}回`);
+  // 自転車は、降りてから待ち時間を数える
+  const bk = make('courier');
+  bk.fighters[1].x = 9;
+  const c = bk.fighters[0];
+  for (let i = 0; i < 20; i++) bk.step(new Map([[0, i === 0 ? { mx: 1, my: 0, buttons: BTN_B } : N]]));
+  const riding = c.bike > 0;
+  for (let i = 0; i < 400 && c.bike > 0; i++) bk.step(new Map([[0, { mx: i % 60 < 30 ? 1 : -1, my: 0, buttons: 0 }]]));
+  check('配達員の自転車：降りた直後は乗れない', riding && c.cdS > 30, `残り${c.cdS}フレーム`);
+}
+
 // ---- ハメ防止
 {
   const sim = make('guard');

@@ -668,6 +668,8 @@ export class Sim {
     // 必殺技の待ち時間は、その技を出し終わってから減り始める
     for (const id of ['nspecial', 'sspecial', 'dspecial', 'uspecial'] as const) {
       const k = SPECIAL_CD[id];
+      // 自転車は、降りてから数える
+      if (id === 'sspecial' && f.bike > 0) continue;
       if (f[k] > 0 && !(f.state === 'attack' && f.move === id)) f[k]--;
     }
     if (f.armorCd > 0) f.armorCd--;
