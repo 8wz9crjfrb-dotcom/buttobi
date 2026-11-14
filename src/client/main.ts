@@ -1925,7 +1925,8 @@ function bindPreviewSpin(root: HTMLElement): void {
 // チュートリアル：練習モードの上で、操作を1つずつ体験する
 interface TutorialStep {
   title: string;
-  text: string;
+  /** 説明（キャラによって変わるものは、選手から作る） */
+  text: string | ((s: LocalSession) => string);
   /** その段階を始めるときの準備 */
   setup?(s: LocalSession): void;
   /** 達成したか */
@@ -1943,6 +1944,17 @@ const TUTORIAL: TutorialStep[] = [
   { title: 'ジャンプ', text: 'ジャンプボタン（またはスティックを上にはじく）で跳ぼう。空中でもう一度押すと2段ジャンプ', done: (_s, _v, e) => e.some((x) => x.k === 'jump' && x.s === 0) },
   { title: '攻撃', text: 'Aボタンで攻撃。相手に近づいて当てよう', setup: (s) => placeNear(s), done: (_s, _v, e) => e.some((x) => x.k === 'hit' && x.a === 0) },
   { title: '必殺技', text: 'Bボタンで必殺技。スティックの向き（なし・横・下・上）で4種類あります', done: (_s, v) => (v.fighters[0]?.move ?? '').endsWith('special') },
+  {
+    title: '必殺技の待ち時間',
+    text: (s) => {
+      const w = tutorialCdMove(s);
+      return `突撃する技などは、使ったあと少しの間使えません。${w.label}を出してみよう。Bボタンに暗い扇形と秒数が出ている間は待ち時間です（キーボードのときは自分の枠の下に出ます）`;
+    },
+    done: (s) => {
+      const me = s.sim.fighters.find((f) => f.slot === 0);
+      return !!me && me.state !== 'attack' && me[tutorialCdMove(s).key] > 0;
+    },
+  },
   { title: 'スマッシュ攻撃', text: 'スティックを横にはじきながらAで強力なスマッシュ。Aを押し続けると溜められます', setup: (s) => placeNear(s), done: (_s, v) => v.fighters[0]?.move === 'smash' },
   { title: 'ガード', text: 'ガードボタンを押し続けると、攻撃を防げます（1秒ほど続けよう）', done: (_s, v) => {
     if (v.fighters[0]?.state === 'shield') tutorial!.count = Math.max(tutorial!.count, v.fighters[0].stateTime);
@@ -1961,6 +1973,19 @@ const TUTORIAL: TutorialStep[] = [
     done: (_s, _v, e) => e.some((x) => x.k === 'ko' && x.s === 1),
   },
 ];
+
+/** チュートリアルで試す、待ち時間のある必殺技（横B → 上B → 下B → B の順で、そのキャラが持っているもの） */
+function tutorialCdMove(s: LocalSession): { label: string; key: 'cdN' | 'cdS' | 'cdD' | 'cdU' } {
+  const me = s.sim.fighters.find((f) => f.slot === 0);
+  const list = [
+    ['sspecial', '横B（スティックを横に倒してB）', 'cdS'],
+    ['uspecial', '上B（スティックを上に倒してB）', 'cdU'],
+    ['dspecial', '下B（スティックを下に倒してB）', 'cdD'],
+    ['nspecial', 'B', 'cdN'],
+  ] as const;
+  for (const [id, label, key] of list) if (me && (moveOf(me.def.id, id, me.job).cd ?? 0) > 0) return { label, key };
+  return { label: '横B', key: 'cdS' };
+}
 
 function placeNear(s: LocalSession): void {
   const me = s.sim.fighters.find((f) => f.slot === 0);
@@ -2002,7 +2027,8 @@ function nextTutorialStep(s: LocalSession): void {
   if (!st) return finishTutorial();
   st.setup?.(s);
   tutorialEl.classList.remove('hidden', 'ok');
-  tutorialEl.innerHTML = `<div class="tu-step">チュートリアル ${tutorial.step + 1} / ${TUTORIAL.length}</div><div class="tu-title">${st.title}</div><div class="tu-text">${st.text}</div>`;
+  const text = typeof st.text === 'function' ? (session instanceof LocalSession ? st.text(session) : '') : st.text;
+  tutorialEl.innerHTML = `<div class="tu-step">チュートリアル ${tutorial.step + 1} / ${TUTORIAL.length}</div><div class="tu-title">${st.title}</div><div class="tu-text">${text}</div>`;
 }
 
 function updateTutorial(s: LocalSession, view: ViewState, events: GameEvent[], dt: number): void {
@@ -2037,6 +2063,7 @@ function finishTutorial(): void {
   showScreen(
     `<h2>チュートリアル完了！</h2>
      <p class="help">これで基本の操作はばっちりです。${first ? '<br/><span class="coin-icon"></span>100 コインをもらいました。' : ''}<br/>キャラごとの必殺技は、キャラ選択で技を長押しすると説明が見られます。</p>
+     <p class="help"><b>ハメ防止：</b>攻撃を受け続けてほとんど動けない状態が約2秒続くと、動けるようになった瞬間に少し無敵になって抜け出せます。<br/><b>いろいろなルール：</b>CPU戦やルームでは、ストック・タイム・体力制のほかに「エリアバトル」（エリアに立ってゲージを溜める）も選べます。詳しくはメニューの「？」（遊び方）へ。</p>
      <div class="footer"><button class="btn" id="train">練習を続ける</button><button class="btn primary" id="menu">メニューへ</button></div>`,
     'overlay',
     (root) => {
