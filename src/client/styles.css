@@ -2071,11 +2071,15 @@ table.rec td:first-child {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 17px;
+  padding: 0;
   color: #fff;
   background: rgba(20, 24, 52, 0.75);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
   cursor: pointer;
+}
+.m-icon svg {
+  width: 22px;
+  height: 22px;
 }
 .m-icon:active {
   transform: scale(0.94);
@@ -2121,10 +2125,23 @@ table.rec td:first-child {
   opacity: 0.5;
 }
 .m-ic {
-  font-size: 26px;
-  width: 36px;
-  text-align: center;
   flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--ic) 82%, #fff), var(--ic));
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.m-ic svg {
+  width: 30px;
+  height: 30px;
+}
+/* 黄色いボタンの上では、台を濃い色にして目立たせる */
+.m-btn.primary .m-ic {
+  background: linear-gradient(160deg, #3a3550, #1b1f3b);
 }
 .m-tx b {
   display: block;
@@ -2199,4 +2216,10 @@ table.rec td:first-child {
 .m-plate .t {
   font-size: 10px;
   color: #dfe3ff;
+}
+
+/* メニューでは、FPS の表示をタイトルの下へ（タイトルと重ならないように） */
+#app:has(.menu-screen) #fps {
+  top: calc(56px + var(--safe-t));
+  left: calc(16px + var(--safe-l));
 }

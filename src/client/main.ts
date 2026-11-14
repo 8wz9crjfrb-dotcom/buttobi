@@ -10,6 +10,7 @@ import { STAGES, getStage } from '../shared/stages';
 import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
+import { ICONS, iconTile } from './icons';
 import { InputManager } from './input';
 import { NetClient } from './net';
 import { Predictor } from './predictor';
@@ -780,8 +781,13 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
   refreshMissions(progress);
   const done = progress.missions.list.filter((m) => m.done).length;
   const dot = (on: boolean) => (on ? '<span class="m-dot"></span>' : '');
-  const big = (id: string, icon: string, title: string, desc: string, extra = '', cls = '') =>
-    `<button class="m-btn ${cls}" id="${id}"><span class="m-ic">${icon}</span><span class="m-tx"><b>${title}</b><small>${desc}</small></span>${extra}</button>`;
+  // アイコンの台の色（ボタンごと）
+  const tile: Record<string, string> = {
+    solo: '#ff8a3d', multi: '#3d8bff', gacha: '#ff4fa3', records: '#e0a800',
+    cpu: '#ff8a3d', horde: '#e5484d', training: '#2fbf71', create: '#3d8bff', join: '#8a5cff',
+  };
+  const big = (id: string, _icon: string, title: string, desc: string, extra = '', cls = '') =>
+    `<button class="m-btn ${cls}" id="${id}">${iconTile(id, tile[id] ?? '#555')}<span class="m-tx"><b>${title}</b><small>${desc}</small></span>${extra}</button>`;
   const col =
     sub === 'solo'
       ? `<div class="m-subhead"><button class="btn small" id="m-back">‹ もどる</button><b>ひとりで</b></div>
@@ -804,9 +810,9 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
        <div class="m-logo">ぶっとびアリーナ<small>BUTTOBI ARENA</small></div>
        <div class="grow"></div>
        ${coinBadge()}
-       ${canInstall() ? '<button class="m-icon" id="install" title="ホーム画面に追加">📲</button>' : ''}
-       <button class="m-icon" id="howto" title="遊び方">❓</button>
-       <button class="m-icon" id="settings" title="設定">⚙️</button>
+       ${canInstall() ? `<button class="m-icon" id="install" title="ホーム画面に追加">${ICONS.install}</button>` : ''}
+       <button class="m-icon" id="howto" title="遊び方">${ICONS.help}</button>
+       <button class="m-icon" id="settings" title="設定">${ICONS.settings}</button>
      </div>
      <div class="m-plate"><div class="r">${c.name}</div><div class="n">${cos.name}</div><div class="t">タップでキャラ・衣装を変更</div></div>
      <div class="m-col">${col}</div>`,
