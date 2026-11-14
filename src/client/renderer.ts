@@ -527,6 +527,8 @@ export class GameRenderer {
     const model = new FighterModel(getCharacter(charId), getCostume(costumeId, charId), 0xffffff);
     model.showMarker = false;
     model.previewTurn = 0.35;
+    // 3B は仕事（美容師・バンドマン・バーテンダー）を順に切り替えて見せる
+    model.cycleJobs = true;
     scene.add(model.root);
     this.menuChar = { scene, camera: new THREE.PerspectiveCamera(30, 1, 0.1, 100), model, key, charId, spin: 0, pop: 0 };
   }
