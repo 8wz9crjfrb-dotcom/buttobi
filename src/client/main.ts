@@ -654,7 +654,11 @@ function stageCards(selected: string): string {
     const th = st.theme;
     const bg = `linear-gradient(${hex(th.sky)}, ${hex(th.skyBottom)})`;
     return `<div class="stage-card ${st.id === selected ? 'on' : ''}" data-stage="${st.id}">
-      <div class="thumb" style="background:${bg}"><img alt="" data-thumb="${st.id}"/></div>
+      <div class="thumb" style="background:${bg}">${(() => {
+        // 作り済みの画像はすぐ表示する（画面を作り直したときにちらつかないように）
+        const done = renderer.cachedThumbnail(st.id);
+        return done ? `<img alt="" src="${done}"/>` : `<img alt="" data-thumb="${st.id}"/>`;
+      })()}</div>
       <div class="nm">${st.name}</div><div class="who">${st.charId ? getCharacter(st.charId).name : 'デフォルト'}</div></div>`;
   }).join('')}</div>`;
 }
@@ -2224,6 +2228,9 @@ function showJoin(): void {
 function showLobby(): void {
   const l = lobby;
   if (!l) return;
+  // ルームの設定が変わるたびに画面を作り直すので、スクロールの位置を引き継ぐ
+  const prevBody = screensEl.querySelector('[data-lobby]')?.closest('.screen')?.querySelector<HTMLElement>('.screen-body');
+  const prevScroll = prevBody?.scrollTop ?? 0;
   const isHost = l.hostSlot === net.slot;
   const me = l.players.find((p) => p.slot === net.slot);
   const humans = l.players.filter((p) => !p.cpu).length;
@@ -2256,7 +2263,7 @@ function showLobby(): void {
     : `<p class="help">ステージ：${getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
   const teamCount = new Set(l.players.map((p) => p.team ?? 0)).size;
   const canStart = l.players.length >= 2 && !l.inMatch && (!l.rules.teams || teamCount >= 2);
-  showScreen(
+  const lobbyEl = showScreen(
     `<div data-lobby class="row" style="justify-content:space-between">
        <div><div style="font-size:12px;color:var(--muted)">ルームコード（友達に教えてください）</div><div class="code-big">${l.code}</div></div>
        <div class="players grow" style="max-width:560px">${slots}</div>
@@ -2328,6 +2335,8 @@ function showLobby(): void {
       }
     },
   );
+  const body = lobbyEl.querySelector<HTMLElement>('.screen-body');
+  if (body && prevScroll) body.scrollTop = prevScroll;
 }
 
 document.addEventListener('visibilitychange', () => {

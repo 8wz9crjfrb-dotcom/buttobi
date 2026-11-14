@@ -417,6 +417,11 @@ export class GameRenderer {
   }
 
   /** ステージ選択用の小さな画像（実際のステージを描いて作る。一度作ったら使い回す） */
+  /** 作り済みのステージの画像（まだなら null） */
+  cachedThumbnail(id: string): string | null {
+    return this.thumbs.get(id) ?? null;
+  }
+
   stageThumbnail(stage: StageDef): string {
     const cached = this.thumbs.get(stage.id);
     if (cached) return cached;
