@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { getCharacter, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
+import { COUNTDOWN_FRAMES } from '../shared/sim';
 import { FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
 import { getCostume } from '../shared/costumes';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -152,6 +153,8 @@ export class GameRenderer {
 
   setMatch(setup: MatchSetup, stage: StageDef): void {
     this.blackoutAt = -1;
+    this.clearEntrances();
+    this.entranceChecked = false;
     this.clear();
     this.stage = stage;
     this.setup = setup;
@@ -187,6 +190,8 @@ export class GameRenderer {
   private focusSlot: number | null = null;
 
   clear(): void {
+    for (const en of this.entrances) this.disposeBeam(en.beam);
+    this.entrances = [];
     for (const { model } of this.models.values()) {
       this.scene.remove(model.root);
       model.dispose();
@@ -486,6 +491,7 @@ export class GameRenderer {
         this.platformMeshes[i].position.x = (at.x1 + at.x2) / 2;
         this.platformMeshes[i].position.y = at.y - 0.11;
       });
+      this.updateEntrances(view);
       for (const f of view.fighters) {
         const m = this.models.get(f.slot);
         if (!m) continue;
@@ -1018,6 +1024,134 @@ export class GameRenderer {
       this.particles.push({ mesh: sprite as unknown as THREE.Mesh, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 50, max: 50, grow: -0.01 });
     }
     this.shake = 1.6;
+  }
+
+  // ---------------------------------------------------------------- UR の登場演出
+  // 試合の最初（カウントダウン中）に、UR 衣装の人のところへ空から虹色の光の柱が落ち、
+  // 着地の衝撃（虹色の輪・星）とともにキャラがはずんで現れ、衣装の名前が出る。
+  // 途中から見始めた（観戦・再接続）ときは出さない
+  private entranceChecked = false;
+  private entrances: { slot: number; delay: number; hit: boolean; beam: THREE.Group; name: string }[] = [];
+  private static readonly ENTRANCE_DROP = 0.4;
+
+  private clearEntrances(): void {
+    for (const en of this.entrances) this.disposeBeam(en.beam);
+    this.entrances = [];
+    for (const { model } of this.models.values()) model.appear = 1;
+  }
+
+  private disposeBeam(g: THREE.Group): void {
+    this.scene.remove(g);
+    g.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        o.geometry.dispose();
+        (o.material as THREE.Material).dispose();
+      }
+    });
+  }
+
+  private updateEntrances(view: ViewState): void {
+    if (!this.entranceChecked && this.setup) {
+      this.entranceChecked = true;
+      if (view.frame < 40) {
+        let k = 0;
+        const urCount = this.setup.players.filter((p) => getCostume(p.costume, p.charId).rarity >= 6).length;
+        // カウントダウン（2.5秒）の間に全員が出終わるように、間かくを人数で決める
+        const gap = urCount > 1 ? Math.min(0.55, 1.5 / (urCount - 1)) : 0;
+        for (const p of this.setup.players) {
+          const cos = getCostume(p.costume, p.charId);
+          if (cos.rarity < 6) continue;
+          const beam = new THREE.Group();
+          const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff];
+          rainbow.forEach((col, i) => {
+            const geo = new THREE.PlaneGeometry(0.16, 1);
+            geo.translate(0, 0.5, 0);
+            const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+            const m = new THREE.Mesh(geo, mat);
+            m.position.x = (i - 2) * 0.15;
+            beam.add(m);
+          });
+          // 中心の白い芯
+          const core = new THREE.PlaneGeometry(0.16, 1);
+          core.translate(0, 0.5, 0);
+          const cm = new THREE.Mesh(core, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+          cm.position.z = 0.01;
+          beam.add(cm);
+          beam.visible = false;
+          beam.position.z = 0.4;
+          this.scene.add(beam);
+          // 2人目からは少しずつ遅らせる（カウントダウン中に全員出終わるように）
+          this.entrances.push({ slot: p.slot, delay: 0.3 + k * gap, hit: false, beam, name: cos.name });
+          k++;
+        }
+      }
+    }
+    if (!this.entrances.length) return;
+    const DROP = GameRenderer.ENTRANCE_DROP;
+    const keep: typeof this.entrances = [];
+    for (const en of this.entrances) {
+      // 時間はゲームのコマ数で数える（端末の重さに関係なく、カウントダウンと合う）
+      const now = view.frame / 60 - en.delay;
+      const f = view.fighters.find((x) => x.slot === en.slot);
+      const m = this.models.get(en.slot)?.model;
+      if (!f || !m) {
+        this.disposeBeam(en.beam);
+        continue;
+      }
+      // 試合が始まったら（端末が重くて演出が遅れていても）必ず見える状態にして終える
+      if (view.frame >= COUNTDOWN_FRAMES) {
+        this.disposeBeam(en.beam);
+        m.appear = 1;
+        continue;
+      }
+      const t = now;
+      // キャラの大きさ：着地まで見えない → はずんで 1 に
+      if (t < DROP) m.appear = 0;
+      else {
+        const u = Math.min(1, (t - DROP) / 0.35);
+        m.appear = u >= 1 ? 1 : Math.max(0.001, 1 + Math.sin(u * Math.PI) * 0.25 - (1 - u) * (1 - u));
+      }
+      // 光の柱：上から落ちて、着地のあと太くなりながら消える
+      const H = 30;
+      if (t >= 0) {
+        en.beam.visible = true;
+        en.beam.position.x = f.x;
+        if (t < DROP) {
+          en.beam.position.y = f.y + H * (1 - t / DROP);
+          en.beam.scale.set(1, H, 1);
+        } else {
+          const u = (t - DROP) / 0.9;
+          en.beam.position.y = f.y;
+          en.beam.scale.set(1 + u * 0.5, H, 1);
+          en.beam.children.forEach((c) => ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.6 * (1 - u)));
+        }
+      }
+      if (!en.hit && t >= DROP) {
+        en.hit = true;
+        const y = f.y + 0.9;
+        const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff];
+        rainbow.forEach((col, i) => this.spawn(this.ringGeo, col, f.x, y, 0, 0, 0.4 + i * 0.12, 24 + i * 3, 0.12 + i * 0.015, true));
+        const tex = fxTexture('star');
+        for (let i = 0; i < 22; i++) {
+          const a = (i / 22) * Math.PI * 2;
+          const sp = 6 + (i % 3) * 3;
+          const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: rainbow[i % 5], transparent: true, depthWrite: false }));
+          sprite.position.set(f.x, y, 0.8);
+          sprite.scale.setScalar(0.8);
+          this.scene.add(sprite);
+          this.particles.push({ mesh: sprite as unknown as THREE.Mesh, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 2, life: 40, max: 40, grow: -0.008 });
+        }
+        this.props.showText(`UR ${en.name}`, '#ffd23f', f.x, f.y + 2.3, false, 75);
+        this.shake = Math.max(this.shake, 0.7);
+      }
+      if (t > DROP + 0.9) {
+        this.disposeBeam(en.beam);
+        m.appear = 1;
+        continue;
+      }
+      keep.push(en);
+    }
+    this.entrances = keep;
   }
 
   /** 撃墜した場所から、ステージの中心に向かう光の柱 */

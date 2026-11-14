@@ -502,6 +502,8 @@ export class FighterModel {
   buddyAway = false;
   /** キャラ選択画面：この角度でカメラの方を向かせる（null なら通常） */
   previewTurn: number | null = null;
+  /** 登場演出の大きさ（0 で見えない、1 でふつう。UR の登場で 0 からはずんで出てくる） */
+  appear = 1;
   /** 分身として半透明で表示するとき（0 = 通常） */
   ghost = 0;
   /** 頭上の目印を出すか（残像では出さない） */
@@ -2175,10 +2177,11 @@ export class FighterModel {
       if (j !== this.job) this.setJob(j);
       def = threebDef(j);
     }
-    const visible = v.state !== 'dead';
+    const visible = v.state !== 'dead' && this.appear > 0.001;
     this.root.visible = visible;
     if (!visible) return;
     this.root.position.set(v.x, v.y, 0);
+    this.root.scale.setScalar(this.appear);
 
     // 向き：少しカメラ側を向かせる
     const target = this.victory ? 0 : this.previewTurn ?? v.facing * (Math.PI / 2 - 0.45);
