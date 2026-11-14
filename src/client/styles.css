@@ -2269,3 +2269,13 @@ table.rec td:first-child {
   border-radius: 12px;
   padding: 6px 10px;
 }
+
+/* キャラ選択・衣装の画面：縦にスクロールしてもスクロールバーを出さない（スクロール自体はできる） */
+.charsel-screen,
+.charsel-screen .screen-body {
+  scrollbar-width: none;
+}
+.charsel-screen::-webkit-scrollbar,
+.charsel-screen .screen-body::-webkit-scrollbar {
+  display: none;
+}
