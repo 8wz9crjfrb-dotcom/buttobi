@@ -1,6 +1,6 @@
 // オフラインでも起動できるように、読み込んだファイルを端末に保存する。
 // 更新したら VERSION を変えると古い保存データが消える。
-const VERSION = 'buttobi-v1';
+const VERSION = 'tobase-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 

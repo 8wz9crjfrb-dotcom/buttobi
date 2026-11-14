@@ -1,62 +1,44 @@
-// アイコン画像（PNG）を外部ライブラリなしで生成する
-import { writeFileSync } from 'node:fs';
-import { deflateSync } from 'node:zlib';
+// アプリのアイコン（案A：紺の背景に、ロゴと同じ黄色い斜めの「ト」と流れる線、「！」）を PNG で書き出す。
+// フォント（Dela Gothic One、Google Fonts の無料フォント）を読み込むため、ネットにつながる環境で実行する。
+// 使い方：npm run icons   → public/icons/ の4つのファイル
+import { createRequire } from 'node:module';
 
-function crc32(buf) {
-  let c, crc = 0xffffffff;
-  for (let n = 0; n < buf.length; n++) {
-    c = (crc ^ buf[n]) & 0xff;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    crc = (crc >>> 8) ^ c;
-  }
-  return (crc ^ 0xffffffff) >>> 0;
+// Playwright はこの端末に入っているものを使う（プロジェクトの依存には入れていない）
+const { chromium } = createRequire(import.meta.url)('playwright');
+
+/**
+ * 512×512 の絵を、size の大きさで書き出す。
+ * inner は絵柄の縮小率（Android の丸く切り抜かれるアイコン用に、大事な部分を真ん中の安全な範囲に収める）
+ */
+const page = (size, inner) => `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:${size}px;height:${size}px;overflow:hidden}
+body{background:radial-gradient(circle at 35% 30%,#3a3f8f,#1b1f3b 70%)}
+.stage{position:absolute;left:0;top:0;width:512px;height:512px;transform-origin:0 0;transform:scale(${size / 512}) translate(${(512 * (1 - inner)) / 2}px,${(512 * (1 - inner)) / 2}px) scale(${inner});font-family:"Dela Gothic One",sans-serif}
+.t{position:absolute;left:150px;top:60px;font-size:330px;line-height:1;color:#ffd23f;-webkit-text-stroke:16px #1b1f3b;paint-order:stroke fill;text-shadow:14px 14px 0 #ff5a3d,24px 24px 0 #0e1024;transform:skewX(-12deg) rotate(-6deg)}
+.x{position:absolute;right:52px;top:40px;font-size:150px;line-height:1.2;color:#fff;-webkit-text-stroke:12px #1b1f3b;paint-order:stroke fill;transform:rotate(22deg)}
+.lines i{position:absolute;height:18px;border-radius:18px;background:linear-gradient(90deg,rgba(255,255,255,0),#fff)}
+</style></head><body><div class="stage"><div class="lines"><i style="left:30px;top:200px;width:150px"></i><i style="left:60px;top:250px;width:120px"></i><i style="left:90px;top:300px;width:90px"></i></div><div class="t">ト</div><div class="x">！</div></div></body></html>`;
+
+const outputs = [
+  { file: 'public/icons/icon-512.png', size: 512, inner: 1 },
+  { file: 'public/icons/icon-192.png', size: 192, inner: 1 },
+  { file: 'public/icons/apple-touch-icon.png', size: 180, inner: 1 },
+  // Android の「丸く切り抜かれるアイコン」は、真ん中の 80% の円の中だけが確実に見える
+  { file: 'public/icons/icon-512-maskable.png', size: 512, inner: 0.74 },
+];
+
+const b = await chromium.launch();
+const p = await b.newPage();
+for (const o of outputs) {
+  await p.setViewportSize({ width: o.size, height: o.size });
+  await p.setContent(page(o.size, o.inner), { waitUntil: 'networkidle' });
+  await p.evaluate(() => document.fonts.ready);
+  const ok = await p.evaluate(() => document.fonts.check('100px "Dela Gothic One"'));
+  if (!ok) throw new Error('フォントが読み込めませんでした');
+  await p.screenshot({ path: o.file });
+  console.log(`${o.file}（${o.size}×${o.size}）を書き出しました`);
 }
-function chunk(type, data) {
-  const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
-  const td = Buffer.concat([Buffer.from(type), data]);
-  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
-  return Buffer.concat([len, td, crc]);
-}
-function png(size, draw) {
-  const raw = Buffer.alloc((size * 4 + 1) * size);
-  for (let y = 0; y < size; y++) {
-    raw[y * (size * 4 + 1)] = 0;
-    for (let x = 0; x < size; x++) {
-      const [r, g, b, a] = draw(x / size, y / size);
-      const o = y * (size * 4 + 1) + 1 + x * 4;
-      raw[o] = r; raw[o + 1] = g; raw[o + 2] = b; raw[o + 3] = a;
-    }
-  }
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; ihdr[9] = 6; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
-}
-// 絵柄：夜空の背景に、黄色い星形の衝撃と、飛んでいく丸いキャラ
-function art(pad) {
-  return (u, v) => {
-    const x = (u - 0.5) / (1 - pad * 2) + 0.5, y = (v - 0.5) / (1 - pad * 2) + 0.5;
-    const bg = [27 + v * 30, 31 + v * 10, 59 + v * 40, 255];
-    const dx = x - 0.42, dy = y - 0.55;
-    const ang = Math.atan2(dy, dx), rad = Math.hypot(dx, dy);
-    const star = 0.26 + 0.09 * Math.cos(ang * 8);
-    let c = bg;
-    if (rad < star) c = [255, 207, 63, 255];
-    if (rad < star * 0.62) c = [255, 246, 201, 255];
-    const bx = x - 0.7, by = y - 0.3;
-    if (Math.hypot(bx, by) < 0.13) c = [79, 140, 255, 255];
-    if (Math.hypot(bx + 0.035, by + 0.02) < 0.025 || Math.hypot(bx - 0.035, by + 0.02) < 0.025) c = [20, 20, 40, 255];
-    // 飛んでいく線
-    for (let i = 0; i < 3; i++) {
-      const lx = x - (0.5 - i * 0.03), ly = y - (0.42 - i * 0.07);
-      const t = lx * 0.83 + ly * -0.55, d = Math.abs(lx * 0.55 + ly * 0.83);
-      if (t > -0.12 && t < 0.02 && d < 0.012) c = [255, 255, 255, 255];
-    }
-    return c;
-  };
-}
-writeFileSync('public/icons/icon-192.png', png(192, art(0)));
-writeFileSync('public/icons/icon-512.png', png(512, art(0)));
-writeFileSync('public/icons/icon-512-maskable.png', png(512, art(0.1)));
-writeFileSync('public/icons/apple-touch-icon.png', png(180, art(0.04)));
-console.log('icons written');
+await b.close();
