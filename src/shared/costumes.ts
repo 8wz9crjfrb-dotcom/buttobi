@@ -35,11 +35,15 @@ export type Accessory =
   /** 金のふち取りの、長い王様のマント */
   | 'royalCape'
   /** 肩のそばに浮かぶ小さなドローン2機 */
-  | 'miniDrones';
+  | 'miniDrones'
+  /** ゲーミングヘッドセットのマイク（左耳から口元へ。先が光る） */
+  | 'micBoom'
+  /** 胸の、光るキーボード柄（青・紫・ピンクのキー） */
+  | 'rgbKeys';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
-  particle: 'sparkle' | 'data' | 'petal' | 'heart' | 'star' | 'coin' | 'flame';
+  particle: 'sparkle' | 'data' | 'petal' | 'heart' | 'star' | 'coin' | 'flame' | 'pixel';
   color: number;
   /** 当たったときに出す粒の色（虹色は -1） */
   hit: number;
@@ -239,6 +243,8 @@ COSTUMES.push({
   extras: ['sunglasses', 'headphones', 'miniDrones'], extraColor: 0x1a2a3a, fx: { particle: 'data', color: 0x39ff88, hit: 0x39ff88 },
 });
 
+COSTUMES.push({ id: 'streamer-gamer', charId: 'streamer', name: '深夜のゲーム実況', rarity: 5, colors: c(0x1b1a2e, 0x2c2a4a, 0x5ab8ff, 0x7a5cff, 0xffe0cc, 0x14131f, 0x5ab8ff),
+  extras: ['micBoom', 'rgbKeys'], extraColor: 0x5ab8ff, fx: { particle: 'pixel', color: 0x8a7cff, hit: 0x5ab8ff } });
 /** ガチャで引ける衣装 */
 export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);
 

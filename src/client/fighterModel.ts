@@ -297,6 +297,12 @@ export function fxTexture(kind: string): THREE.Texture {
       g.quadraticCurveTo(28, 28, 32, 2);
       g.fill();
       break;
+    case 'pixel':
+      // ドット絵の四角（角を少し欠いたブロック）
+      g.fillRect(14, 8, 36, 48);
+      g.fillRect(8, 14, 48, 36);
+      g.clearRect(26, 20, 12, 12);
+      break;
     case 'data':
       g.font = `bold 40px monospace`;
       g.fillText(Math.random() < 0.5 ? '01' : '10', 32, 46);
@@ -993,6 +999,32 @@ export class FighterModel {
           }
           break;
         }
+        case 'micBoom': {
+          // 左耳のカップから口元へのびるマイク（2本の棒を、点と点を結ぶ向きに置く）
+          const arm = this.toon(0x22222c);
+          const pts = [new THREE.Vector3(0.37, 0.24, 0.04), new THREE.Vector3(0.3, 0.1, 0.2), new THREE.Vector3(0.13, 0.08, 0.3)];
+          for (let k = 0; k < 2; k++) {
+            const d = pts[k + 1].clone().sub(pts[k]);
+            const m = this.part(h, new THREE.CylinderGeometry(0.016, 0.016, d.length(), 6), arm, [0, 0, 0], { outline: false });
+            m.position.copy(pts[k]).addScaledVector(d, 0.5);
+            m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+          }
+          this.part(h, new THREE.SphereGeometry(0.038, 10, 8), this.glow(col), [0.13, 0.08, 0.3], { outline: false });
+          break;
+        }
+        case 'rgbKeys': {
+          // 胸の光るキーボード柄（4列×3段。左から青→紫→ピンク）
+          const keyCols = [0x5ab8ff, 0x7a8cff, 0xa070ff, 0xff5ec8];
+          for (let r = 0; r < 3; r++) {
+            for (let k = 0; k < 4; k++) {
+              const x = (-1.5 + k + (r === 1 ? 0.25 : 0)) * 0.052 * wide;
+              this.part(b, new THREE.BoxGeometry(0.038, 0.034, 0.012), this.glow(keyCols[(k + r) % 4]), [x, 0.9 - r * 0.048, 0.168], { outline: false });
+            }
+          }
+          // スペースキー
+          this.part(b, new THREE.BoxGeometry(0.12, 0.03, 0.012), this.glow(0x5ab8ff), [0, 0.9 - 3 * 0.048, 0.166], { outline: false });
+          break;
+        }
         case 'festTowel': {
           // フェスのタオル：片方の肩にかけて、前と後ろに垂らす（しま模様と「FES」の文字）
           const tex = new THREE.CanvasTexture(
@@ -1095,7 +1127,7 @@ export class FighterModel {
       for (let i = 0; i < n; i++) rainbow[i % rainbow.length].toArray(cols, i * 3);
       geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
     }
-    const mat = new THREE.PointsMaterial({ size: fx.particle === 'data' ? 0.26 : 0.22, map: fxTexture(fx.particle), color: ur ? 0xffffff : fx.color, vertexColors: ur, transparent: true, depthWrite: false, opacity: 0.9 });
+    const mat = new THREE.PointsMaterial({ size: fx.particle === 'data' || fx.particle === 'pixel' ? 0.26 : 0.22, map: fxTexture(fx.particle), color: ur ? 0xffffff : fx.color, vertexColors: ur, transparent: true, depthWrite: false, opacity: 0.9 });
     const pts = new THREE.Points(geo, mat);
     pts.frustumCulled = false;
     this.root.add(pts);
