@@ -1425,9 +1425,16 @@ input[inputmode='numeric'] {
 .cchip.r6 {
   overflow: hidden;
 }
+/* 粒は文字の後ろに描く（カードの中だけの重なり順にする） */
+.gcard.r6,
+.cchip.r6,
+.gx-card.r6 .front {
+  isolation: isolate;
+}
 /* UR のカード・衣装ボタンの上に舞うキラキラの粒（白と虹色の粒が、またたきながら上へ流れる） */
 .ur-sp {
   position: absolute;
+  z-index: -1;
   inset: 0;
   border-radius: inherit;
   overflow: hidden;
@@ -1442,20 +1449,20 @@ input[inputmode='numeric'] {
 }
 .ur-sp::before {
   background-image:
-    radial-gradient(circle, #fff 0 1.2px, rgba(255, 255, 255, 0.5) 1.8px, transparent 3px),
-    radial-gradient(circle, #fff 0 0.8px, rgba(255, 255, 255, 0.4) 1.4px, transparent 2.4px),
-    radial-gradient(circle, #fff 0 1px, transparent 2.2px);
-  background-size: 46px 40px, 34px 52px, 58px 30px;
+    radial-gradient(circle, #fff 0 0.9px, rgba(255, 255, 255, 0.4) 1.4px, transparent 2.2px),
+    radial-gradient(circle, #fff 0 0.7px, rgba(255, 255, 255, 0.3) 1.2px, transparent 2px),
+    radial-gradient(circle, #fff 0 0.8px, transparent 1.8px);
+  background-size: 64px 40px, 50px 52px, 78px 30px;
   background-position: 8px 6px, 22px 30px, 40px 18px;
   animation: ur-sp-a 2.6s linear infinite, ur-sp-twinkle 0.9s ease-in-out infinite alternate;
 }
 .ur-sp::after {
   background-image:
-    radial-gradient(circle, #ffd23f 0 1px, rgba(255, 210, 63, 0.4) 1.6px, transparent 2.6px),
-    radial-gradient(circle, #4f9dff 0 1px, rgba(79, 157, 255, 0.4) 1.6px, transparent 2.6px),
-    radial-gradient(circle, #ff7ac8 0 1px, rgba(255, 122, 200, 0.4) 1.6px, transparent 2.6px),
-    radial-gradient(circle, #4fd18b 0 1px, rgba(79, 209, 139, 0.4) 1.6px, transparent 2.6px);
-  background-size: 52px 44px, 40px 56px, 62px 36px, 30px 48px;
+    radial-gradient(circle, #ffd23f 0 0.8px, rgba(255, 210, 63, 0.3) 1.3px, transparent 2.1px),
+    radial-gradient(circle, #4f9dff 0 0.8px, rgba(79, 157, 255, 0.3) 1.3px, transparent 2.1px),
+    radial-gradient(circle, #ff7ac8 0 0.8px, rgba(255, 122, 200, 0.3) 1.3px, transparent 2.1px),
+    radial-gradient(circle, #4fd18b 0 0.8px, rgba(79, 209, 139, 0.3) 1.3px, transparent 2.1px);
+  background-size: 72px 44px, 58px 56px, 86px 36px, 46px 48px;
   background-position: 30px 2px, 4px 20px, 50px 34px, 16px 12px;
   animation: ur-sp-b 3.4s linear infinite, ur-sp-twinkle 1.3s 0.4s ease-in-out infinite alternate;
 }
@@ -1472,10 +1479,10 @@ input[inputmode='numeric'] {
 }
 @keyframes ur-sp-twinkle {
   from {
-    opacity: 0.25;
+    opacity: 0.1;
   }
   to {
-    opacity: 1;
+    opacity: 0.6;
   }
 }
 
