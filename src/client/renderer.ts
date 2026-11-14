@@ -982,6 +982,8 @@ export class GameRenderer {
       const power = Math.min(1, e.p / 15);
       rainbow.forEach((col, i) => this.spawn(this.ringGeo, col, e.x, e.y, 0, 0, 0.25 + i * 0.05, 18 + i * 3, 0.07 + power * 0.08 + i * 0.012, true));
     }
+    // ゲーセン荒らし：強い攻撃が当たると、スロットの「777」が光る
+    if (fx.jackpot && e.p >= 10) this.props.showText('777', '#ffd23f', e.x, e.y + 0.9, true, 60);
     const n = (ur ? 12 : 7) + Math.min(6, Math.round(e.p / 3));
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;

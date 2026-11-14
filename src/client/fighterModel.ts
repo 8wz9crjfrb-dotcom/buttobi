@@ -297,6 +297,20 @@ export function fxTexture(kind: string): THREE.Texture {
       g.quadraticCurveTo(28, 28, 32, 2);
       g.fill();
       break;
+    case 'medal': {
+      // ゲームセンターのメダル（ふちのある円に、星のくりぬき）
+      g.beginPath();
+      g.arc(32, 32, 27, 0, Math.PI * 2);
+      g.fill();
+      g.globalCompositeOperation = 'destination-out';
+      g.lineWidth = 4;
+      g.beginPath();
+      g.arc(32, 32, 20, 0, Math.PI * 2);
+      g.stroke();
+      g.font = `900 26px sans-serif`;
+      g.fillText('★', 32, 41);
+      break;
+    }
     case 'pixel':
       // ドット絵の四角（角を少し欠いたブロック）
       g.fillRect(14, 8, 36, 48);
@@ -1023,6 +1037,39 @@ export class FighterModel {
           }
           // スペースキー
           this.part(b, new THREE.BoxGeometry(0.12, 0.03, 0.012), this.glow(0x5ab8ff), [0, 0.9 - 3 * 0.048, 0.166], { outline: false });
+          break;
+        }
+        case 'capFront': {
+          // 前向きのキャップ（つばが前）
+          const cap = this.toon(col);
+          this.part(h, new THREE.SphereGeometry(0.335, 22, 12, 0, Math.PI * 2, 0, Math.PI * 0.42), cap, [0, 0.31, -0.01], { rot: [-0.15, 0, 0] });
+          this.part(h, new THREE.BoxGeometry(0.3, 0.025, 0.22), cap, [0, 0.52, 0.38], { rot: [-0.12, 0, 0] });
+          this.part(h, new THREE.SphereGeometry(0.035, 8, 6), this.toon(0xf3ead2), [0, 0.645, -0.04], { outline: false });
+          break;
+        }
+        case 'jacketRib': {
+          // えりとすその、しま模様のリブ（服の副色と差し色）
+          for (const [y, r, rx] of [
+            [1.17, 0.16, Math.PI / 2],
+            [0.67, 0.225 * wide, Math.PI / 2],
+          ] as const) {
+            this.part(b, new THREE.TorusGeometry(r, 0.035, 6, 24), this.toon(this.c.sub), [0, y, 0], { rot: [rx, 0, 0], scale: [1, y > 1 ? 1 : 0.8, 1], outline: false });
+            this.part(b, new THREE.TorusGeometry(r, 0.013, 4, 24), this.toon(col), [0, y + 0.02, 0], { rot: [rx, 0, 0], scale: [1.02, y > 1 ? 1.02 : 0.82, 1], outline: false });
+          }
+          break;
+        }
+        case 'medalPouch': {
+          // 腰にさげたメダルの袋
+          const bag = new THREE.Group();
+          bag.position.set(0.25 * wide, 0.62, 0.06);
+          b.add(bag);
+          this.part(bag, new THREE.SphereGeometry(0.1, 12, 10), this.toon(0x8a5a2a), [0, 0, 0], { scale: [1, 1.1, 0.8] });
+          this.part(bag, new THREE.TorusGeometry(0.05, 0.015, 6, 12), this.toon(0x5a3a1a), [0, 0.1, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+          for (const [x, y, z] of [
+            [0, 0.12, 0],
+            [0.035, 0.1, 0.03],
+            [-0.03, 0.11, 0.02],
+          ]) this.part(bag, new THREE.CylinderGeometry(0.035, 0.035, 0.01, 12), this.glow(0xffd23f), [x, y, z], { rot: [0.5, 0, 0.3], outline: false });
           break;
         }
         case 'festTowel': {
