@@ -1,5 +1,5 @@
 // コイン（ログインボーナス・勝利・通算勝利の節目）の計算が仕様どおりか確かめる
-import { claimLogin, GACHA_COST, PITY_LIMIT, pullGacha, recordWin, type Wallet } from '../src/client/wallet';
+import { claimLogin, DUP_REFUND, GACHA_COST, PITY_LIMIT, pullGacha, recordWin, UR_PITY_LIMIT, urAvailable, type Wallet } from '../src/client/wallet';
 import { GACHA_COSTUMES } from '../src/shared/costumes';
 import { CHARACTERS } from '../src/shared/characters';
 import { MISSION_BONUS, MISSION_REWARD, recordMatch, refreshMissions, type Progress } from '../src/client/progress';
@@ -9,7 +9,7 @@ function check(name: string, ok: boolean, info = '') {
   console.log(`${ok ? 'OK ' : 'NG '} ${name}${info ? '  (' + info + ')' : ''}`);
   if (!ok) fail++;
 }
-const w: Wallet = { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0 };
+const w: Wallet = { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
 const day = (d: number) => new Date(2026, 10, d, 12, 0, 0);
 
 const a = claimLogin(w, day(1));
@@ -22,7 +22,7 @@ check('8日目はまた1日目から', b?.day === 1 && b.amount === 50);
 const c = claimLogin(w, day(10));
 check('1日あけると連続が途切れて1日目に戻る', c?.day === 1);
 
-const w2: Wallet = { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0 };
+const w2: Wallet = { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
 check('CPU（強さ1）に勝つと5コイン', recordWin(w2, false, 1).base === 5);
 check('CPU（強さ5）に勝つと10コイン', recordWin(w2, false, 5).base === 10);
 check('CPU（強さ9）に勝つと15コイン', recordWin(w2, false, 9).base === 15);
@@ -35,7 +35,7 @@ for (let i = 0; i < 90; i++) recordWin(w2, false, 5);
 check('通算100勝でも節目のボーナス（30・50・100勝）を受け取っている', w2.milestone === 100);
 // ---- 着せ替えガチャ
 {
-  const g: Wallet = { coins: 50, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0 };
+  const g: Wallet = { coins: 50, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
   check('コインが足りないと引けない', pullGacha(g, 1) === null && g.coins === 50);
   g.coins = GACHA_COST.ten;
   const r = pullGacha(g, 10)!;
@@ -43,23 +43,48 @@ check('通算100勝でも節目のボーナス（30・50・100勝）を受け取
   check('出た衣装（重複以外）を持っている', r.filter((x) => !x.dup).every((x) => g.owned.includes(x.id)));
   check('出るのはSRかSSRだけ', r.every((x) => x.rarity === 4 || x.rarity === 5));
   // 天井：SSRが出ない乱数でも、50回目は必ずSSR
-  const p: Wallet = { coins: 100 * PITY_LIMIT, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0 };
+  const p: Wallet = { coins: 100 * PITY_LIMIT, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
   let ssrAt = -1;
   for (let i = 0; i < PITY_LIMIT; i++) {
     const res = pullGacha(p, 1, () => 0.99)!;
     if (res[0].rarity === 5 && ssrAt < 0) ssrAt = i + 1;
   }
-  check('天井：SSRが出ないまま50回目で必ずSSR', ssrAt === PITY_LIMIT, `${ssrAt}回目`);
+  check('天井：SSRが出ないまま30回目で必ずSSR', ssrAt === PITY_LIMIT && PITY_LIMIT === 30, `${ssrAt}回目`);
   // 重複はコインに変わる
-  const d: Wallet = { coins: 200, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [GACHA_COSTUMES.filter((c) => c.rarity === 4)[0].id], pity: 0 };
+  const d: Wallet = { coins: 200, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [GACHA_COSTUMES.filter((c) => c.rarity === 4)[0].id], pity: 0, urPity: 0 };
   const dr = pullGacha(d, 1, () => 0.5 * 0 + 0.2)!; // SR・一覧の先頭を引く乱数
-  check('持っている衣装が出たらコインに変わる', dr[0].dup ? d.coins === 100 + 20 : true, `${dr[0].id} dup=${dr[0].dup} 残り${d.coins}`);
+  check('持っている衣装が出たらコインに変わる（SR 20）', dr[0].dup ? d.coins === 100 + 20 : true, `${dr[0].id} dup=${dr[0].dup} 残り${d.coins}`);
+  check('持っている衣装のコイン：SR 20・SSR 200・UR 500', DUP_REFUND[4] === 20 && DUP_REFUND[5] === 200 && DUP_REFUND[6] === 500);
+  check('UR の衣装がないうちは UR は出ない', !urAvailable() && (() => {
+    const w: Wallet = { coins: 100 * 100, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
+    for (let i = 0; i < 100; i++) if (pullGacha(w, 1, () => 0)![0].rarity === 6) return false;
+    return w.urPity === 0;
+  })());
+  // UR の衣装を仮に1着足して確かめる
+  GACHA_COSTUMES.push({ ...GACHA_COSTUMES.find((c) => c.rarity === 5)!, id: 'test-ur', rarity: 6 });
+  {
+    const w: Wallet = { coins: 100 * 200, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
+    const got: number[] = [];
+    for (let i = 0; i < UR_PITY_LIMIT; i++) got.push(pullGacha(w, 1, () => 0.99)![0].rarity);
+    check('天井：URが出ないまま60回目で必ずUR', got[UR_PITY_LIMIT - 1] === 6 && got.indexOf(6) === UR_PITY_LIMIT - 1, `${got.indexOf(6) + 1}回目`);
+    check('天井：SSRは30回目・60回目の前（URで）にリセット', got[29] === 5 && got.filter((r) => r === 5).length === 1 && w.pity === 0 && w.urPity === 0, `SSR ${got.map((r, i) => (r === 5 ? i + 1 : 0)).filter(Boolean).join(',')}回目`);
+    const w2: Wallet = { coins: 1000, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 20, urPity: 10 };
+    const r1 = pullGacha(w2, 1, () => 0.01)![0];
+    check('確率：乱数が3%未満ならUR、URが出たらSSRの天井もリセット', r1.rarity === 6 && w2.pity === 0 && w2.urPity === 0);
+    const w3: Wallet = { coins: 1000, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 20, urPity: 10 };
+    const r2 = pullGacha(w3, 1, () => 0.1)![0];
+    check('確率：3%〜13%ならSSR、SSRではURの天井はリセットされない', r2.rarity === 5 && w3.pity === 0 && w3.urPity === 11);
+    const w4: Wallet = { coins: 1000, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: ['test-ur'], pity: 0, urPity: 0 };
+    pullGacha(w4, 1, () => 0.01);
+    check('持っているURが出たら500コイン', w4.coins === 900 + 500, `${w4.coins}`);
+  }
+  GACHA_COSTUMES.pop();
   check('衣装はキャラごとにSR2着・SSR1着', CHARACTERS.map((c) => c.id).every((id) => GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 4).length === 2 && GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 5 && c.fx).length === 1));
 }
 // ---- 戦績・ミッション・称号
 {
   const p: Progress = { records: {}, totals: { matches: 0, wins: 0, kos: 0, throws: 0, taunts: 0, specials: 0, items: 0 }, titles: [], missions: { day: '', list: [], bonus: false }, tutorialDone: false };
-  const w: Wallet = { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0 };
+  const w: Wallet = { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
   const day = new Date(2026, 10, 7, 12);
   refreshMissions(p, day);
   check('ミッションは毎日3つ', p.missions.list.length === 3 && new Set(p.missions.list.map((m) => m.id)).size === 3);

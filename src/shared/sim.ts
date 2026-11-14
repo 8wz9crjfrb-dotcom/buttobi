@@ -2423,7 +2423,8 @@ export class Sim {
   }
 
   private koFighter(f: Fighter, x: number, y: number): void {
-    this.events.push({ k: 'ko', x, y, s: f.slot });
+    const by = f.lastHitBy >= 0 && f.lastHitBy !== f.slot && this.frame - f.lastHitFrame < KO_CREDIT_FRAMES ? f.lastHitBy : undefined;
+    this.events.push(by === undefined ? { k: 'ko', x, y, s: f.slot } : { k: 'ko', x, y, s: f.slot, a: by });
     f.falls++;
     if (f.lastHitBy >= 0 && this.frame - f.lastHitFrame < KO_CREDIT_FRAMES) {
       const k = this.fighter(f.lastHitBy);

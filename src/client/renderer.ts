@@ -931,6 +931,9 @@ export class GameRenderer {
       this.spawn(this.ringGeo, color, e.x, e.y, 0, 0, 1, 26, 0.3, true);
       this.koBeam(e.x, e.y, color);
       this.shake = 1.1;
+      // UR 衣装の人が撃墜したとき：虹色の大爆発と、虹色の光の柱
+      const killer = e.a !== undefined ? this.setup?.players.find((x) => x.slot === e.a) : undefined;
+      if (killer && getCostume(killer.costume, killer.charId).rarity >= 6) this.urKo(e.x, e.y);
     }
   }
 
@@ -968,16 +971,23 @@ export class GameRenderer {
     if (e.a === undefined || e.a === e.s) return;
     const p = this.setup?.players.find((x) => x.slot === e.a);
     if (!p) return;
-    const fx = getCostume(p.costume, p.charId).fx;
+    const cos = getCostume(p.costume, p.charId);
+    const fx = cos.fx;
     if (!fx) return;
     const tex = fxTexture(fx.particle);
     const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff];
-    const n = 7 + Math.min(6, Math.round(e.p / 3));
+    const ur = cos.rarity >= 6;
+    if (ur) {
+      // UR：虹色の衝撃波（色の違う輪が少しずつずれて広がる）
+      const power = Math.min(1, e.p / 15);
+      rainbow.forEach((col, i) => this.spawn(this.ringGeo, col, e.x, e.y, 0, 0, 0.25 + i * 0.05, 18 + i * 3, 0.07 + power * 0.08 + i * 0.012, true));
+    }
+    const n = (ur ? 12 : 7) + Math.min(6, Math.round(e.p / 3));
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
       const sp = 3 + Math.random() * 4;
       // 3つに1つは白くして、どんな背景でも見えるようにする
-      const color = i % 3 === 0 ? 0xffffff : fx.hit < 0 ? rainbow[i % rainbow.length] : fx.hit;
+      const color = i % 3 === 0 ? 0xffffff : fx.hit < 0 || ur ? rainbow[i % rainbow.length] : fx.hit;
       const mat = new THREE.SpriteMaterial({ map: tex, color, transparent: true, depthWrite: false });
       const sprite = new THREE.Sprite(mat);
       sprite.position.set(e.x, e.y, 0.6);
@@ -985,6 +995,27 @@ export class GameRenderer {
       this.scene.add(sprite);
       this.particles.push({ mesh: sprite as unknown as THREE.Mesh, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 1, life: 36, max: 36, grow: -0.006 });
     }
+  }
+
+  /** UR 衣装の人の撃墜：虹色の輪が何重にも広がり、星が飛び散り、虹色の光の柱が立つ */
+  private urKo(x: number, y: number): void {
+    const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff];
+    rainbow.forEach((col, i) => {
+      this.spawn(this.ringGeo, col, x, y, 0, 0, 0.6 + i * 0.25, 34 + i * 4, 0.35 + i * 0.04, true);
+      this.koBeam(x, y, col);
+    });
+    const tex = fxTexture('star');
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 8 + Math.random() * 18;
+      const mat = new THREE.SpriteMaterial({ map: tex, color: rainbow[i % rainbow.length], transparent: true, depthWrite: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.set(x, y, 0.8);
+      sprite.scale.setScalar(1.1);
+      this.scene.add(sprite);
+      this.particles.push({ mesh: sprite as unknown as THREE.Mesh, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 50, max: 50, grow: -0.01 });
+    }
+    this.shake = 1.6;
   }
 
   /** 撃墜した場所から、ステージの中心に向かう光の柱 */

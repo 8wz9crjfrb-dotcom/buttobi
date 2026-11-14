@@ -31,7 +31,7 @@ import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
 import { applyTouchLayout, currentButtonPositions } from './touchLayout';
 import { checkTitles, gachaBadge, markGachaSeen, markRecordsSeen, recordsBadge, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
-import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, type PullResult } from './wallet';
+import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, UR_PITY_LIMIT, UR_RATE, urAvailable, type PullResult } from './wallet';
 import { COSTUMES, getCostume, rarityName } from '../shared/costumes';
 
 registerServiceWorker();
@@ -1447,15 +1447,17 @@ function showGacha(): void {
   markGachaSeen(progress, wallet);
   saveProgress(progress);
   const left = PITY_LIMIT - wallet.pity;
+  const ur = urAvailable();
+  const urLeft = UR_PITY_LIMIT - wallet.urPity;
   showScreen(
     `<div class="row" style="justify-content:space-between"><h2>着せ替えガチャ</h2>${coinBadge()}</div>
      <div class="gacha-hero">
        <div class="capsule big"><div class="cap-top"></div><div class="cap-bottom"></div></div>
        <div class="gacha-info">
-         <div>全${COSTUMES.filter((c) => c.rarity >= 4).length}着（各キャラ SR 2着・SSR 1着）。SSR はエフェクト付き！</div>
-         <div>出る確率：<b class="rr5">SSR ${Math.round(SSR_RATE * 100)}%</b>／<b class="rr4">SR ${Math.round((1 - SSR_RATE) * 100)}%</b></div>
-         <div>天井：SSR 確定まで あと <b>${left}</b> 回</div>
-         <div class="muted">持っている衣装が出たら、コインに変わります（SR ${DUP_REFUND[4]}・SSR ${DUP_REFUND[5]}）。</div>
+         <div>全${COSTUMES.filter((c) => c.rarity >= 4).length}着。SSR・UR はエフェクト付き！</div>
+         <div>出る確率：${ur ? `<b class="rr6">UR ${Math.round(UR_RATE * 100)}%</b>／` : ''}<b class="rr5">SSR ${Math.round(SSR_RATE * 100)}%</b>／<b class="rr4">SR ${Math.round((1 - SSR_RATE - (ur ? UR_RATE : 0)) * 100)}%</b></div>
+         <div>天井：${ur ? `<b class="rr6">UR</b> 確定まで あと <b>${urLeft}</b> 回・` : ''}<b class="rr5">SSR</b> 確定まで あと <b>${left}</b> 回</div>
+         <div class="muted">持っている衣装が出たら、コインに変わります（SR ${DUP_REFUND[4]}・SSR ${DUP_REFUND[5]}${ur ? `・UR ${DUP_REFUND[6]}` : ''}）。</div>
          <div class="muted">集めた衣装：${wallet.owned.length} / ${COSTUMES.filter((c) => c.rarity >= 4).length}</div>
        </div>
      </div>
@@ -1499,6 +1501,7 @@ function showGacha(): void {
 function playGachaOpening(res: PullResult[]): void {
   const best = Math.max(...res.map((r) => r.rarity));
   const ssr = best >= 5;
+  const ur = best >= 6;
   const ten = res.length > 1;
   const el = showScreen(
     `<div class="gx r${best}">
@@ -1537,7 +1540,7 @@ function playGachaOpening(res: PullResult[]): void {
       phase = 'shown';
       at(ssr ? 600 : 300, () => sfx.gacha(ssr ? 5 : best >= 4 ? 4 : 3));
       // 出た衣装をしばらく見せてから結果へ（SSR は長めに）
-      at((ten ? 1800 : 1700) + (ssr ? 900 : 0), finish);
+      at((ten ? 1800 : 1700) + (ur ? 1500 : ssr ? 900 : 0), finish);
     }
   };
   /** カードを並べて、gap ごとに1枚ずつめくる */
@@ -1559,10 +1562,11 @@ function playGachaOpening(res: PullResult[]): void {
     phase = 'open';
     if (best >= 4) stage.classList.add('tint');
     if (ssr) stage.classList.add('gold');
+    if (ur) stage.classList.add('rainbow');
     cap.classList.add('open');
     stage.classList.add('opened');
     sfx.gachaOpen(best);
-    burstParticles(stage, ssr ? 46 : best >= 4 ? 30 : 18, ssr);
+    burstParticles(stage, ur ? 80 : ssr ? 46 : best >= 4 ? 30 : 18, ssr);
     at(450, reveal);
   };
   // 1. 落ちてきて弾む
@@ -1570,7 +1574,7 @@ function playGachaOpening(res: PullResult[]): void {
   at(380, () => sfx.gachaDrop());
   // 2. だんだん激しく揺れる
   const shakeStart = 650;
-  const shakeEnd = ssr ? 2100 : 1500;
+  const shakeEnd = ur ? 2900 : ssr ? 2100 : 1500;
   for (let t = shakeStart, k = 0; t < shakeEnd; t += 160 - Math.min(90, k * 8), k++) {
     const power = (t - shakeStart) / (shakeEnd - shakeStart);
     at(t, () => {
@@ -1587,6 +1591,14 @@ function playGachaOpening(res: PullResult[]): void {
     at(shakeStart + 800, () => {
       stage.classList.add('gold');
       sfx.gachaGold();
+    });
+  }
+  // UR は金色のあと、さらに虹色に変わる（2段階の確定演出）
+  if (ur) {
+    at(shakeStart + 1600, () => {
+      stage.classList.add('rainbow');
+      sfx.gachaGold();
+      setTimeout(() => sfx.gachaGold(), 220);
     });
   }
   // 3. 開く → 4. カードを出して、1枚ずつめくる
@@ -1636,7 +1648,7 @@ function showGachaResult(res: PullResult[], index: number): void {
      <div class="cs-nameplate"><div class="cs-role rr${r.rarity}">${rarityName(r.rarity)}${r.dup ? '（持っていたのでコインに）' : ' NEW!'}</div><div class="cs-name">${c.name}</div><div class="cs-role" style="color:#fff">${ch.name}</div></div>
      <div class="row" style="justify-content:space-between"><h2>ガチャの結果</h2>${coinBadge()}</div>
      <div class="gcards ${res.length > 1 ? 'ten' : ''}">${cards}</div>
-     <div class="g-detail">${c.fx ? 'SSR衣装：まわりにエフェクトが舞い、攻撃を当てると特別なエフェクトが出ます。' : ''}${!r.dup ? 'キャラ選択の「衣装」から着られます。' : ''}</div>
+     <div class="g-detail">${c.rarity >= 6 ? 'UR衣装：虹色のオーラをまとい、攻撃を当てると虹色の衝撃波、撃墜すると虹色の大爆発が起きます。' : c.fx ? 'SSR衣装：まわりにエフェクトが舞い、攻撃を当てると特別なエフェクトが出ます。' : ''}${!r.dup ? 'キャラ選択の「衣装」から着られます。' : ''}</div>
      <div class="footer">
        <button class="btn" id="back">もどる</button>
        <div class="row" style="gap:8px">

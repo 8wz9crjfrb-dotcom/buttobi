@@ -17,19 +17,26 @@ export interface Wallet {
   milestone: number;
   /** 持っている衣装の id */
   owned: string[];
-  /** SSR が出ないまま引いた回数（天井用） */
+  /** SSR も UR も出ないまま引いた回数（SSR の天井用。SSR か UR が出たら 0 に戻る） */
   pity: number;
+  /** UR が出ないまま引いた回数（UR の天井用。UR が出たら 0 に戻る） */
+  urPity: number;
 }
 
 // ---------------------------------------------------------------- 着せ替えガチャ
 /** 1回・10回の値段 */
 export const GACHA_COST = { one: 100, ten: 900 };
-/** SSR が出る確率（残りは SR） */
+/** UR・SSR が出る確率（残りは SR）。UR の衣装がまだ1着もないうちは UR は出ない */
+export const UR_RATE = 0.03;
 export const SSR_RATE = 0.1;
-/** この回数 SSR が出なければ、次は必ず SSR（天井） */
-export const PITY_LIMIT = 50;
+/** 天井：UR が出ないまま60回目は必ず UR、SSR 以上が出ないまま30回目は必ず SSR */
+export const UR_PITY_LIMIT = 60;
+export const PITY_LIMIT = 30;
 /** すでに持っている衣装が出たら、代わりにもらえるコイン */
-export const DUP_REFUND: Record<number, number> = { 4: 20, 5: 100 };
+export const DUP_REFUND: Record<number, number> = { 4: 20, 5: 200, 6: 500 };
+
+/** UR の衣装があるか（なければ UR は出ない・天井も数えない） */
+export const urAvailable = () => GACHA_COSTUMES.some((c) => c.rarity === 6);
 
 export interface PullResult {
   id: string;
@@ -46,9 +53,14 @@ export function pullGacha(w: Wallet, count: 1 | 10, rng: () => number = Math.ran
   w.coins -= cost;
   const out: PullResult[] = [];
   for (let i = 0; i < count; i++) {
-    const ssr = w.pity >= PITY_LIMIT - 1 || rng() < SSR_RATE;
-    w.pity = ssr ? 0 : w.pity + 1;
-    const pool = GACHA_COSTUMES.filter((c) => c.rarity === (ssr ? 5 : 4));
+    const ur = urAvailable();
+    const roll = rng();
+    // UR の天井 → UR、そうでなければ確率で UR。次に SSR の天井 → SSR、そうでなければ確率で SSR
+    const rarity = ur && (w.urPity >= UR_PITY_LIMIT - 1 || roll < UR_RATE) ? 6 : w.pity >= PITY_LIMIT - 1 || roll < (ur ? UR_RATE : 0) + SSR_RATE ? 5 : 4;
+    if (ur) w.urPity = rarity === 6 ? 0 : w.urPity + 1;
+    // SSR の天井は、SSR か UR が出たら 0 に戻る
+    w.pity = rarity >= 5 ? 0 : w.pity + 1;
+    const pool = GACHA_COSTUMES.filter((c) => c.rarity === rarity);
     const pick = pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
     const dup = w.owned.includes(pick.id) || out.some((o) => o.id === pick.id && !o.dup);
     const refund = dup ? DUP_REFUND[pick.rarity] ?? 0 : 0;
@@ -78,7 +90,7 @@ export function milestoneReward(wins: number): number {
 }
 
 function fresh(): Wallet {
-  return { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0 };
+  return { coins: 0, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
 }
 
 export function loadWallet(): Wallet {
@@ -94,7 +106,9 @@ export function loadWallet(): Wallet {
       streak: Math.min(7, num(w.streak)),
       milestone: num(w.milestone),
       owned: Array.isArray(w.owned) ? w.owned.filter((id): id is string => typeof id === 'string' && GACHA_COSTUMES.some((c) => c.id === id)) : [],
-      pity: num(w.pity),
+      // 天井が50回から30回に変わったので、それより多く数えていた分は30回目の手前でそろえる
+      pity: Math.min(PITY_LIMIT - 1, num(w.pity)),
+      urPity: Math.min(UR_PITY_LIMIT - 1, num(w.urPity)),
     };
   } catch {
     return fresh();

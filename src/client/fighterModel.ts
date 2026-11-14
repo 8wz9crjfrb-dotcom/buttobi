@@ -482,7 +482,7 @@ export class FighterModel {
     this.buildCharacter2(def.id);
     this.buildAttackProps(def.id);
     this.buildExtras(costume);
-    if (costume.fx) this.buildFx(costume.fx);
+    if (costume.fx) this.buildFx(costume.fx, costume.rarity >= 6);
 
     // ガード（シールド）
     this.shieldMesh = new THREE.Mesh(
@@ -966,12 +966,19 @@ export class FighterModel {
   }
 
   // ---------------------------------------------------------------- SSR のエフェクト（まわりに舞う粒と足元の光）
-  private buildFx(fx: CostumeFx): void {
-    const n = 14;
+  private buildFx(fx: CostumeFx, ur = false): void {
+    // UR は粒が多く、虹色。体のまわりに虹色のオーラもまとう
+    const n = ur ? 26 : 14;
     const pos = new Float32Array(n * 3);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({ size: fx.particle === 'data' ? 0.26 : 0.22, map: fxTexture(fx.particle), color: fx.color, transparent: true, depthWrite: false, opacity: 0.9 });
+    if (ur) {
+      const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff].map((h) => new THREE.Color(h));
+      const cols = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) rainbow[i % rainbow.length].toArray(cols, i * 3);
+      geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    }
+    const mat = new THREE.PointsMaterial({ size: fx.particle === 'data' ? 0.26 : 0.22, map: fxTexture(fx.particle), color: ur ? 0xffffff : fx.color, vertexColors: ur, transparent: true, depthWrite: false, opacity: 0.9 });
     const pts = new THREE.Points(geo, mat);
     pts.frustumCulled = false;
     this.root.add(pts);
@@ -983,9 +990,20 @@ export class FighterModel {
     aura.position.y = 0.02;
     this.root.add(aura);
     const seeds = Array.from({ length: n }, (_, i) => ({ a: (i / n) * Math.PI * 2, r: 0.35 + (i % 3) * 0.1, s: 0.6 + (i % 4) * 0.15, o: i / n }));
-    this.fxState = { pts, aura, seeds, kind: fx.particle };
+    let glow: THREE.Mesh | null = null;
+    if (ur) {
+      // 体を包む、色が移り変わる光（後ろから当てた光のように見せる）
+      glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.2, 2.8),
+        new THREE.MeshBasicMaterial({ map: fxTexture('ring'), color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }),
+      );
+      glow.position.set(0, 1.0 * this.def.scale, -0.35);
+      glow.renderOrder = -1;
+      this.root.add(glow);
+    }
+    this.fxState = { pts, aura, seeds, kind: fx.particle, glow };
   }
-  private fxState: { pts: THREE.Points; aura: THREE.Mesh; seeds: { a: number; r: number; s: number; o: number }[]; kind: CostumeFx['particle'] } | null = null;
+  private fxState: { pts: THREE.Points; aura: THREE.Mesh; seeds: { a: number; r: number; s: number; o: number }[]; kind: CostumeFx['particle']; glow: THREE.Mesh | null } | null = null;
   private hideEyes = false;
   private halos: THREE.Group[] = [];
   private wingGroups: { g: THREE.Group; side: number }[] = [];
@@ -1013,6 +1031,14 @@ export class FighterModel {
     (st.pts.material as THREE.PointsMaterial).opacity = 0.75 + Math.sin(time * 4) * 0.15;
     (st.aura.material as THREE.MeshBasicMaterial).opacity = 0.25 + Math.sin(time * 3) * 0.1;
     st.aura.rotation.z = time * 0.8;
+    if (st.glow) {
+      // UR：オーラと足元の輪の色を、虹色に移り変わらせる
+      st.glow.visible = visible;
+      const hue = (time * 0.15) % 1;
+      (st.glow.material as THREE.MeshBasicMaterial).color.setHSL(hue, 0.9, 0.6);
+      (st.glow.material as THREE.MeshBasicMaterial).opacity = 0.3 + Math.sin(time * 2.5) * 0.08;
+      (st.aura.material as THREE.MeshBasicMaterial).color.setHSL((hue + 0.5) % 1, 0.9, 0.6);
+    }
   }
 
   /** 攻撃のときだけ手に持つ道具 */
@@ -2788,6 +2814,7 @@ export class FighterModel {
     if (this.fxState) {
       (this.fxState.pts.material as THREE.Material).dispose();
       (this.fxState.aura.material as THREE.Material).dispose();
+      if (this.fxState.glow) (this.fxState.glow.material as THREE.Material).dispose();
     }
     this.outlineMat.dispose();
   }

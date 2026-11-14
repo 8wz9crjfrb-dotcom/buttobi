@@ -34,7 +34,7 @@ export interface Costume {
   id: string;
   charId: string;
   name: string;
-  /** レア度：1=いつもの服、4=SR、5=SSR */
+  /** レア度：1=いつもの服、4=SR、5=SSR、6=UR */
   rarity: number;
   /** 小物 */
   extras?: Accessory[];
@@ -222,7 +222,7 @@ export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);
 
 /** レア度の表示名 */
 export function rarityName(r: number): string {
-  return r >= 5 ? 'SSR' : r >= 4 ? 'SR' : '';
+  return r >= 6 ? 'UR' : r >= 5 ? 'SSR' : r >= 4 ? 'SR' : '';
 }
 
 export function defaultCostume(charId: string): Costume {

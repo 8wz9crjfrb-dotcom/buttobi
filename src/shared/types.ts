@@ -155,7 +155,8 @@ export type GameEvent =
   /** 当たった（s = 当たった人、a = 当てた人） */
   | { k: 'hit'; x: number; y: number; p: number; s: number; a?: number }
   | { k: 'shield'; x: number; y: number }
-  | { k: 'ko'; x: number; y: number; s: number }
+  /** 撃墜（s = 撃墜された人、a = 撃墜した人。自滅などは無し） */
+  | { k: 'ko'; x: number; y: number; s: number; a?: number }
   | { k: 'jump'; s: number }
   | { k: 'land'; x: number; y: number; s: number; p: number }
   | { k: 'counter'; x: number; y: number; s: number }
