@@ -102,6 +102,23 @@ export class Sfx {
       this.tone(700, 0.1, 'square', 0.1, 900);
     }
   }
+  /** ガチャの演出：カプセルが落ちて弾む・揺れる・開く・金色に光る（確定演出）・カードがめくれる */
+  gachaDrop(): void {
+    this.tone(220, 0.12, 'sine', 0.2, 90);
+  }
+  gachaShake(power: number): void {
+    this.tone(500 + power * 300, 0.05, 'square', 0.05 + power * 0.04);
+  }
+  gachaOpen(rarity: number): void {
+    this.burst(0.35, rarity >= 5 ? 0.35 : 0.22, rarity >= 5 ? 2400 : 1600);
+    this.tone(rarity >= 5 ? 660 : 520, 0.25, 'triangle', 0.14, rarity >= 5 ? 1320 : 1040);
+  }
+  gachaGold(): void {
+    [880, 1109, 1319, 1760].forEach((f, i) => setTimeout(() => this.tone(f, 0.12, 'sine', 0.12), i * 60));
+  }
+  gachaFlip(rarity: number): void {
+    this.tone(rarity >= 5 ? 1320 : 990, 0.07, 'triangle', rarity >= 5 ? 0.14 : 0.08);
+  }
   heal(): void {
     this.tone(880, 0.12, 'sine', 0.15, 1320);
     setTimeout(() => this.tone(1320, 0.18, 'sine', 0.12), 90);

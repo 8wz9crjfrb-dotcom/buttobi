@@ -1491,27 +1491,108 @@ function showGacha(): void {
 }
 
 /** カプセルが揺れて開く演出（SSR があれば虹色に光る） */
+/**
+ * ガチャを引く演出：カプセルが落ちて弾む → だんだん激しく揺れる（SSR は途中で金色に光る）→
+ * 開く瞬間に光って星と紙吹雪が飛び散る → 出た衣装のカード（10連は1枚ずつめくれる）→ 結果画面。
+ * どこでもタップすると結果まで飛ばせる。
+ */
 function playGachaOpening(res: PullResult[]): void {
   const best = Math.max(...res.map((r) => r.rarity));
+  const ssr = best >= 5;
+  const ten = res.length > 1;
   const el = showScreen(
-    `<div class="gacha-open r${best}">
-       <div class="capsule big shake"><div class="cap-top"></div><div class="cap-bottom"></div></div>
-       <div class="go-text">${res.length === 10 ? '10連ガチャ！' : 'ガチャ！'}</div>
+    `<div class="gx r${best}">
+       <div class="gx-rays"></div>
+       <div class="gx-cap"><div class="capsule big"><div class="cap-top"></div><div class="cap-bottom"></div></div></div>
+       <div class="gx-text">${ten ? '10連ガチャ！' : 'ガチャ！'}</div>
+       <div class="gx-cards"></div>
+       <div class="gx-flash"></div>
        <div class="go-skip">タップでとばす</div>
      </div>`,
     'overlay gacha-stage',
   );
-  sfx.gacha(2);
+  const stage = el.querySelector<HTMLElement>('.gx')!;
+  const cap = el.querySelector<HTMLElement>('.capsule')!;
+  const timers: number[] = [];
+  const at = (ms: number, f: () => void) => timers.push(window.setTimeout(f, ms));
   let done = false;
   const finish = () => {
     if (done) return;
     done = true;
-    sfx.gacha(best >= 5 ? 5 : 3);
+    timers.forEach(clearTimeout);
     showGachaResult(res, 0);
   };
-  setTimeout(() => el.querySelector('.capsule')?.classList.add('open'), 900);
-  setTimeout(finish, best >= 5 ? 1900 : 1500);
+  // 1. 落ちてきて弾む
+  stage.classList.add('drop');
+  at(380, () => sfx.gachaDrop());
+  // 2. だんだん激しく揺れる
+  const shakeStart = 650;
+  const shakeEnd = ssr ? 2100 : 1500;
+  for (let t = shakeStart, k = 0; t < shakeEnd; t += 160 - Math.min(90, k * 8), k++) {
+    const power = (t - shakeStart) / (shakeEnd - shakeStart);
+    at(t, () => {
+      cap.style.setProperty('--shake', `${8 + power * 18}deg`);
+      cap.classList.remove('wobble');
+      void cap.offsetWidth;
+      cap.classList.add('wobble');
+      sfx.gachaShake(power);
+    });
+  }
+  // SR 以上はカプセルの色が変わり、SSR は途中で金色に光る（確定演出）
+  if (best >= 4) at(shakeStart + 350, () => stage.classList.add('tint'));
+  if (ssr) {
+    at(shakeStart + 800, () => {
+      stage.classList.add('gold');
+      sfx.gachaGold();
+    });
+  }
+  // 3. 開く：光って、星と紙吹雪が飛び散る
+  at(shakeEnd, () => {
+    cap.classList.add('open');
+    stage.classList.add('opened');
+    sfx.gachaOpen(best);
+    burstParticles(stage, ssr ? 46 : best >= 4 ? 30 : 18, ssr);
+  });
+  // 4. カードを出す（10連は1枚ずつめくる）
+  const cardsAt = shakeEnd + 450;
+  const box = el.querySelector<HTMLElement>('.gx-cards')!;
+  at(cardsAt, () => {
+    stage.classList.add('reveal');
+    box.innerHTML = res
+      .map((r) => {
+        const c = COSTUMES.find((x) => x.id === r.id)!;
+        return `<div class="gx-card r${r.rarity}"><div class="in"><div class="back"></div><div class="front"><b>${rarityName(r.rarity)}</b><div class="n">${c.name}</div><div class="c">${getCharacter(c.charId).name}</div>${r.dup ? '' : '<i class="new">NEW</i>'}</div></div></div>`;
+      })
+      .join('');
+  });
+  const step = ten ? 140 : 0;
+  res.forEach((r, i) => {
+    at(cardsAt + 150 + i * step, () => {
+      box.children[i]?.classList.add('flip');
+      sfx.gachaFlip(r.rarity);
+    });
+  });
+  at(cardsAt + 150 + (res.length - 1) * step + (ssr ? 600 : 300), () => sfx.gacha(ssr ? 5 : best >= 4 ? 4 : 3));
+  // 出た衣装をしばらく見せてから結果へ（SSR は長めに）
+  at(cardsAt + 150 + (res.length - 1) * step + (ten ? 1800 : 1700) + (ssr ? 900 : 0), finish);
   el.addEventListener('click', finish);
+}
+
+/** ガチャが開いたときに飛び散る星と紙吹雪 */
+function burstParticles(stage: HTMLElement, n: number, gold: boolean): void {
+  const colors = gold ? ['#ffd23f', '#fff6c9', '#ff5ea8', '#7dd8ff', '#ffffff'] : ['#ffd23f', '#ffffff', '#7dd8ff', '#ff8a3d'];
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('span');
+    p.className = i % 3 === 0 ? 'gx-p star' : 'gx-p';
+    const ang = Math.random() * Math.PI * 2;
+    const dist = 120 + Math.random() * 220;
+    p.style.setProperty('--dx', `${Math.cos(ang) * dist}px`);
+    p.style.setProperty('--dy', `${Math.sin(ang) * dist - 40}px`);
+    p.style.setProperty('--rot', `${Math.random() * 720 - 360}deg`);
+    p.style.setProperty('--col', colors[i % colors.length]);
+    p.style.animationDelay = `${Math.random() * 0.08}s`;
+    stage.appendChild(p);
+  }
 }
 
 /** ガチャの結果：左に衣装を着たキャラ（3D）、右に結果の一覧 */

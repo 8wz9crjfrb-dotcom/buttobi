@@ -2402,3 +2402,295 @@ table.rec td:first-child {
 #app.left-handed .hud-players.many {
   left: 55%;
 }
+
+/* ---------------------------------------------------------------- ガチャを引く演出 */
+.gx {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  --ray: rgba(255, 255, 255, 0.1);
+  --glow: #ffffff;
+}
+.gx.r4.tint {
+  --ray: rgba(110, 184, 255, 0.22);
+  --glow: #6ab8ff;
+}
+.gx.gold {
+  --ray: rgba(255, 210, 63, 0.3);
+  --glow: #ffd23f;
+}
+.gx-rays {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1600px;
+  height: 1600px;
+  margin: -800px 0 0 -800px;
+  background: repeating-conic-gradient(from 0deg, var(--ray) 0 8deg, transparent 8deg 18deg);
+  animation: gx-spin 9s linear infinite;
+  opacity: 0.7;
+  transition: opacity 0.4s;
+}
+.gx.opened .gx-rays {
+  opacity: 1;
+  animation-duration: 3s;
+}
+@keyframes gx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.gx-cap {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.gx.drop .gx-cap {
+  animation: gx-drop 0.6s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+@keyframes gx-drop {
+  0% {
+    transform: translate(-50%, -260%) scale(0.8);
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.08, 0.9);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+.gx .capsule.big {
+  width: 140px;
+  height: 140px;
+  filter: drop-shadow(0 0 12px var(--glow));
+  transition: filter 0.3s;
+}
+.gx .capsule.wobble {
+  animation: gx-wobble 0.16s ease-in-out;
+}
+@keyframes gx-wobble {
+  25% {
+    transform: rotate(calc(var(--shake) * -1)) translateY(-3px);
+  }
+  75% {
+    transform: rotate(var(--shake)) translateY(-3px);
+  }
+}
+.gx.r4.tint .cap-top {
+  background: radial-gradient(circle at 35% 30%, #bfe2ff, #3d8bff 60%);
+}
+.gx.gold .cap-top {
+  background: radial-gradient(circle at 35% 30%, #fff6a8, #ffb000 60%);
+}
+.gx.gold .capsule.big {
+  filter: drop-shadow(0 0 22px #ffd23f) drop-shadow(0 0 40px #ff5ea8);
+  animation: gx-pulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes gx-pulse {
+  to {
+    filter: drop-shadow(0 0 34px #ffd23f) drop-shadow(0 0 60px #ff5ea8);
+  }
+}
+.gx.reveal .gx-cap {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(1.6);
+}
+.gx-text {
+  position: absolute;
+  top: calc(16% + var(--safe-t));
+  font-size: 28px;
+  font-weight: 900;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.5);
+}
+.gx.reveal .gx-text {
+  opacity: 0;
+}
+.gx-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+.gx.opened .gx-flash {
+  animation: gx-flash 0.5s ease-out;
+}
+.gx.gold.opened .gx-flash {
+  background: radial-gradient(circle, #fff 30%, #ffe27a);
+}
+@keyframes gx-flash {
+  0% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.gx .go-skip {
+  position: absolute;
+  bottom: calc(14px + var(--safe-b));
+}
+/* 飛び散る星と紙吹雪 */
+.gx-p {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 10px;
+  height: 16px;
+  margin: -8px 0 0 -5px;
+  background: var(--col);
+  border-radius: 2px;
+  opacity: 0;
+  animation: gx-fly 1.1s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.gx-p.star {
+  width: 18px;
+  height: 18px;
+  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+@keyframes gx-fly {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0) scale(0.6);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), calc(var(--dy) + 60px)) rotate(var(--rot)) scale(1);
+  }
+}
+/* 出た衣装のカード（裏 → 表にめくれる） */
+.gx-cards {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 640px;
+  padding: 0 12px;
+}
+.gx-card {
+  width: 104px;
+  height: 120px;
+  perspective: 600px;
+  animation: gx-pop 0.3s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+.gx-card:only-child {
+  width: 190px;
+  height: 220px;
+}
+@keyframes gx-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+.gx-card .in {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.45s cubic-bezier(0.3, 1.3, 0.5, 1);
+}
+.gx-card.flip .in {
+  transform: rotateY(180deg);
+}
+.gx-card .back,
+.gx-card .front {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.gx-card .back {
+  background: linear-gradient(145deg, #3a3f8f, #1b1f3b);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
+.gx-card .back::after {
+  content: '?';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.35);
+}
+.gx-card .front {
+  transform: rotateY(180deg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px;
+  text-align: center;
+  background: linear-gradient(160deg, #2a3a6b, #1b1f3b);
+  box-shadow: inset 0 0 0 3px #6ab8ff;
+  overflow: hidden;
+}
+.gx-card.r5 .front {
+  background: linear-gradient(160deg, #7a5a10, #2a1f08);
+  box-shadow: inset 0 0 0 3px #ffd23f, 0 0 22px rgba(255, 210, 63, 0.7);
+}
+/* SSR のカードは、表になったあと光が流れる */
+.gx-card.r5.flip .front::after {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.55) 50%, transparent 60%);
+  animation: gx-shine 1.4s 0.4s ease-in-out infinite;
+}
+@keyframes gx-shine {
+  from {
+    transform: translateX(-60%);
+  }
+  to {
+    transform: translateX(60%);
+  }
+}
+.gx-card .front b {
+  font-size: 18px;
+  color: #6ab8ff;
+}
+.gx-card.r5 .front b {
+  color: #ffd23f;
+  font-size: 22px;
+}
+.gx-card .front .n {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.gx-card .front .c {
+  font-size: 10px;
+  color: var(--muted);
+}
+.gx-card:only-child .front b {
+  font-size: 30px;
+}
+.gx-card:only-child .front .n {
+  font-size: 20px;
+}
+.gx-card:only-child .front .c {
+  font-size: 12px;
+}
+.gx-card .new {
+  position: absolute;
+  top: 6px;
+  right: -22px;
+  transform: rotate(35deg);
+  background: #ff4a5a;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  font-style: normal;
+  padding: 1px 24px;
+}

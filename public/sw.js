@@ -1,6 +1,6 @@
 // オフラインでも起動できるように、読み込んだファイルを端末に保存する。
 // 更新したら VERSION を変えると古い保存データが消える。
-const VERSION = 'tobase-v3';
+const VERSION = 'tobase-v4';
 
 self.addEventListener('install', () => self.skipWaiting());
 
