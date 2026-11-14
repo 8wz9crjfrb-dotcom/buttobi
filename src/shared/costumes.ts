@@ -1,5 +1,5 @@
-// 衣装（着せ替え）のデータ。各キャラに「いつもの服」と、ガチャで引ける SR 2着・SSR 1着。
-// SSR はまわりに舞うエフェクトと、攻撃が当たったときの特別なエフェクトが付く。
+// 衣装（着せ替え）のデータ。各キャラに「いつもの服」と、ガチャで引ける SR 2着と、SSR・UR（それぞれ1着まで）。
+// SSR・UR はまわりに舞うエフェクトと、攻撃が当たったときの特別なエフェクトが付く。UR はさらに虹色で、専用の豪華な小物が付く。
 
 /** 衣装に付ける小物 */
 export type Accessory =
@@ -20,7 +20,22 @@ export type Accessory =
   /** フェスのタオル（片方の肩にかけて垂らす。しま模様） */
   | 'festTowel'
   /** フェスのリストバンド（両手首） */
-  | 'fesBand';
+  | 'fesBand'
+  // UR の豪華な小物（ゆっくり回ったり浮いたりする）
+  /** まわりを回る、六角形の光の盾 */
+  | 'hexShield'
+  /** 頭の上を回る星の輪 */
+  | 'starRing'
+  /** 背中に浮かぶ、大きな再生ボタンの盾 */
+  | 'playBadge'
+  /** まわりを回るガチャのカプセル */
+  | 'capsuleOrbit'
+  /** 体のまわりを回る、光の輪（原子のように斜めに2本） */
+  | 'orbitRings'
+  /** 金のふち取りの、長い王様のマント */
+  | 'royalCape'
+  /** 肩のそばに浮かぶ小さなドローン2機 */
+  | 'miniDrones';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
@@ -135,15 +150,16 @@ export const COSTUMES: Costume[] = [
 ];
 
 
-// ---------------------------------------------------------------- ガチャで引ける衣装（キャラごとに SR 2着・SSR 1着）
+// ---------------------------------------------------------------- ガチャで引ける衣装（キャラごとに SR 2着・SSR/UR 1着ずつまで）
 const c = (main: number, sub: number, accent: number, hair: number, skin: number, pants: number, shoes: number) => ({ main, sub, accent, hair, skin, pants, shoes });
 COSTUMES.push(
   // データセンター警備員
   { id: 'guard-night', charId: 'guard', name: '夜勤シフト', rarity: 4, colors: c(0x1b1c26, 0xff3a3a, 0xc0c4cc, 0x2a2420, 0xf1c8a0, 0x14151c, 0x101010), extras: ['sunglasses'] },
   { id: 'guard-formal', charId: 'guard', name: '白の礼装', rarity: 4, colors: c(0xf2f2f5, 0xd9b44a, 0xd9b44a, 0x3a2a20, 0xf1c8a0, 0xe0e2ea, 0x2a2a2a), extras: ['sash'], extraColor: 0xc23a3a },
   {
-    id: 'guard-ssr', charId: 'guard', name: '黄金の守護者', rarity: 5, colors: c(0x1c1a14, 0xffd23f, 0xffe9a0, 0x2a2018, 0xf1c8a0, 0x14120c, 0xffd23f),
-    extras: ['cape', 'crown'], extraColor: 0xffd23f, fx: { particle: 'sparkle', color: 0xffd23f, hit: 0xffd23f },
+    // UR（前は SSR。id はそのままなので、持っている人はそのまま UR を持っていることになる）
+    id: 'guard-ssr', charId: 'guard', name: '黄金の守護者', rarity: 6, colors: c(0x1c1a14, 0xffd23f, 0xffe9a0, 0x2a2018, 0xf1c8a0, 0x14120c, 0xffd23f),
+    extras: ['cape', 'crown', 'hexShield'], extraColor: 0xffd23f, fx: { particle: 'sparkle', color: 0xffd23f, hit: 0xffd23f },
   },
   // ハッカー
   { id: 'hacker-white', charId: 'hacker', name: 'ホワイトハット', rarity: 4, colors: c(0xeef0f5, 0xc9ced8, 0x2f8cff, 0xd8c8a8, 0xf3d2b3, 0x6a7a92, 0x2f8cff), extras: ['headphones'], extraColor: 0x2a2f3a },
@@ -163,22 +179,22 @@ COSTUMES.push(
   { id: 'streamer-mint', charId: 'streamer', name: 'ミント配信', rarity: 4, colors: c(0x9ff0d8, 0xffffff, 0xff9ec8, 0xf5f0a8, 0xffe0cc, 0x5a8a8a, 0xffffff), extras: ['starClip'], extraColor: 0xffd23f },
   { id: 'streamer-goth', charId: 'streamer', name: 'ゴシック配信', rarity: 4, colors: c(0x1e1826, 0x8a5cff, 0xff4f8a, 0x2a1f3a, 0xf8e0e0, 0x1e1826, 0x1e1826), extras: ['bow'], extraColor: 0x8a5cff },
   {
-    id: 'streamer-ssr', charId: 'streamer', name: 'トップアイドル', rarity: 5, colors: c(0xffffff, 0xffd6ea, 0xffd23f, 0xfff0a8, 0xffe0cc, 0xffd6ea, 0xffffff),
-    extras: ['wings', 'crown'], extraColor: 0xffd23f, fx: { particle: 'heart', color: 0xff5ea8, hit: 0xff5ea8 },
+    id: 'streamer-ssr', charId: 'streamer', name: 'トップアイドル', rarity: 6, colors: c(0xffffff, 0xffd6ea, 0xffd23f, 0xfff0a8, 0xffe0cc, 0xffd6ea, 0xffffff),
+    extras: ['wings', 'crown', 'starRing'], extraColor: 0xffd23f, fx: { particle: 'heart', color: 0xff5ea8, hit: 0xff5ea8 },
   },
   // ドパガキ
   { id: 'dopa-pink', charId: 'dopa', name: 'ピンクパーカー', rarity: 4, colors: c(0xff7ab8, 0x2a2a35, 0x4ad8ff, 0x2b2b33, 0xffe0cc, 0x3a4a6a, 0x4ad8ff), extras: ['capBack'], extraColor: 0x4ad8ff },
   { id: 'dopa-neon', charId: 'dopa', name: 'ネオン迷彩', rarity: 4, colors: c(0x2fd8ff, 0x1a1a28, 0xc77dff, 0x1a1a28, 0xffe0cc, 0x3a2a5a, 0xc77dff), extras: ['sunglasses'] },
   {
-    id: 'dopa-ssr', charId: 'dopa', name: '100万再生', rarity: 5, colors: c(0xffffff, 0x1a1a28, 0xff5ea8, 0xffd23f, 0xffe0cc, 0x2a2a3a, 0xffd23f),
-    extras: ['crown'], extraColor: 0xffd23f, fx: { particle: 'star', color: 0xffd23f, hit: -1 },
+    id: 'dopa-ssr', charId: 'dopa', name: '100万再生', rarity: 6, colors: c(0xffffff, 0x1a1a28, 0xff5ea8, 0xffd23f, 0xffe0cc, 0x2a2a3a, 0xffd23f),
+    extras: ['crown', 'playBadge'], extraColor: 0xffd23f, fx: { particle: 'star', color: 0xffd23f, hit: -1 },
   },
   // ガチャ廃人
   { id: 'gacha-red', charId: 'gacha', name: '赤ジャージ', rarity: 4, colors: c(0xd8323f, 0x8a1a24, 0xffffff, 0x3b3046, 0xead2c0, 0x8a1a24, 0xffffff), extras: ['headband'], extraColor: 0xffffff },
   { id: 'gacha-oil', charId: 'gacha', name: '石油王', rarity: 4, colors: c(0xf6f6f2, 0xe8e4d8, 0xd9b44a, 0x2a2018, 0xd8b090, 0xf6f6f2, 0x8a6a3a), extras: ['sunglasses'] },
   {
-    id: 'gacha-ssr', charId: 'gacha', name: '天井到達者', rarity: 5, colors: c(0x1c1a14, 0x0e0d0a, 0xffd23f, 0xffd23f, 0xead2c0, 0x0e0d0a, 0xffd23f),
-    extras: ['crown', 'cape'], extraColor: 0xffd23f, fx: { particle: 'coin', color: 0xffd23f, hit: 0xffd23f },
+    id: 'gacha-ssr', charId: 'gacha', name: '天井到達者', rarity: 6, colors: c(0x1c1a14, 0x0e0d0a, 0xffd23f, 0xffd23f, 0xead2c0, 0x0e0d0a, 0xffd23f),
+    extras: ['crown', 'cape', 'capsuleOrbit'], extraColor: 0xffd23f, fx: { particle: 'coin', color: 0xffd23f, hit: 0xffd23f },
   },
   // フードデリバリー配達員
   { id: 'courier-night', charId: 'courier', name: '深夜便', rarity: 4, colors: c(0x1f2f5a, 0x121a33, 0xff8a1a, 0x5a3a24, 0xd9a77e, 0x121a33, 0xff8a1a), extras: ['scarf'], extraColor: 0xff8a1a },
@@ -191,8 +207,8 @@ COSTUMES.push(
   { id: 'ai-dark', charId: 'ai', name: 'ダークモード', rarity: 4, colors: c(0x1e2028, 0x8a5cff, 0x8a5cff, 0x15161c, 0xf3d6bd, 0x15161c, 0x8a5cff), extras: ['sunglasses'] },
   { id: 'ai-labcoat', charId: 'ai', name: '研究室の白衣', rarity: 4, colors: c(0xf8f9fb, 0x3a8a5a, 0x7dffcf, 0x2d3a5a, 0xf3d6bd, 0x3a3f4a, 0x2a2f3a), extras: ['coat'], extraColor: 0xf8f9fb },
   {
-    id: 'ai-ssr', charId: 'ai', name: 'シンギュラリティ', rarity: 5, colors: c(0x0e1420, 0x0a0e16, 0x2fe8ff, 0xd8f6ff, 0xe8e0f0, 0x0a0e16, 0x2fe8ff),
-    extras: ['halo'], extraColor: 0x2fe8ff, fx: { particle: 'data', color: 0x2fe8ff, hit: 0x2fe8ff },
+    id: 'ai-ssr', charId: 'ai', name: 'シンギュラリティ', rarity: 6, colors: c(0x0e1420, 0x0a0e16, 0x2fe8ff, 0xd8f6ff, 0xe8e0f0, 0x0a0e16, 0x2fe8ff),
+    extras: ['halo', 'orbitRings'], extraColor: 0x2fe8ff, fx: { particle: 'data', color: 0x2fe8ff, hit: 0x2fe8ff },
   },
   // パーソナルトレーナー
   { id: 'trainer-aerobics', charId: 'trainer', name: 'エアロビ講師', rarity: 4, colors: c(0xff4fa3, 0x2fd8ff, 0xffe14f, 0x6a3a1a, 0xe0b08a, 0x2fd8ff, 0xffffff), extras: ['headband'], extraColor: 0xffe14f },
@@ -212,10 +228,16 @@ COSTUMES.push(
     extras: ['festTowel', 'fesBand'], extraColor: 0xff4f8b, jobHair: [0xf8d878, 0xe09a48, 0x16161c],
   },
   {
-    id: 'threeb-ssr', charId: 'threeb', name: 'カリスマ', rarity: 5, colors: c(0x14141a, 0x0a0a0e, 0xffd23f, 0xfff0b0, 0xf3d6bd, 0x0a0a0e, 0xffd23f),
-    extras: ['crown'], extraColor: 0xffd23f, fx: { particle: 'heart', color: 0xff5ea8, hit: 0xff5ea8 }, jobHair: [0xfff3c8, 0xe8b830, 0x16161c],
+    id: 'threeb-ssr', charId: 'threeb', name: 'カリスマ', rarity: 6, colors: c(0x14141a, 0x0a0a0e, 0xffd23f, 0xfff0b0, 0xf3d6bd, 0x0a0a0e, 0xffd23f),
+    extras: ['crown', 'royalCape'], extraColor: 0xffd23f, fx: { particle: 'heart', color: 0xff5ea8, hit: 0xff5ea8 }, jobHair: [0xfff3c8, 0xe8b830, 0x16161c],
   },
 );
+
+// 新しい SSR（UR に格上げしたキャラの SSR の枠）
+COSTUMES.push({
+  id: 'guard-cyber', charId: 'guard', name: 'サイバー機動隊', rarity: 5, colors: c(0x101826, 0x39ff88, 0x39ff88, 0x0e1420, 0xf1c8a0, 0x0a0f18, 0x39ff88),
+  extras: ['sunglasses', 'headphones', 'miniDrones'], extraColor: 0x1a2a3a, fx: { particle: 'data', color: 0x39ff88, hit: 0x39ff88 },
+});
 
 /** ガチャで引ける衣装 */
 export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);

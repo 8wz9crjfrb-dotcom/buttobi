@@ -55,13 +55,7 @@ check('通算100勝でも節目のボーナス（30・50・100勝）を受け取
   const dr = pullGacha(d, 1, () => 0.5 * 0 + 0.2)!; // SR・一覧の先頭を引く乱数
   check('持っている衣装が出たらコインに変わる（SR 20）', dr[0].dup ? d.coins === 100 + 20 : true, `${dr[0].id} dup=${dr[0].dup} 残り${d.coins}`);
   check('持っている衣装のコイン：SR 20・SSR 200・UR 500', DUP_REFUND[4] === 20 && DUP_REFUND[5] === 200 && DUP_REFUND[6] === 500);
-  check('UR の衣装がないうちは UR は出ない', !urAvailable() && (() => {
-    const w: Wallet = { coins: 100 * 100, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
-    for (let i = 0; i < 100; i++) if (pullGacha(w, 1, () => 0)![0].rarity === 6) return false;
-    return w.urPity === 0;
-  })());
-  // UR の衣装を仮に1着足して確かめる
-  GACHA_COSTUMES.push({ ...GACHA_COSTUMES.find((c) => c.rarity === 5)!, id: 'test-ur', rarity: 6 });
+  check('UR の衣装がガチャに入っている', urAvailable());
   {
     const w: Wallet = { coins: 100 * 200, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
     const got: number[] = [];
@@ -74,12 +68,16 @@ check('通算100勝でも節目のボーナス（30・50・100勝）を受け取
     const w3: Wallet = { coins: 1000, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 20, urPity: 10 };
     const r2 = pullGacha(w3, 1, () => 0.1)![0];
     check('確率：3%〜13%ならSSR、SSRではURの天井はリセットされない', r2.rarity === 5 && w3.pity === 0 && w3.urPity === 11);
-    const w4: Wallet = { coins: 1000, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: ['test-ur'], pity: 0, urPity: 0 };
+    const w4: Wallet = { coins: 1000, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: GACHA_COSTUMES.filter((c) => c.rarity === 6).map((c) => c.id), pity: 0, urPity: 0 };
     pullGacha(w4, 1, () => 0.01);
     check('持っているURが出たら500コイン', w4.coins === 900 + 500, `${w4.coins}`);
   }
-  GACHA_COSTUMES.pop();
-  check('衣装はキャラごとにSR2着・SSR1着', CHARACTERS.map((c) => c.id).every((id) => GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 4).length === 2 && GACHA_COSTUMES.filter((c) => c.charId === id && c.rarity === 5 && c.fx).length === 1));
+  check('衣装はキャラごとにSR2着・SSRとURは1着まで（どちらか1着以上）・SSR/URにはエフェクト', CHARACTERS.map((c) => c.id).every((id) => {
+    const mine = GACHA_COSTUMES.filter((c) => c.charId === id);
+    const n = (r: number) => mine.filter((c) => c.rarity === r).length;
+    return n(4) === 2 && n(5) <= 1 && n(6) <= 1 && n(5) + n(6) >= 1 && mine.filter((c) => c.rarity >= 5).every((c) => c.fx);
+  }));
+  check('URになった衣装：黄金の守護者・トップアイドル・100万再生・天井到達者・シンギュラリティ・カリスマ', ['guard-ssr', 'streamer-ssr', 'dopa-ssr', 'gacha-ssr', 'ai-ssr', 'threeb-ssr'].every((id) => GACHA_COSTUMES.find((c) => c.id === id)?.rarity === 6) && GACHA_COSTUMES.find((c) => c.id === 'guard-cyber')?.rarity === 5);
 }
 // ---- 戦績・ミッション・称号
 {

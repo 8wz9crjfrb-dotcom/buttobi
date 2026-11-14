@@ -876,6 +876,123 @@ export class FighterModel {
           this.part(sw, new THREE.BoxGeometry(0.1, 0.36, 0.035), this.toon(col), [0, -0.17, -0.03], { rot: [0.3, 0, 0.1] });
           break;
         }
+        // ---------------- UR の豪華な小物
+        case 'hexShield': {
+          // まわりを回る、六角形の光の盾（3枚）
+          const g = new THREE.Group();
+          g.position.y = 0.95;
+          b.add(g);
+          const mat = this.glow(col);
+          mat.transparent = true;
+          mat.opacity = 0.75;
+          mat.side = THREE.DoubleSide;
+          for (let k = 0; k < 3; k++) {
+            // 盾の面が外を向くように、円柱の軸を半径の向き（X）に倒す
+            const pv = new THREE.Group();
+            pv.rotation.y = (k / 3) * Math.PI * 2;
+            g.add(pv);
+            this.part(pv, new THREE.CylinderGeometry(0.2, 0.2, 0.02, 6), mat, [0.72, 0, 0], { rot: [0, 0, Math.PI / 2], outline: false });
+            this.part(pv, new THREE.TorusGeometry(0.2, 0.018, 4, 6), this.glow(0xffffff), [0.73, 0, 0], { rot: [0, Math.PI / 2, 0], outline: false });
+          }
+          this.spinners.push({ g, speed: 1.1 });
+          break;
+        }
+        case 'starRing': {
+          // 頭の上を回る星の輪（5つ）
+          const g = new THREE.Group();
+          g.position.set(0, top + 0.18, 0);
+          h.add(g);
+          for (let k = 0; k < 5; k++) {
+            const a = (k / 5) * Math.PI * 2;
+            const st = new THREE.Group();
+            st.position.set(Math.cos(a) * 0.36, 0, Math.sin(a) * 0.36);
+            g.add(st);
+            for (const r of [0, Math.PI / 5]) this.part(st, new THREE.ConeGeometry(0.07, 0.03, 5), this.glow(k % 2 ? col : 0xffffff), [0, 0, 0], { rot: [Math.PI / 2, 0, r], outline: false });
+          }
+          this.spinners.push({ g, speed: 1.6 });
+          break;
+        }
+        case 'playBadge': {
+          // 背中に浮かぶ、大きな再生ボタンの盾
+          const g = new THREE.Group();
+          g.position.set(0, 1.25, -0.42);
+          b.add(g);
+          this.part(g, new THREE.BoxGeometry(0.62, 0.46, 0.05), this.toon(col), [0, 0, 0]);
+          this.part(g, new THREE.BoxGeometry(0.54, 0.38, 0.052), this.glow(0xfff6c9), [0, 0, 0.002], { outline: false });
+          const tri = new THREE.Shape();
+          tri.moveTo(-0.08, -0.11);
+          tri.lineTo(0.13, 0);
+          tri.lineTo(-0.08, 0.11);
+          tri.closePath();
+          this.part(g, new THREE.ExtrudeGeometry(tri, { depth: 0.02, bevelEnabled: false }), this.toon(0xe5304a), [0, 0, -0.05], { rot: [0, Math.PI, 0], outline: false });
+          this.floaters.push({ g, base: g.position.y });
+          break;
+        }
+        case 'capsuleOrbit': {
+          // まわりを回るガチャのカプセル（4つ、色ちがい）
+          const g = new THREE.Group();
+          g.position.y = 1.0;
+          b.add(g);
+          const tops = [0xe5484d, 0x3d8bff, 0xffd23f, 0x4fd18b];
+          for (let k = 0; k < 4; k++) {
+            const a = (k / 4) * Math.PI * 2;
+            const cg = new THREE.Group();
+            cg.position.set(Math.cos(a) * 0.7, Math.sin(a * 2) * 0.12, Math.sin(a) * 0.7);
+            g.add(cg);
+            this.part(cg, new THREE.SphereGeometry(0.1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), this.toon(tops[k]), [0, 0, 0]);
+            this.part(cg, new THREE.SphereGeometry(0.1, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), this.toon(0xf2f2f5), [0, 0, 0]);
+          }
+          this.spinners.push({ g, speed: 1.3 });
+          break;
+        }
+        case 'orbitRings': {
+          // 体のまわりを回る光の輪（斜めに2本）
+          for (const [tilt, sp] of [
+            [0.5, 1.4],
+            [-0.6, -1.1],
+          ]) {
+            const g = new THREE.Group();
+            g.position.y = 0.95;
+            g.rotation.z = tilt;
+            b.add(g);
+            this.part(g, new THREE.TorusGeometry(0.72, 0.015, 6, 48), this.glow(col), [0, 0, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+            this.part(g, new THREE.SphereGeometry(0.05, 8, 6), this.glow(0xffffff), [0.72, 0, 0], { outline: false });
+            this.spinners.push({ g, speed: sp });
+          }
+          break;
+        }
+        case 'royalCape': {
+          // 金のふち取りの、長い王様のマント
+          const sw = this.swingPivot(b, [0, 1.18, -0.17], 0.4);
+          const mat = this.toon(0x7a1020);
+          mat.side = THREE.DoubleSide;
+          this.part(sw, new THREE.CylinderGeometry(0.24 * wide, 0.46 * wide, 1.05, 14, 1, true, Math.PI * 0.6, Math.PI * 0.8), mat, [0, -0.52, 0.08], { outline: false });
+          const trim = this.toon(col);
+          trim.side = THREE.DoubleSide;
+          this.part(sw, new THREE.CylinderGeometry(0.465 * wide, 0.47 * wide, 0.07, 14, 1, true, Math.PI * 0.6, Math.PI * 0.8), trim, [0, -1.03, 0.08], { outline: false });
+          this.part(b, new THREE.TorusGeometry(0.17, 0.045, 6, 18), trim, [0, 1.17, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+          break;
+        }
+        case 'miniDrones': {
+          // 肩のそばに浮かぶ小さなドローン2機（緑のライト）
+          for (const sd of [1, -1]) {
+            const g = new THREE.Group();
+            g.position.set(sd * 0.55, 1.55, -0.2);
+            b.add(g);
+            this.part(g, new THREE.BoxGeometry(0.18, 0.06, 0.18), this.toon(0x1a2a3a), [0, 0, 0]);
+            this.part(g, new THREE.SphereGeometry(0.035, 8, 6), this.glow(this.c.accent), [0, -0.04, 0.06], { outline: false });
+            for (const [x, z] of [
+              [0.1, 0.1],
+              [-0.1, 0.1],
+              [0.1, -0.1],
+              [-0.1, -0.1],
+            ]) {
+              this.part(g, new THREE.CylinderGeometry(0.05, 0.05, 0.01, 10), this.glow(0x9adfff), [x, 0.04, z], { outline: false });
+            }
+            this.floaters.push({ g, base: g.position.y });
+          }
+          break;
+        }
         case 'festTowel': {
           // フェスのタオル：片方の肩にかけて、前と後ろに垂らす（しま模様と「FES」の文字）
           const tex = new THREE.CanvasTexture(
@@ -1006,6 +1123,9 @@ export class FighterModel {
   private fxState: { pts: THREE.Points; aura: THREE.Mesh; seeds: { a: number; r: number; s: number; o: number }[]; kind: CostumeFx['particle']; glow: THREE.Mesh | null } | null = null;
   private hideEyes = false;
   private halos: THREE.Group[] = [];
+  /** ゆっくり回る小物（光の盾・星の輪など）と、ふわふわ浮く小物 */
+  private spinners: { g: THREE.Group; speed: number }[] = [];
+  private floaters: { g: THREE.Group; base: number }[] = [];
   private wingGroups: { g: THREE.Group; side: number }[] = [];
 
   private updateFx(time: number, visible: boolean): void {
@@ -1014,6 +1134,11 @@ export class FighterModel {
       hg.rotation.y = time * 1.5;
     }
     for (const w of this.wingGroups) w.g.rotation.y = w.side * (0.25 + Math.sin(time * 3.2) * 0.25);
+    for (const sp of this.spinners) {
+      sp.g.rotation.y = time * sp.speed;
+      sp.g.visible = visible;
+    }
+    this.floaters.forEach((f, i) => (f.g.position.y = f.base + Math.sin(time * 2.4 + i * 1.7) * 0.05));
     const st = this.fxState;
     if (!st) return;
     st.pts.visible = visible;
