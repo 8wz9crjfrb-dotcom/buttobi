@@ -714,7 +714,10 @@ export class Sim {
    * チーム戦で「味方にも当たる」がオフのとき、味方の攻撃は当たらない（-1 はステージギミックなど）。
    */
   private friendly(from: number, v: Fighter): boolean {
-    if (from < 0 || from === v.slot || this.setup.rules.friendlyFire) return false;
+    if (from < 0 || from === v.slot) return false;
+    // 玉入れで「相手への攻撃：当たらない」なら、だれの攻撃もほかの人に当たらない（ボールにだけ当たる）
+    if (this.setup.rules.mode === 'ball' && this.setup.rules.pvp === false) return true;
+    if (this.setup.rules.friendlyFire) return false;
     const a = this.fighter(from);
     return !!a && a.team === v.team;
   }

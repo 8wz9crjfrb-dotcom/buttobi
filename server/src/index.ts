@@ -427,6 +427,7 @@ export class Room extends DurableObject<Env> {
           stocks: Math.max(1, Math.min(5, r?.stocks | 0 || 3)),
           area: r?.area === 'fix2' ? 'fix2' : r?.area === 'random' ? 'random' : 'move',
           goals: Math.max(1, Math.min(9, (Number(r?.goals) | 0) || 5)),
+          pvp: r?.pvp !== false,
           timeLimit: Math.max(60, Math.min(600, r?.timeLimit | 0 || 180)),
           items: r?.items === true,
           gimmicks: r?.gimmicks === true,

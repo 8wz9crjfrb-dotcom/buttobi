@@ -128,6 +128,8 @@ export interface MatchRules {
   area?: AreaShape;
   /** 玉入れ：先に何点入れたら勝ちか */
   goals?: number;
+  /** 玉入れ：相手チームに攻撃が当たる（false ならボールにだけ当たる。未指定は当たる） */
+  pvp?: boolean;
 }
 
 /** 体力制のHP（未指定のとき） */

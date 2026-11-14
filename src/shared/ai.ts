@@ -285,8 +285,8 @@ export class CpuController {
     const b = sim.ball;
     const t = this.target(sim, f);
     const near = t && Math.abs(t.x - f.x) < 1.6 && Math.abs(t.y - f.y) < 1.5;
-    // 近くの相手とは、ときどき戦う（強いCPUほどボールを優先する）
-    if (near && this.rng.chance(0.5 - lv * 0.04)) return null;
+    // 近くの相手とは、ときどき戦う（強いCPUほどボールを優先する。攻撃が当たらないルールなら戦わない）
+    if (near && sim.setup.rules.pvp !== false && this.rng.chance(0.5 - lv * 0.04)) return null;
     if (!b.on) {
       const cx = (sim.stage.main.x1 + sim.stage.main.x2) / 2;
       return Math.abs(cx - f.x) > 1.5 ? { mx: Math.sign(cx - f.x), my: 0, buttons: 0 } : null;

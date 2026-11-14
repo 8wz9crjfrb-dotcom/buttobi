@@ -43,6 +43,30 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N) 
   check('チーム：味方には攻撃が当たらない', ff.fighters[2].damage === 0);
 }
 
+// ---- 相手への攻撃：当たらない
+{
+  const hit = (pvp: boolean) => {
+    const sim = make(2, { pvp });
+    const a = sim.fighters[0];
+    const v = sim.fighters[1];
+    a.x = 3;
+    a.facing = 1;
+    v.x = 3.9;
+    sim.ball.x = -6;
+    run(sim, 25, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
+    return v.damage;
+  };
+  check('相手への攻撃「当たる」：相手にダメージが入る', hit(true) > 0);
+  check('相手への攻撃「当たらない」：相手にダメージが入らない', hit(false) === 0);
+  const sim = make(2, { pvp: false });
+  const a = sim.fighters[0];
+  a.x = sim.ball.x - 0.7;
+  a.facing = 1;
+  sim.fighters[1].x = -8;
+  run(sim, 6, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
+  check('相手への攻撃「当たらない」でも、ボールは打てる', sim.ball.vx > 3);
+}
+
 // ---- ボールを打つ
 {
   const sim = make();

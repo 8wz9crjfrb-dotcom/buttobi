@@ -804,7 +804,7 @@ function ruleText(r: MatchRules): string {
         : r.mode === 'area'
           ? `エリアバトル（${shape}）${r.timeLimit / 60}分`
           : r.mode === 'ball'
-            ? `玉入れ（${r.goals ?? 5}点先取）${r.timeLimit / 60}分`
+            ? `玉入れ（${r.goals ?? 5}点先取・相手への攻撃${r.pvp === false ? 'なし' : 'あり'}）${r.timeLimit / 60}分`
             : `タイム ${r.timeLimit / 60}分`;
   return r.teams && r.mode !== 'ball' ? `${base}・チーム戦（味方への攻撃${r.friendlyFire ? 'あり' : 'なし'}）` : base;
 }
@@ -814,6 +814,7 @@ function ruleControls(rules: MatchRules): string {
     <div class="opt opt-wide">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ']], rules.mode)}</div>
     <div class="opt" data-show="ball">先取点 ${seg('goals', [[3, '3点'], [5, '5点'], [7, '7点']], rules.goals ?? 5)}</div>
     <div class="opt" data-show="ball">時間 ${seg('btime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
+    <div class="opt" data-show="ball">相手への攻撃 ${seg('pvp', [['on', '当たる'], ['off', '当たらない']], rules.pvp === false ? 'off' : 'on')}</div>
     <div class="opt" data-show="area">エリア ${seg('area', [['move', '移動1つ'], ['fix2', '固定2つ'], ['random', 'おまかせ']], rules.area ?? 'move')}</div>
     <div class="opt" data-show="area">時間 ${seg('atime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="stock stamina">残機 ${seg('stocks', [[1, '1'], [2, '2'], [3, '3'], [5, '5']], rules.stocks)}</div>
@@ -879,6 +880,10 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
   });
   bindSeg(root, 'goals', (v) => {
     rules.goals = Number(v);
+    onChange();
+  });
+  bindSeg(root, 'pvp', (v) => {
+    rules.pvp = v === 'on';
     onChange();
   });
   bindSeg(root, 'area', (v) => {
@@ -1428,7 +1433,7 @@ function showHowTo(): void {
        <p><b>アピール：</b>ガード中にスティックを上にはじくと、キャラごとの一言（SSR衣装なら特別なセリフ）。</p>
        <p><b>ハメ防止：</b>攻撃を受け続けて、ほとんど動けない状態が約2秒続くと、動けるようになった瞬間に少しの間（約0.75秒）無敵になり、抜け出せます。また、突撃する技・引き寄せる技・入れ替える技・連射しやすい技には、使ったあと少しの待ち時間があります（キャラ選択で技を長押しすると確認できます）。</p>
        <p><b>エリアバトル：</b>エリアに自分（チーム）だけが立っている間ゲージが溜まり、先に満タンにするか、時間切れでゲージの多い人の勝ち。敵が1人でもエリアにいると止まります。味方が多いほど少し速く溜まります。ふっとばされても復活します。</p>
-       <p><b>玉入れ：</b>赤と青の2チームに分かれ（参加した順に交互）、ボールを攻撃でふっとばして、相手チームのかご（赤は右、青は左）に上から入れると1点。先取点（3・5・7点）か、時間切れで点の多いチームの勝ち。弱攻撃はかごまで4〜6mくらい、横攻撃は8〜12mくらいから入りやすいです。</p>
+       <p><b>玉入れ：</b>赤と青の2チームに分かれ（参加した順に交互）、ボールを攻撃でふっとばして、相手チームのかご（赤は右、青は左）に上から入れると1点。先取点（3・5・7点）か、時間切れで点の多いチームの勝ち。ルールで「相手への攻撃：当たらない」にすると、攻撃はボールにだけ当たります。弱攻撃はかごまで4〜6mくらい、横攻撃は8〜12mくらいから入りやすいです。</p>
        <p><b>体力制：</b>%のかわりにHPで戦います。HPが0になるとその場で撃墜。ふっとびは小さめなので、HPを削り切るのが基本です。</p>
        <p><b>チーム戦：</b>CPU戦はルール画面、オンラインはルームの枠をタップしてチームを分けます。「味方への攻撃：当たらない」なら、味方には攻撃も飛び道具も当たりません。</p>
        <p><b>100人組手：</b>1機だけで、次々に出てくる敵を100人倒すとクリア。10人倒すごとに少し回復し、30人倒すと敵が3人に増えます。</p>
