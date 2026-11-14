@@ -34,7 +34,7 @@ export class CpuController {
       b = { hold: { mx: 0, my: 0, buttons: 0 }, holdFrames: 0, cooldown: 0, lastButtons: 0 };
       this.brains.set(f.slot, b);
     }
-    const out = this.decide(sim, f, level, b);
+    const out = this.avoidCooldown(sim, f, this.decide(sim, f, level, b), b);
     // 同じボタンを連続で「押した」ことにするため、前フレームに押していたボタンは一度離す
     const fresh = out.buttons & ~b.lastButtons;
     const keepHeld = out.buttons & b.lastButtons & (BTN_SHIELD | BTN_A | BTN_JUMP | BTN_B);
@@ -248,6 +248,27 @@ export class CpuController {
         break;
     }
     return null;
+  }
+
+  /**
+   * 待ち時間中の必殺技は出ないので、押さずに別の行動にする：
+   * 場外ならステージへ向かう。ステージの上では、敵がすぐ近くなら同じ向きのふつうの攻撃、いなければ動くだけ
+   */
+  private avoidCooldown(sim: Sim, f: Fighter, out: InputState, b: Brain): InputState {
+    if (!(out.buttons & BTN_B)) return out;
+    const ax = Math.abs(out.mx);
+    const ay = Math.abs(out.my);
+    const cd = ay > 0.5 && ay >= ax ? (out.my > 0 ? f.cdU : f.cdD) : ax > 0.5 ? f.cdS : f.cdN;
+    if (cd <= 0) return out;
+    // 押し続ける予定（溜め）もやめる
+    if (b.holdFrames > 0 && b.hold.buttons & BTN_B) b.holdFrames = 0;
+    const m = sim.stage.main;
+    const offStage = f.x < m.x1 - 0.1 || f.x > m.x2 + 0.1;
+    if (offStage) return { mx: f.x < (m.x1 + m.x2) / 2 ? 1 : -1, my: 0, buttons: out.buttons & ~BTN_B };
+    // 敵がすぐ近くにいるときだけ、代わりにふつうの攻撃をする（味方を巻き込まないように）
+    const foeNear = sim.fighters.some((o) => o !== f && o.alive && !o.out && !sim.sameTeam(o, f) && Math.abs(o.x - f.x) < 2 && Math.abs(o.y - f.y) < 1.6);
+    if (!foeNear) return { mx: out.mx, my: 0, buttons: out.buttons & ~BTN_B };
+    return { mx: out.mx, my: ay > 0.5 && ay >= ax ? out.my : 0, buttons: (out.buttons & ~BTN_B) | BTN_A };
   }
 
   /** エリアバトルの動き。null なら、ふつうに戦う */

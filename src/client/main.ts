@@ -4,7 +4,7 @@ import './styles.css';
 import { CpuController } from '../shared/ai';
 import { CHARACTERS, getCharacter, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
-import { COUNTDOWN_FRAMES, HORDE, Sim } from '../shared/sim';
+import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
 import { STAGES, getStage } from '../shared/stages';
 import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type ResultEntry, type ViewState } from '../shared/types';
@@ -100,6 +100,8 @@ interface Session {
   /** dt 秒ぶん進めて、表示する状態と新しく起きたイベントを返す */
   frame(dt: number): { view: ViewState | null; events: GameEvent[] };
   paused: boolean;
+  /** 自分の選手（必殺技の待ち時間の表示に使う。オンラインは先行表示の選手） */
+  myFighter(): Fighter | null;
 }
 
 class LocalSession implements Session {
@@ -121,6 +123,10 @@ class LocalSession implements Session {
     this.mySlot = demo ? null : setup.players.find((p) => !p.cpu)?.slot ?? null;
     // 練習モードはカウントダウンなしで始める
     if (training) while (this.sim.frame <= COUNTDOWN_FRAMES) this.sim.step(new Map());
+  }
+
+  myFighter(): Fighter | null {
+    return this.mySlot === null ? null : this.sim.fighter(this.mySlot) ?? null;
   }
 
   /** CPUの強さ。100人組手の敵は、倒した数が増えるほど強くなる */
@@ -188,6 +194,10 @@ class NetSession implements Session {
   correction = 0;
   constructor(public setup: MatchSetup, public mySlot: number, private net: NetClient) {
     if (setup.players.some((p) => p.slot === mySlot && !p.cpu)) this.pred = new Predictor(setup, mySlot);
+  }
+
+  myFighter(): Fighter | null {
+    return this.pred?.sim.fighter(this.mySlot) ?? null;
   }
 
   frame(dt: number) {
@@ -335,6 +345,47 @@ function endToMenu(): void {
 }
 
 // ---------------------------------------------------------------------------
+// 必殺技の待ち時間の表示：Bボタンに、今のスティックの向きで出る必殺技の残り時間（暗い扇形と秒数）と、
+// 4つの必殺技（B・横B・下B・上B）それぞれの状態（点）。タッチボタンを使わないときは自分のHUDに出す
+const SPECIAL_IDS = ['nspecial', 'sspecial', 'dspecial', 'uspecial'] as const;
+const CD_KEY = { nspecial: 'cdN', sspecial: 'cdS', dspecial: 'cdD', uspecial: 'cdU' } as const;
+const bBtn = document.getElementById('btn-b')!;
+const cdSweep = bBtn.querySelector<HTMLElement>('.cd-sweep')!;
+const cdSec = bBtn.querySelector<HTMLElement>('.cd-sec')!;
+const cdDots = new Map(SPECIAL_IDS.map((id) => [id, bBtn.querySelector<HTMLElement>(`[data-cd="${id}"]`)!]));
+let lastCdKey = '';
+function updateCooldownUI(f: Fighter | null): void {
+  const left: Record<string, number> = {};
+  const frac: Record<string, number> = {};
+  for (const id of SPECIAL_IDS) {
+    const max = f ? moveOf(f.def.id, id, f.job).cd ?? 0 : 0;
+    const l = f ? f[CD_KEY[id]] : 0;
+    left[id] = l;
+    frac[id] = max > 0 ? Math.min(1, l / max) : 0;
+  }
+  // 今のスティックの向きで出る必殺技
+  const inp = readInput();
+  const ax = Math.abs(inp.mx);
+  const ay = Math.abs(inp.my);
+  const cur = ay > 0.5 && ay >= ax ? (inp.my > 0 ? 'uspecial' : 'dspecial') : ax > 0.5 ? 'sspecial' : 'nspecial';
+  const key = SPECIAL_IDS.map((id) => Math.ceil(frac[id] * 40)).join() + cur;
+  if (key === lastCdKey) return;
+  lastCdKey = key;
+  bBtn.style.setProperty('--cd', frac[cur].toFixed(3));
+  bBtn.classList.toggle('cooling', left[cur] > 0);
+  cdSweep.style.opacity = left[cur] > 0 ? '1' : '0';
+  cdSec.textContent = left[cur] > 0 ? (left[cur] / 60).toFixed(1) : '';
+  const any = SPECIAL_IDS.some((id) => left[id] > 0);
+  bBtn.classList.toggle('has-cd', any);
+  for (const id of SPECIAL_IDS) {
+    const d = cdDots.get(id)!;
+    d.classList.toggle('wait', left[id] > 0);
+    d.classList.toggle('cur', id === cur);
+  }
+  hud.setCooldowns(touchEl.classList.contains('hidden') && f ? SPECIAL_IDS.map((id) => frac[id]) : null);
+}
+
+// ---------------------------------------------------------------------------
 // メインループ
 let prevT = performance.now();
 function loop(t: number): void {
@@ -347,6 +398,7 @@ function loop(t: number): void {
     events = r.events;
     if (session.kind !== 'demo' && lastView) {
       hud.update(lastView, events);
+      updateCooldownUI(session.myFighter());
       if (session.kind === 'net') hud.setNetInfo(net.connected ? `通信 ${Math.round(net.rtt)}ms` : '再接続中…');
       playEvents(events, session.mySlot, lastView);
       countTally(lastView, events, session.mySlot);

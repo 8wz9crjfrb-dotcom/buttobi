@@ -23,6 +23,9 @@ export class Hud {
 
   /** 練習モード：残機とタイマーを出さない */
   private training = false;
+  /** 自分の枠に出す、必殺技の待ち時間（B・横B・下B・上B） */
+  private cdRow: { root: HTMLElement; bars: HTMLElement[] } | null = null;
+  private lastCd = '';
 
   constructor() {
     this.el = document.getElementById('hud')!;
@@ -35,6 +38,8 @@ export class Hud {
     this.training = training;
     this.el.innerHTML = '';
     this.panels.clear();
+    this.cdRow = null;
+    this.lastCd = '';
     this.stockMode = setup.rules.mode !== 'time' && setup.rules.mode !== 'area';
     this.hp = setup.rules.mode === 'stamina' ? setup.rules.hp ?? DEFAULT_HP : 0;
     this.horde = setup.rules.horde ?? 0;
@@ -73,6 +78,19 @@ export class Hud {
         root.appendChild(face);
       }
       root.append(job, dmg, stk, nm);
+      if (myslot === p.slot) {
+        // 必殺技の待ち時間（タッチのボタンを使わないとき）
+        const row = document.createElement('div');
+        row.className = 'cdrow';
+        const bars = ['B', '横', '下', '上'].map((t) => {
+          const c = document.createElement('span');
+          c.innerHTML = `<i></i><b>${t}</b>`;
+          row.appendChild(c);
+          return c;
+        });
+        root.appendChild(row);
+        this.cdRow = { root: row, bars };
+      }
       wrap.appendChild(root);
       this.panels.set(p.slot, { root, dmg, stk, last: -1, job, fitted: false });
     }
@@ -199,6 +217,22 @@ export class Hud {
       if (c) this.center.classList.add('pop');
       this.lastCenter = c;
     }
+  }
+
+  /** 必殺技の待ち時間（0〜1、B・横B・下B・上B の順）。null なら出さない */
+  setCooldowns(frac: number[] | null): void {
+    const r = this.cdRow;
+    if (!r) return;
+    const key = frac ? frac.map((f) => Math.ceil(f * 30)).join() : '';
+    if (key === this.lastCd) return;
+    this.lastCd = key;
+    const show = !!frac && frac.some((f) => f > 0);
+    r.root.classList.toggle('on', show);
+    if (!frac) return;
+    r.bars.forEach((b, i) => {
+      b.classList.toggle('wait', frac[i] > 0);
+      (b.firstElementChild as HTMLElement).style.width = `${Math.round((1 - frac[i]) * 100)}%`;
+    });
   }
 
   setNetInfo(text: string): void {

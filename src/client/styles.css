@@ -2947,3 +2947,93 @@ table.rec td:first-child {
   font-size: 12px;
   margin-top: 10px;
 }
+
+/* 必殺技の待ち時間：Bボタンの暗い扇形（残りの割合）と秒数、4つの必殺技の点 */
+#btn-b .cd-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(rgba(10, 12, 30, 0.72) calc(var(--cd, 0) * 360deg), transparent 0);
+  opacity: 0;
+  transition: opacity 0.12s;
+  pointer-events: none;
+}
+#btn-b .cd-sec {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--btn-size) * 0.26);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+#btn-b.cooling {
+  filter: saturate(0.5);
+}
+#btn-b .cd-dots {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--btn-size) * -0.2);
+  transform: translateX(-50%);
+  display: flex;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+#btn-b.has-cd .cd-dots {
+  opacity: 1;
+}
+#btn-b .cd-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4fd18b;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+#btn-b .cd-dots i.wait {
+  background: #55586e;
+}
+#btn-b .cd-dots i.cur {
+  transform: scale(1.35);
+}
+
+/* 自分のHUDの、必殺技の待ち時間（キーボード・ゲームパッドのとき） */
+.hud-p .cdrow {
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.hud-p .cdrow.on {
+  opacity: 1;
+}
+.hud-p .cdrow span {
+  position: relative;
+  width: 16px;
+  height: 11px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.hud-p .cdrow span i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #4fd18b;
+}
+.hud-p .cdrow span.wait i {
+  background: #8a8fa8;
+}
+.hud-p .cdrow span b {
+  position: relative;
+  display: block;
+  font-size: 8px;
+  line-height: 11px;
+  text-align: center;
+  color: #fff;
+}

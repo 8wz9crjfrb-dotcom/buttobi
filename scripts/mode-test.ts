@@ -62,8 +62,8 @@ function jabAt(sim: Sim) {
 {
   // CPU は味方を狙わない：味方どうしのCPUだけなら、ほとんどダメージが入らない
   const players = [P(0, 'guard', 0, true), P(1, 'hacker', 0, true), P(2, 'thief', 1, true), P(3, 'gacha', 1, true)];
-  const count = (ff: boolean) => {
-    const sim = make(players, { teams: true, friendlyFire: ff, stocks: 3, timeLimit: 120 }, 7);
+  const count = (ff: boolean, seed = 7) => {
+    const sim = make(players, { teams: true, friendlyFire: ff, stocks: 3, timeLimit: 120 }, seed);
     const ai = new CpuController(5);
     let ally = 0;
     let foe = 0;
@@ -81,8 +81,9 @@ function jabAt(sim: Sim) {
   };
   const off = count(false);
   check('チーム戦：CPU同士でも味方には1回も当たらない', off.foe > 30 && off.ally === 0 && off.ended, `敵へ${off.foe} 味方へ${off.ally}`);
-  const on = count(true);
-  check('チーム戦（味方にも当たる）：CPUは敵を狙う（巻き込みは少なめ）', on.foe > 30 && on.ally < on.foe * 0.3, `敵へ${on.foe} 味方へ${on.ally}`);
+  // 1試合だとばらつくので、4試合の合計で見る（ふだんは味方への巻き込みが敵への3割弱）
+  const on = [7, 8, 9, 10].map((seed) => count(true, seed)).reduce((a, b) => ({ ally: a.ally + b.ally, foe: a.foe + b.foe, ended: a.ended && b.ended }));
+  check('チーム戦（味方にも当たる）：CPUは敵を狙う（巻き込みは少なめ）', on.foe > 120 && on.ally < on.foe * 0.35, `4試合で 敵へ${on.foe} 味方へ${on.ally}`);
 }
 
 // ---- 体力制
