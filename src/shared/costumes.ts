@@ -65,7 +65,13 @@ export type Accessory =
   /** 虹色に光る回路模様のロングコート（UR） */
   | 'circuitCoat'
   /** まわりを回る6枚の半透明モニター（UR） */
-  | 'monitorOrbit';
+  | 'monitorOrbit'
+  /** 背中の、光るデータの袋（中で0と1がきらめく）（UR） */
+  | 'dataSack'
+  /** まわりを回るファイルのアイコン（UR） */
+  | 'fileOrbit'
+  /** 虹色のしまのネクタイ */
+  | 'rainbowTie';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
@@ -283,6 +289,8 @@ COSTUMES.push({ id: 'threeb-santo', charId: 'threeb', name: '三刀流', rarity:
   extras: ['haori', 'triCrest'], extraColor: 0xd9b44a, fx: { particle: 'sparkle', color: 0xffc83f, hit: 0xff8a1a, hitText: '三刀流！' }, jobHair: [0xf0d9a0, 0x8a2a3a, 0x16161c] });
 COSTUMES.push({ id: 'hacker-ur', charId: 'hacker', name: '電脳の支配者', rarity: 6, colors: c(0x0c0e14, 0x05060a, 0x39ff88, 0x1c1c22, 0xf3d2b3, 0x0c0e14, 0x39ff88),
   extras: ['circuitCoat', 'monitorOrbit'], extraColor: 0x39ff88, fx: { particle: 'data', color: 0x39ff88, hit: 0x1fd870, hitText: 'ACCESS GRANTED' } });
+COSTUMES.push({ id: 'thief-ur', charId: 'thief', name: 'データの大富豪', rarity: 6, colors: c(0x111118, 0x08080c, 0xffd23f, 0x1c1424, 0xe9c3a3, 0x111118, 0xffd23f),
+  extras: ['rainbowTie', 'dataSack', 'fileOrbit'], extraColor: 0xffd23f, fx: { particle: 'data', color: 0xffd23f, hit: 0xffb81f, hitText: '全部いただき！' } });
 /** ガチャで引ける衣装 */
 export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);
 

@@ -1255,6 +1255,60 @@ export class FighterModel {
           this.spinners.push({ g, speed: 0.6 });
           break;
         }
+        case 'rainbowTie': {
+          // 白いシャツの胸元に、虹色のしまのネクタイ
+          this.part(b, new THREE.BoxGeometry(0.13, 0.2, 0.012), this.toon(0xf4f4f8), [0, 1.04, 0.163], { outline: false });
+          const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff];
+          rainbow.forEach((cl, i) => this.part(b, new THREE.BoxGeometry(0.05 - i * 0.002, 0.05, 0.014), this.glow(cl), [0, 1.1 - i * 0.05, 0.168 + i * 0.002], { outline: false }));
+          this.part(b, new THREE.ConeGeometry(0.026, 0.04, 4), this.glow(0xc77dff), [0, 0.85, 0.178], { rot: [0, Math.PI / 4, Math.PI], outline: false });
+          break;
+        }
+        case 'dataSack': {
+          // 背中に背負った、半透明に光る袋。中で0と1（小さな光る四角）がきらめく
+          const g = new THREE.Group();
+          g.position.set(0, 1.02, -0.32);
+          b.add(g);
+          const bag = new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.35, depthWrite: false });
+          capBrightness(bag, 'basic-cap');
+          this.part(g, new THREE.SphereGeometry(0.22, 18, 14), bag, [0, 0, 0], { scale: [1, 1.1, 0.8], outline: false });
+          // 口をしばったところ
+          this.part(g, new THREE.ConeGeometry(0.08, 0.12, 10), this.toon(0xd9a020), [0, 0.27, 0], { outline: false });
+          this.part(g, new THREE.TorusGeometry(0.05, 0.015, 6, 12), this.toon(0x8a5a2a), [0, 0.23, 0], { rot: [Math.PI / 2, 0, 0], outline: false });
+          // 中の光（虹色の小さな四角）
+          const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff];
+          for (let i = 0; i < 9; i++) {
+            const a = i * 2.4;
+            this.part(g, new THREE.BoxGeometry(0.035, 0.05, 0.01), this.glow(rainbow[i % 5]), [Math.cos(a) * 0.12 * ((i % 3) / 3 + 0.3), -0.1 + (i / 9) * 0.22, Math.sin(a) * 0.08], { rot: [0, a, 0], outline: false });
+          }
+          this.floaters.push({ g, base: g.position.y });
+          break;
+        }
+        case 'fileOrbit': {
+          // まわりを回るファイルのアイコン（白い紙の角が折れていて、色つきの帯）
+          const g = new THREE.Group();
+          g.position.y = 1.0;
+          b.add(g);
+          const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff];
+          for (let k = 0; k < 5; k++) {
+            const pv = new THREE.Group();
+            pv.rotation.y = (k / 5) * Math.PI * 2;
+            g.add(pv);
+            const y = Math.sin(k * 1.9) * 0.18;
+            const shape = new THREE.Shape();
+            shape.moveTo(-0.08, -0.1);
+            shape.lineTo(0.08, -0.1);
+            shape.lineTo(0.08, 0.06);
+            shape.lineTo(0.04, 0.1);
+            shape.lineTo(-0.08, 0.1);
+            shape.closePath();
+            const paper = this.glow(0xf8f8ff);
+            paper.side = THREE.DoubleSide;
+            this.part(pv, new THREE.ShapeGeometry(shape), paper, [0, y, 0.82], { outline: false });
+            this.part(pv, new THREE.PlaneGeometry(0.16, 0.05), this.glow(rainbow[k]), [0, y - 0.04, 0.823], { outline: false });
+          }
+          this.spinners.push({ g, speed: -0.8 });
+          break;
+        }
         case 'festTowel': {
           // フェスのタオル：片方の肩にかけて、前と後ろに垂らす（しま模様と「FES」の文字）
           const tex = new THREE.CanvasTexture(
