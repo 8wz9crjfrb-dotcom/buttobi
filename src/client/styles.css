@@ -2226,12 +2226,6 @@ table.rec td:first-child {
   color: #dfe3ff;
 }
 
-/* メニューでは、FPS の表示をタイトルの下へ（タイトルと重ならないように） */
-#app:has(.menu-screen) #fps {
-  top: calc(56px + var(--safe-t));
-  left: calc(16px + var(--safe-l));
-}
-
 /* 下のボタン列がある画面：中身（screen-body）だけをスクロールし、ボタンは別の段に置く */
 .screen.has-footer {
   overflow: hidden;
@@ -2255,14 +2249,9 @@ table.rec td:first-child {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* FPS の表示：対戦中は左上（通信の表示の下）。メニュー以外の画面では、ボタン列のまんなか（下）に置いて文字と重ねない */
-#app:has(.screen:not(.menu-screen)) #fps {
-  top: auto;
-  bottom: calc(6px + var(--safe-b));
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 11px;
-  opacity: 0.85;
+/* FPS の表示は対戦中（練習モードを含む）だけ左上に出す。メニューなどの画面を開いている間は隠す */
+#app:has(.screen) #fps {
+  display: none;
 }
 
 /* ルームの待機画面：上のルームコードと参加者の欄を、背景から浮かせて読みやすく */

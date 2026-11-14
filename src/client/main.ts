@@ -1254,7 +1254,7 @@ function showSettings(): void {
        <div class="opt">画質の自動調整（重いとき軽さ優先に） ${seg('aq', [['on', 'する'], ['off', 'しない']], settings.autoQuality ? 'on' : 'off')}</div>
        <div class="opt">スティック上でジャンプ ${seg('tj', [['on', 'する'], ['off', 'しない']], settings.tapJump ? 'on' : 'off')}</div>
        <div class="opt">振動（Androidのみ） ${seg('vib', [['on', 'する'], ['off', 'しない']], settings.vibration ? 'on' : 'off')}</div>
-       <div class="opt">フレームレート表示 ${seg('fps', [['on', 'する'], ['off', 'しない']], settings.showFps ? 'on' : 'off')}</div>
+       <div class="opt">フレームレート表示（対戦中） ${seg('fps', [['on', 'する'], ['off', 'しない']], settings.showFps ? 'on' : 'off')}</div>
        <div class="opt">効果音 ${seg('vol', [[0, 'なし'], [0.4, '小'], [0.7, '中'], [1, '大']], settings.volume)}</div>
        <div class="opt">BGM ${seg('bgm', [[0, 'なし'], [0.3, '小'], [0.5, '中'], [0.8, '大']], settings.bgmVolume)}</div>
        <label class="field" style="grid-column:1/-1">対戦サーバーのURL（wss://〜）<input type="url" id="server" value="${esc(settings.serverUrl)}" placeholder="wss://buttobi-server.あなたのアカウント.workers.dev"/></label>
