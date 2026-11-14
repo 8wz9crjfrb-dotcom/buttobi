@@ -45,16 +45,24 @@ export type Accessory =
   /** スタジャンのしま模様のリブ（えり・すそ） */
   | 'jacketRib'
   /** 腰にさげたメダルの袋（金のメダルがのぞく） */
-  | 'medalPouch';
+  | 'medalPouch'
+  /** たれさがったナイトキャップ（先にぽんぽん） */
+  | 'nightcap'
+  /** 目の下のクマ */
+  | 'eyeBags'
+  /** パジャマのえりとボタン */
+  | 'pajama'
+  /** 左手にもう1台のスマホ（画面が光る） */
+  | 'phone2';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
-  particle: 'sparkle' | 'data' | 'petal' | 'heart' | 'star' | 'coin' | 'flame' | 'pixel' | 'medal';
+  particle: 'sparkle' | 'data' | 'petal' | 'heart' | 'star' | 'coin' | 'flame' | 'pixel' | 'medal' | 'zzz';
   color: number;
   /** 当たったときに出す粒の色（虹色は -1） */
   hit: number;
-  /** 強い攻撃が当たったとき、スロットの「777」が光る */
-  jackpot?: boolean;
+  /** 強い攻撃が当たったとき、この文字が光る（「777」など） */
+  hitText?: string;
 }
 
 export interface Costume {
@@ -254,7 +262,9 @@ COSTUMES.push({
 COSTUMES.push({ id: 'streamer-gamer', charId: 'streamer', name: '深夜のゲーム実況', rarity: 5, colors: c(0x1b1a2e, 0x2c2a4a, 0x5ab8ff, 0x7a5cff, 0xffe0cc, 0x14131f, 0x5ab8ff),
   extras: ['micBoom', 'rgbKeys'], extraColor: 0x5ab8ff, fx: { particle: 'pixel', color: 0x8a7cff, hit: 0x5ab8ff } });
 COSTUMES.push({ id: 'dopa-arcade', charId: 'dopa', name: 'ゲーセン荒らし', rarity: 5, colors: c(0x1f2a66, 0xf3ead2, 0xe5304a, 0xff8a1a, 0xffe0cc, 0x2a2a3a, 0xf3ead2),
-  extras: ['capFront', 'jacketRib', 'medalPouch'], extraColor: 0xe5304a, fx: { particle: 'medal', color: 0xffd23f, hit: 0xffd23f, jackpot: true } });
+  extras: ['capFront', 'jacketRib', 'medalPouch'], extraColor: 0xe5304a, fx: { particle: 'medal', color: 0xffd23f, hit: 0xffd23f, hitText: '777' } });
+COSTUMES.push({ id: 'gacha-allnight', charId: 'gacha', name: '徹夜明けの廃人', rarity: 5, colors: c(0x9cc4e8, 0xe8f2fb, 0xffd23f, 0x3b3046, 0xead2c0, 0x9cc4e8, 0x7a8aa8),
+  extras: ['nightcap', 'eyeBags', 'pajama', 'phone2'], extraColor: 0x4a6fa8, fx: { particle: 'zzz', color: 0xbfd8ff, hit: 0x3d7bff, hitText: '10連！' } });
 /** ガチャで引ける衣装 */
 export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);
 

@@ -311,6 +311,13 @@ export function fxTexture(kind: string): THREE.Texture {
       g.fillText('★', 32, 41);
       break;
     }
+    case 'zzz':
+      // ねむけの「Z」（大小2つ）
+      g.font = `900 34px sans-serif`;
+      g.fillText('Z', 24, 50);
+      g.font = `900 22px sans-serif`;
+      g.fillText('z', 48, 24);
+      break;
     case 'pixel':
       // ドット絵の四角（角を少し欠いたブロック）
       g.fillRect(14, 8, 36, 48);
@@ -1070,6 +1077,36 @@ export class FighterModel {
             [0.035, 0.1, 0.03],
             [-0.03, 0.11, 0.02],
           ]) this.part(bag, new THREE.CylinderGeometry(0.035, 0.035, 0.01, 12), this.glow(0xffd23f), [x, y, z], { rot: [0.5, 0, 0.3], outline: false });
+          break;
+        }
+        case 'nightcap': {
+          // 頭にかぶって、先が横にたれさがるナイトキャップ
+          const cap = this.toon(col);
+          this.part(h, new THREE.SphereGeometry(0.34, 22, 12, 0, Math.PI * 2, 0, Math.PI * 0.4), cap, [0, 0.32, -0.02], { rot: [-0.2, 0, 0] });
+          this.part(h, new THREE.TorusGeometry(0.31, 0.04, 6, 28), this.toon(0xf2f2f5), [0, 0.42, -0.02], { rot: [Math.PI / 2 - 0.2, 0, 0], outline: false });
+          const sw = this.swingPivot(h, [0, top - 0.02, -0.05], 0.7);
+          this.part(sw, new THREE.ConeGeometry(0.17, 0.42, 14), cap, [-0.14, 0.04, -0.04], { rot: [0, 0, 1.25] });
+          this.part(sw, new THREE.SphereGeometry(0.07, 10, 8), this.toon(0xf2f2f5), [-0.34, -0.03, -0.04]);
+          break;
+        }
+        case 'eyeBags':
+          // 目の下のクマ（うすい紫）
+          for (const x of [0.12, -0.12]) this.part(h, new THREE.SphereGeometry(0.06, 10, 8), this.toon(0x9a82a8), [x, 0.17, 0.262], { scale: [1, 0.35, 0.3], outline: false });
+          break;
+        case 'pajama': {
+          // パジャマのえり（左右）と、前のボタン
+          const sub = this.toon(this.c.sub);
+          for (const x of [0.06, -0.06]) this.part(b, new THREE.BoxGeometry(0.11, 0.08, 0.02), sub, [x, 1.12, 0.165], { rot: [0.25, 0, x > 0 ? 0.55 : -0.55], outline: false });
+          for (let i = 0; i < 4; i++) this.part(b, new THREE.CylinderGeometry(0.018, 0.018, 0.01, 10), this.toon(col), [0, 1.02 - i * 0.1, 0.183 - Math.abs(i - 1.5) * 0.004], { rot: [Math.PI / 2, 0, 0], outline: false });
+          // 胸ポケット
+          this.part(b, new THREE.BoxGeometry(0.09, 0.08, 0.012), sub, [-0.1 * wide, 0.98, 0.17], { outline: false });
+          break;
+        }
+        case 'phone2': {
+          // 左手にもう1台のスマホ（画面が光る）
+          const hnd = this.hand(this.armL);
+          this.part(hnd, new THREE.BoxGeometry(0.1, 0.17, 0.02), this.toon(0x1a1a22), [0, -0.08, 0.06], { rot: [0.3, 0, 0] });
+          this.part(hnd, new THREE.BoxGeometry(0.085, 0.145, 0.004), this.glow(0x9cdcff), [0, -0.08, 0.072], { rot: [0.3, 0, 0], outline: false });
           break;
         }
         case 'festTowel': {
