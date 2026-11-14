@@ -71,17 +71,25 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   check('次の動画へは途中で横に方向転換できる', f.redirected && f.x > 2, `x=${f.x.toFixed(2)} y=${f.y.toFixed(2)}`);
 }
 {
-  // 飽き性：同じ技を続けると威力が下がる
-  const dmgs: number[] = [];
+  // 飽き性：違う技を続けるほど威力が上がり、同じ技を出すと元に戻る
   const sim = make('dopa', 'guard');
-  for (let k = 0; k < 3; k++) {
+  const hit = (inp: InputState) => {
     sim.fighters[0].x = 0; sim.fighters[0].facing = 1; sim.fighters[0].state = 'idle'; sim.fighters[0].move = null;
     const v = sim.fighters[1];
-    v.x = 1.0; v.y = 0; v.vx = 0; v.vy = 0; v.state = 'idle'; v.grounded = true; v.damage = 0; v.invuln = 0;
-    run(sim, 30, at(0, { mx: 0, my: 0, buttons: BTN_A }));
-    dmgs.push(v.damage);
-  }
-  check('飽き性：同じ技を続けると威力が下がる', dmgs[0] > dmgs[1] && dmgs[1] > dmgs[2], dmgs.map((d) => d.toFixed(2)).join(' → '));
+    v.x = 1.0; v.y = 0; v.vx = 0; v.vy = 0; v.state = 'idle'; v.grounded = true; v.damage = 0; v.invuln = 0; v.hitstun = 0;
+    run(sim, 40, at(0, inp));
+    return { dmg: v.damage, mul: sim.fighters[0].stale };
+  };
+  const jab = { mx: 0, my: 0, buttons: BTN_A };
+  const down = { mx: 0, my: -1, buttons: BTN_A };
+  const a1 = hit(jab);
+  const a2 = hit(down);
+  const a3 = hit(jab);
+  const a4 = hit(down);
+  const a5 = hit(down);
+  check('飽き性：違う技を続けるほど威力が上がる', a2.mul > a1.mul && a3.mul > a2.mul && a4.mul > a3.mul && a3.dmg > a1.dmg, [a1, a2, a3, a4].map((x) => x.mul.toFixed(2)).join(' → '));
+  check('飽き性：上がり方には上限がある（約1.25倍）', a4.mul <= 1.25);
+  check('飽き性：同じ技を出すと元に戻る（下がりはしない）', a5.mul === 1, `${a5.mul}`);
 }
 // ---- ガチャ廃人
 {

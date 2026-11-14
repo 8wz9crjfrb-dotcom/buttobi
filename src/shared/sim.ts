@@ -286,6 +286,9 @@ export const HORDE = {
 };
 /** 体力制で、ふっとびの計算に使うダメージの上限 */
 const STAMINA_KB_CAP = 50;
+/** 飽き性（ドパガキ）：違う技を1つ続けるごとの威力アップと、その回数の上限（最大 1 + 0.08×3 = 1.24倍） */
+const DOPA_STEP = 0.08;
+const DOPA_STREAK_MAX = 3;
 /** 24時間ジムのランニングマシンが動くフレーム数 */
 export const GYM_BELT = 240;
 
@@ -813,12 +816,16 @@ export class Sim {
   }
 
   private startMove(f: Fighter, id: MoveId): void {
-    // 飽き性（ドパガキ）：最近出した技ほど威力が下がる
+    // 飽き性（ドパガキ）：直前と違う技を続けて出すほど威力が上がる（同じ技を出すと元に戻る）。
+    // つかみ攻撃・投げ・アピールは数えない
     if (f.def.id === 'dopa') {
-      const same = f.recentMoves.filter((m) => m === id).length;
-      f.stale = Math.max(0.7, 1 - 0.08 * same);
-      f.recentMoves.push(id);
-      if (f.recentMoves.length > 5) f.recentMoves.shift();
+      if (id !== 'pummel' && id !== 'taunt' && !this.isThrow(id)) {
+        const last = f.recentMoves[f.recentMoves.length - 1];
+        const streak = last === undefined || id === last ? 0 : Math.min(DOPA_STREAK_MAX, Math.round((f.stale - 1) / DOPA_STEP) + 1);
+        f.stale = 1 + DOPA_STEP * streak;
+        f.recentMoves.push(id);
+        if (f.recentMoves.length > 5) f.recentMoves.shift();
+      }
     } else f.stale = 1;
     if (id !== 'sspecial') f.chain = 0;
     f.redirected = false;
@@ -843,7 +850,8 @@ export class Sim {
   /** 攻撃側の威力の倍率（課金・バズり・飽き性・吸収・単発ガチャの大当たり） */
   private powerMul(a: Fighter): { dmg: number; kb: number } {
     let dmg = a.def.dmgMul * a.stale * (1 + 0.08 * a.buzz);
-    let kb = a.def.kbMul * (1 - (1 - a.stale) * 0.5);
+    // 飽き性の威力アップはダメージだけ（ふっとばしは上げない）
+    let kb = a.def.kbMul;
     if (a.powerBuff > 0) {
       dmg *= PAY.dmg;
       kb *= PAY.kb;
