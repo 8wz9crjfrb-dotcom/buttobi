@@ -61,7 +61,11 @@ export type Accessory =
   /** 前の開いた羽織（ひざ上までの丈・広いそで・胸の羽織ひも）。色は extraColor ではなく藍色 */
   | 'haori'
   /** 背中の家紋：金の輪の中にハサミ・ギター・シェイカー */
-  | 'triCrest';
+  | 'triCrest'
+  /** 虹色に光る回路模様のロングコート（UR） */
+  | 'circuitCoat'
+  /** まわりを回る6枚の半透明モニター（UR） */
+  | 'monitorOrbit';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
@@ -277,6 +281,8 @@ COSTUMES.push({ id: 'ai-quantum', charId: 'ai', name: '量子コンピュータ�
   extras: ['glassHelmet', 'goldPipes'], extraColor: 0xd9b44a, fx: { particle: 'qubit', color: 0xb8e8ff, hit: 0x2f8fe0, hitText: '|0〉|1〉' } });
 COSTUMES.push({ id: 'threeb-santo', charId: 'threeb', name: '三刀流', rarity: 5, colors: c(0xece6d6, 0x24305a, 0xd9b44a, 0xf0d9a0, 0xf3d6bd, 0x1a1a22, 0x2a2a2e),
   extras: ['haori', 'triCrest'], extraColor: 0xd9b44a, fx: { particle: 'sparkle', color: 0xffc83f, hit: 0xff8a1a, hitText: '三刀流！' }, jobHair: [0xf0d9a0, 0x8a2a3a, 0x16161c] });
+COSTUMES.push({ id: 'hacker-ur', charId: 'hacker', name: '電脳の支配者', rarity: 6, colors: c(0x0c0e14, 0x05060a, 0x39ff88, 0x1c1c22, 0xf3d2b3, 0x0c0e14, 0x39ff88),
+  extras: ['circuitCoat', 'monitorOrbit'], extraColor: 0x39ff88, fx: { particle: 'data', color: 0x39ff88, hit: 0x1fd870, hitText: 'ACCESS GRANTED' } });
 /** ガチャで引ける衣装 */
 export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);
 

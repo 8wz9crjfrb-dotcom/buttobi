@@ -1193,6 +1193,68 @@ export class FighterModel {
           this.part(g, new THREE.ConeGeometry(0.016, 0.025, 8), gold, [0.055, -0.008, 0], { outline: false });
           break;
         }
+        case 'circuitCoat': {
+          // 黒いロングコート（前が開く）に、虹色に光る回路の線と点
+          const coat = this.toon(0x0c0e14);
+          coat.side = THREE.DoubleSide;
+          const R0 = 0.24 * wide;
+          const R1 = 0.33 * wide;
+          this.part(b, new THREE.CylinderGeometry(R0, R1, 0.82, 20, 1, true, 0.4, Math.PI * 2 - 0.8), coat, [0, 0.72, 0], { scale: [1, 1, 0.85] });
+          // 高いえり
+          this.part(b, new THREE.CylinderGeometry(0.19, 0.2, 0.12, 16, 1, true, 0.6, Math.PI * 2 - 1.2), coat, [0, 1.2, -0.01]);
+          const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff];
+          // 回路：縦の線と、横に曲がる短い線と、端の点（コートの表面にそって置く）
+          const surf = (ang: number, y: number) => {
+            const t = (1.13 - y) / 0.82;
+            const r = (R0 + (R1 - R0) * t) * 1.02;
+            return [Math.sin(ang) * r, y, Math.cos(ang) * r * 0.85] as [number, number, number];
+          };
+          const lines: [number, number, number][] = [
+            // [角度, 上のy, 下のy]
+            [0.7, 1.0, 0.45],
+            [1.3, 0.9, 0.4],
+            [2.2, 1.05, 0.5],
+            [2.9, 0.95, 0.38],
+            [-0.7, 1.0, 0.45],
+            [-1.3, 0.85, 0.4],
+            [-2.2, 1.05, 0.5],
+            [-2.9, 0.95, 0.38],
+          ];
+          lines.forEach(([ang, y1, y2], i) => {
+            const m = this.glow(rainbow[i % rainbow.length]);
+            const mid = surf(ang, (y1 + y2) / 2);
+            this.part(b, new THREE.BoxGeometry(0.014, y1 - y2, 0.01), m, mid, { rot: [0, ang, 0], outline: false });
+            const end = surf(ang, y1);
+            this.part(b, new THREE.SphereGeometry(0.022, 8, 6), m, end, { outline: false });
+            // 横に曲がる線
+            const side = surf(ang + 0.18, y2 + 0.12);
+            this.part(b, new THREE.BoxGeometry(0.07, 0.012, 0.01), m, side, { rot: [0, ang, 0], outline: false });
+          });
+          break;
+        }
+        case 'monitorOrbit': {
+          // まわりを回る6枚の半透明モニター（それぞれ違う色の画面。面は外向き）
+          const g = new THREE.Group();
+          g.position.y = 1.05;
+          b.add(g);
+          const rainbow = [0xff5a5a, 0xffd23f, 0x4fd18b, 0x4f9dff, 0xc77dff, 0x39ff88];
+          for (let k = 0; k < 6; k++) {
+            const pv = new THREE.Group();
+            pv.rotation.y = (k / 6) * Math.PI * 2;
+            g.add(pv);
+            const scr = new THREE.MeshBasicMaterial({ color: rainbow[k], transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false });
+            capBrightness(scr, 'basic-cap');
+            const y = (k % 2 ? 0.12 : -0.08);
+            this.part(pv, new THREE.PlaneGeometry(0.3, 0.2), scr, [0, y, 0.9], { outline: false });
+            // 画面のふちと、中の文字の行
+            const fr = this.glow(rainbow[k]);
+            for (const sy of [0.1, -0.1]) this.part(pv, new THREE.BoxGeometry(0.31, 0.012, 0.006), fr, [0, y + sy, 0.9], { outline: false });
+            for (const sx of [0.15, -0.15]) this.part(pv, new THREE.BoxGeometry(0.012, 0.2, 0.006), fr, [sx, y, 0.9], { outline: false });
+            for (let r = 0; r < 3; r++) this.part(pv, new THREE.PlaneGeometry(0.06 + ((k + r) % 3) * 0.05, 0.018), this.glow(0xffffff), [-0.1 + (0.06 + ((k + r) % 3) * 0.05) / 2, y + 0.05 - r * 0.045, 0.902], { outline: false });
+          }
+          this.spinners.push({ g, speed: 0.6 });
+          break;
+        }
         case 'festTowel': {
           // フェスのタオル：片方の肩にかけて、前と後ろに垂らす（しま模様と「FES」の文字）
           const tex = new THREE.CanvasTexture(
