@@ -32,6 +32,9 @@ import { applyUiSettings, loadSettings, saveSettings, type Settings } from './se
 import { applyTouchLayout, currentButtonPositions } from './touchLayout';
 import { checkTitles, gachaBadge, markGachaSeen, markRecordsSeen, recordsBadge, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
 import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, UR_PITY_LIMIT, UR_RATE, urAvailable, type PullResult } from './wallet';
+
+/** UR のカード・衣装ボタンの上に舞うキラキラの粒（中身は styles.css の .ur-sp） */
+const URSP = '<i class="ur-sp" aria-hidden="true"></i>';
 import { COSTUMES, getCostume, rarityName } from '../shared/costumes';
 
 registerServiceWorker();
@@ -648,7 +651,7 @@ function costumeChips(charId: string): string {
   const total = COSTUMES.filter((c) => c.charId === charId && c.rarity >= 4).length;
   const have = list.filter((c) => c.rarity >= 4).length;
   return `<span class="cr-label">衣装 ${have}/${total}</span>${list
-    .map((c) => `<button type="button" class="cchip r${c.rarity} ${c.id === cur ? 'on' : ''}" data-costume="${c.id}">${rarityName(c.rarity) ? `<b>${rarityName(c.rarity)}</b>` : ''}${c.name}</button>`)
+    .map((c) => `<button type="button" class="cchip r${c.rarity} ${c.id === cur ? 'on' : ''}" data-costume="${c.id}">${rarityName(c.rarity) ? `<b>${rarityName(c.rarity)}</b>` : ''}${c.name}${c.rarity === 6 ? URSP : ''}</button>`)
     .join('')}`;
 }
 
@@ -1553,7 +1556,7 @@ function playGachaOpening(res: PullResult[]): void {
     box.innerHTML = res
       .map((r) => {
         const c = COSTUMES.find((x) => x.id === r.id)!;
-        return `<div class="gx-card r${r.rarity}"><div class="in"><div class="back"></div><div class="front"><b>${rarityName(r.rarity)}</b><div class="n">${c.name}</div><div class="c">${getCharacter(c.charId).name}</div>${r.dup ? '' : '<i class="new">NEW</i>'}</div></div></div>`;
+        return `<div class="gx-card r${r.rarity}"><div class="in"><div class="back"></div><div class="front"><b>${rarityName(r.rarity)}</b><div class="n">${c.name}</div><div class="c">${getCharacter(c.charId).name}</div>${r.dup ? '' : '<i class="new">NEW</i>'}${r.rarity === 6 ? URSP : ''}</div></div></div>`;
       })
       .join('');
     flipRest(ten ? 140 : 0, 150);
@@ -1640,7 +1643,7 @@ function showGachaResult(res: PullResult[], index: number): void {
   const cards = res
     .map((x, i) => {
       const cc = COSTUMES.find((y) => y.id === x.id)!;
-      return `<div class="gcard r${x.rarity} ${i === index ? 'on' : ''}" data-i="${i}"><b>${rarityName(x.rarity)}</b><div class="gn">${cc.name}</div><div class="gc">${getCharacter(cc.charId).name}</div>${x.dup ? `<div class="gd">+${x.refund}コイン</div>` : '<div class="gnew">NEW</div>'}</div>`;
+      return `<div class="gcard r${x.rarity} ${i === index ? 'on' : ''}" data-i="${i}"><b>${rarityName(x.rarity)}</b><div class="gn">${cc.name}</div><div class="gc">${getCharacter(cc.charId).name}</div>${x.dup ? `<div class="gd">+${x.refund}コイン</div>` : '<div class="gnew">NEW</div>'}${x.rarity === 6 ? URSP : ''}</div>`;
     })
     .join('');
   showScreen(
@@ -1676,13 +1679,14 @@ function showGachaResult(res: PullResult[], index: number): void {
 /** 衣装一覧：キャラごとに、持っている衣装と持っていない衣装（？？？） */
 function showCollection(charId: string): void {
   const tabs = CHARACTERS.map((c) => `<button type="button" data-v="${c.id}" class="${c.id === charId ? 'on' : ''}">${c.name}</button>`).join('');
-  const list = COSTUMES.filter((c) => c.charId === charId);
+  // レア度の低い順（ふつう → SR → SSR → UR）
+  const list = COSTUMES.filter((c) => c.charId === charId).sort((a, b) => a.rarity - b.rarity);
   const cur = getCostume(myCostume(charId), charId).id;
   let shown = cur;
   const items = list
     .map((c) => {
       const have = c.rarity < 4 || wallet.owned.includes(c.id);
-      return `<div class="gcard r${c.rarity} ${have ? '' : 'locked'} ${c.id === cur ? 'on' : ''}" data-id="${c.id}"><b>${rarityName(c.rarity) || 'ふつう'}</b><div class="gn">${have ? c.name : '？？？'}</div>${c.id === cur ? '<div class="gnew">着ている</div>' : ''}</div>`;
+      return `<div class="gcard r${c.rarity} ${have ? '' : 'locked'} ${c.id === cur ? 'on' : ''}" data-id="${c.id}"><b>${rarityName(c.rarity) || 'ふつう'}</b><div class="gn">${have ? c.name : '？？？'}</div>${c.id === cur ? '<div class="gnew">着ている</div>' : ''}${c.rarity === 6 ? URSP : ''}</div>`;
     })
     .join('');
   showScreen(
@@ -1728,11 +1732,11 @@ function showLineup(): void {
   const pool = COSTUMES.filter((c) => c.rarity >= 4);
   let shown = pool[0];
   const cards = CHARACTERS.map((ch) => {
-    const list = pool.filter((c) => c.charId === ch.id);
+    const list = pool.filter((c) => c.charId === ch.id).sort((a, b) => a.rarity - b.rarity);
     return `<div class="lu-char">${ch.name}</div>${list
       .map((c) => {
         const have = wallet.owned.includes(c.id);
-        return `<div class="gcard r${c.rarity} ${c === shown ? 'on' : ''}" data-id="${c.id}"><b>${rarityName(c.rarity)}</b><div class="gn">${c.name}</div>${have ? '<div class="have">✓ 持っている</div>' : ''}</div>`;
+        return `<div class="gcard r${c.rarity} ${c === shown ? 'on' : ''}" data-id="${c.id}"><b>${rarityName(c.rarity)}</b><div class="gn">${c.name}</div>${have ? '<div class="have">✓ 持っている</div>' : ''}${c.rarity === 6 ? URSP : ''}</div>`;
       })
       .join('')}`;
   }).join('');

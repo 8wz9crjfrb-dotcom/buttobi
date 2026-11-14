@@ -1422,6 +1422,62 @@ input[inputmode='numeric'] {
     background-position: 0 0, 200% 0;
   }
 }
+.cchip.r6 {
+  overflow: hidden;
+}
+/* UR のカード・衣装ボタンの上に舞うキラキラの粒（白と虹色の粒が、またたきながら上へ流れる） */
+.ur-sp {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ur-sp::before,
+.ur-sp::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+}
+.ur-sp::before {
+  background-image:
+    radial-gradient(circle, #fff 0 1.2px, rgba(255, 255, 255, 0.5) 1.8px, transparent 3px),
+    radial-gradient(circle, #fff 0 0.8px, rgba(255, 255, 255, 0.4) 1.4px, transparent 2.4px),
+    radial-gradient(circle, #fff 0 1px, transparent 2.2px);
+  background-size: 46px 40px, 34px 52px, 58px 30px;
+  background-position: 8px 6px, 22px 30px, 40px 18px;
+  animation: ur-sp-a 2.6s linear infinite, ur-sp-twinkle 0.9s ease-in-out infinite alternate;
+}
+.ur-sp::after {
+  background-image:
+    radial-gradient(circle, #ffd23f 0 1px, rgba(255, 210, 63, 0.4) 1.6px, transparent 2.6px),
+    radial-gradient(circle, #4f9dff 0 1px, rgba(79, 157, 255, 0.4) 1.6px, transparent 2.6px),
+    radial-gradient(circle, #ff7ac8 0 1px, rgba(255, 122, 200, 0.4) 1.6px, transparent 2.6px),
+    radial-gradient(circle, #4fd18b 0 1px, rgba(79, 209, 139, 0.4) 1.6px, transparent 2.6px);
+  background-size: 52px 44px, 40px 56px, 62px 36px, 30px 48px;
+  background-position: 30px 2px, 4px 20px, 50px 34px, 16px 12px;
+  animation: ur-sp-b 3.4s linear infinite, ur-sp-twinkle 1.3s 0.4s ease-in-out infinite alternate;
+}
+/* 粒の模様を、それぞれの繰り返しの高さぶん上へずらす（つなぎ目でとばない） */
+@keyframes ur-sp-a {
+  to {
+    background-position: 8px -34px, 22px -22px, 40px -12px;
+  }
+}
+@keyframes ur-sp-b {
+  to {
+    background-position: 30px -42px, 4px -36px, 50px -2px, 16px -36px;
+  }
+}
+@keyframes ur-sp-twinkle {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 1;
+  }
+}
 
 .cchip.on {
   border-color: var(--accent);
@@ -1696,18 +1752,23 @@ input[inputmode='numeric'] {
 /* ガチャで出る衣装の一覧：キャラ名＋3着を1行に */
 .lineup {
   display: grid;
-  grid-template-columns: 6.5em repeat(3, minmax(0, 1fr));
+  /* キャラ名は1行まるごとの見出しにして、その下に衣装を4枚ずつ並べる（枚数が変わってもずれない） */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
   align-items: stretch;
   margin-top: 4px;
 }
 
 .lu-char {
+  grid-column: 1 / -1;
   font-size: 11px;
   font-weight: 800;
   color: var(--muted);
-  align-self: center;
   line-height: 1.2;
+  margin-top: 6px;
+}
+.lu-char:first-child {
+  margin-top: 0;
 }
 
 .lineup .gcard {
