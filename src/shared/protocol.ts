@@ -11,8 +11,9 @@ import {
   type ViewEntity,
   type ViewState,
 } from './types';
+import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 25;
+export const PROTOCOL_VERSION = 26;
 
 /** 定型文のスタンプ（文字を打たずに気持ちを伝える。自由な文は送れない） */
 export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って'];
@@ -46,6 +47,32 @@ export interface LobbyInfo {
   spectators?: number;
   /** 結果画面で「もう1戦したい」を押している人（slot） */
   again?: number[];
+  /** 対戦の形式がトーナメント（ホストが選ぶ） */
+  tourOn?: boolean;
+  /** 進行中・終わったトーナメント */
+  tour?: TourInfo;
+}
+
+/** トーナメントに出ている人（始めたときの名前とキャラ） */
+export interface TourEntrant {
+  slot: number;
+  name: string;
+  charId: string;
+  cpu: boolean;
+  cpuLevel: number;
+}
+
+export interface TourInfo {
+  /** トーナメントごとの番号（優勝のごほうびを二重にもらわないため） */
+  id: number;
+  entrants: TourEntrant[];
+  rounds: TourMatch[][];
+  /** 今戦っている試合 [回戦, 番号]（試合と試合の間は null） */
+  cur: [number, number] | null;
+  /** 優勝した人の slot（まだなら -1） */
+  champion: number;
+  /** 次の試合が自動で始まるまで（ms。0 = 予定なし） */
+  nextIn: number;
 }
 
 /** 端末 → サーバー */
@@ -55,7 +82,7 @@ export type ClientMsg =
   | { t: 'char'; charId: string; costume?: string }
   /** チーム戦のチームを変える（自分の枠。ホストは slot でCPUの枠も変えられる） */
   | { t: 'team'; team: number; slot?: number }
-  | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number }
+  | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number; tour?: boolean }
   | { t: 'start' }
   /** 結果画面の「もう1戦したい」（on = 押した / 取り消した）。人が全員押すと再戦が始まる */
   | { t: 'again'; on: boolean }

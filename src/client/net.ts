@@ -326,8 +326,8 @@ export class NetClient {
     this.send({ t: 'team', team, slot });
   }
 
-  config(rules: MatchRules, stageId: string, cpuCount: number, cpuLevel: number): void {
-    this.send({ t: 'config', rules, stageId, cpuCount, cpuLevel });
+  config(rules: MatchRules, stageId: string, cpuCount: number, cpuLevel: number, tour = false): void {
+    this.send({ t: 'config', rules, stageId, cpuCount, cpuLevel, tour });
   }
 
   start(): void {

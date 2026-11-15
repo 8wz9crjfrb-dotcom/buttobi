@@ -16,6 +16,7 @@ import {
   type ClientMsg,
   type LobbyInfo,
   type LobbyPlayer,
+  type TourInfo,
   type ServerMsg,
 } from '../../src/shared/protocol';
 import { LAG_COMP_MAX, Sim } from '../../src/shared/sim';
@@ -27,6 +28,7 @@ import { DEFAULT_HP, DEFAULT_RULES, TEAM_COUNT, type GameEvent, type InputState,
 export { TransferBox } from './transfer';
 export { Social } from './social';
 import type { Social } from './social';
+import { champion, makeBracket, nextMatch, setWinner } from '../../src/shared/tournament';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
@@ -127,7 +129,14 @@ interface StoredLobby {
   cpuTeams?: Record<number, number>;
   /** 結果画面で「もう1戦したい」を押している人（slot） */
   again?: number[];
+  /** 対戦の形式がトーナメント */
+  tourOn?: boolean;
+  /** 進行中・終わったトーナメント（nextIn は送るときに計算する） */
+  tour?: Omit<TourInfo, 'nextIn'>;
 }
+
+/** トーナメント：試合が終わってから次の試合が自動で始まるまで（ms） */
+const TOUR_NEXT_MS = 15_000;
 
 /** チームの番号を 0〜3 に収める */
 function validTeam(n: unknown): number | undefined {
@@ -184,6 +193,9 @@ export class Room extends DurableObject<Env> {
   private eventBuf: GameEvent[] = [];
   /** 対戦中の設定（途中で戻ってきた人に送る） */
   private setup: MatchSetup | null = null;
+  /** トーナメント：次の試合が自動で始まる時刻（0 = 予定なし） */
+  private tourNextAt = 0;
+  private tourTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -283,7 +295,8 @@ export class Room extends DurableObject<Env> {
       }
     }
     players.sort((a, b) => a.slot - b.slot);
-    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [] };
+    const tour: TourInfo | undefined = l.tour ? { ...l.tour, nextIn: !this.sim && this.tourNextAt ? Math.max(0, this.tourNextAt - Date.now()) : 0 } : undefined;
+    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, ...(tour ? { tour } : {}) };
   }
 
   private pushLobby(): void {
@@ -377,6 +390,7 @@ export class Room extends DurableObject<Env> {
           cpuLevel: 3,
         };
         this.stopMatch();
+        this.clearTourTimer();
       }
       const l = this.lobby!;
       if (this.sim) {
@@ -479,6 +493,12 @@ export class Room extends DurableObject<Env> {
         if (msg.stageId === RANDOM_STAGE || STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;
         l.cpuCount = Math.max(0, Math.min(MAX_PLAYERS - l.humans.length, msg.cpuCount | 0));
         l.cpuLevel = Math.max(1, Math.min(9, msg.cpuLevel | 0 || 3));
+        // トーナメントをやめたら、進行中のものも終わりにする
+        l.tourOn = msg.tour === true;
+        if (!l.tourOn && l.tour) {
+          l.tour = undefined;
+          this.clearTourTimer();
+        }
         await this.save();
         return this.pushLobby();
       }
@@ -553,6 +573,7 @@ export class Room extends DurableObject<Env> {
     if (!this.lobby) return;
     if (this.connectedSlots().size > 0) return;
     this.stopMatch();
+    this.clearTourTimer();
     this.lobby = null;
     await this.save();
   }
@@ -592,6 +613,7 @@ export class Room extends DurableObject<Env> {
         return;
       }
       this.stopMatch();
+      this.clearTourTimer();
       this.lobby = null;
       await this.save();
       return;
@@ -602,10 +624,76 @@ export class Room extends DurableObject<Env> {
     this.pushLobby();
   }
 
+  private clearTourTimer(): void {
+    if (this.tourTimer) clearTimeout(this.tourTimer);
+    this.tourTimer = null;
+    this.tourNextAt = 0;
+  }
+
+  /** トーナメント：次の試合を始める。新しく始めるときは、いるメンバー（CPUも）で組み合わせを作る */
+  private startTour(): boolean {
+    const l = this.lobby!;
+    this.clearTourTimer();
+    if (!l.tour || l.tour.champion >= 0) {
+      const players = this.lobbyInfo().players.filter((p) => p.cpu || p.connected);
+      if (players.length < 3) return false;
+      const order = players.map((p) => p.slot);
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      l.tour = {
+        id: (Math.random() * 2 ** 31) | 0,
+        entrants: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel })),
+        rounds: makeBracket(order),
+        cur: null,
+        champion: -1,
+      };
+    }
+    const t = l.tour;
+    const nm = nextMatch(t.rounds);
+    if (!nm) return false;
+    const m = t.rounds[nm[0]][nm[1]];
+    const connected = this.connectedSlots();
+    const players = [m.a, m.b].map((slot, i) => {
+      const e = t.entrants.find((x) => x.slot === slot)!;
+      const h = l.humans.find((x) => x.slot === slot);
+      // 人：今のキャラで出る。抜けた・通信が切れた人は CPU が代わりに戦う（戻ってきたら本人に戻る）
+      if (!e.cpu && h) return { slot, name: h.name, charId: h.charId, costume: h.costume, cpu: !connected.has(slot), cpuLevel: Math.max(3, l.cpuLevel), team: i };
+      return { slot, name: e.name, charId: e.charId, cpu: true, cpuLevel: e.cpu ? e.cpuLevel : Math.max(3, l.cpuLevel), team: i };
+    });
+    t.cur = nm;
+    const seed = (Math.random() * 2 ** 31) | 0;
+    this.startMatch({ players, stageId: resolveStage(l.stageId, seed), rules: { ...l.rules, teams: false }, seed });
+    this.pushLobby();
+    this.ctx.waitUntil(this.save());
+    return true;
+  }
+
+  /** トーナメントの試合が終わった：勝った人を進め、次の試合を予約する */
+  private endTourMatch(results: { slot: number; rank: number }[]): void {
+    const t = this.lobby?.tour;
+    if (!t || !t.cur) return;
+    const win = results[0]?.slot ?? -1;
+    setWinner(t.rounds, t.cur[0], t.cur[1], win);
+    t.cur = null;
+    t.champion = champion(t.rounds);
+    this.clearTourTimer();
+    if (t.champion < 0) {
+      this.tourNextAt = Date.now() + TOUR_NEXT_MS;
+      this.tourTimer = setTimeout(() => {
+        this.tourTimer = null;
+        this.tourNextAt = 0;
+        if (!this.sim && this.lobby?.tour === t && this.connectedSlots().size > 0) this.startTour();
+      }, TOUR_NEXT_MS);
+    }
+  }
+
   /** ロビーの設定（ステージ・ルール・CPU）で試合を始める。始められたら true */
   private startFromLobby(): boolean {
     const l = this.lobby;
     if (!l || this.sim) return false;
+    if (l.tourOn) return this.startTour();
     const info = this.lobbyInfo();
     const players = info.players.filter((p) => p.cpu || p.connected);
     if (players.length < 2) return false;
@@ -754,6 +842,7 @@ export class Room extends DurableObject<Env> {
       if (sim.finished) {
         const results = sim.results();
         this.stopMatch();
+        this.endTourMatch(results);
         this.broadcast({ t: 'end', results });
         if (this.lobby) {
           const connected = this.connectedSlots();

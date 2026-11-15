@@ -3,7 +3,8 @@
 import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, getCharacter, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
-import { MAX_PLAYERS, STAMPS, isRoomCode, type LobbyInfo } from '../shared/protocol';
+import { MAX_PLAYERS, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
+import { roundName } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
 import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
@@ -1749,6 +1750,90 @@ function updateRoomShare(): void {
   social.shareRoom({ code: l.code, n: l.players.length, max: MAX_PLAYERS, match: l.inMatch });
 }
 
+// ---------------------------------------------------------------------------
+// トーナメント
+/** 優勝したときのごほうび（コイン） */
+const TOUR_PRIZE = 100;
+/** 次の試合が自動で始まる時刻（端末の時計。0 = 予定なし） */
+let tourDeadline = 0;
+let tourTick = 0;
+/** 優勝のごほうびをもらったトーナメント */
+let tourPaid = -1;
+
+/** 組み合わせ表（回戦ごとの列） */
+function tourBracket(t: TourInfo): string {
+  const name = (slot: number) => t.entrants.find((e) => e.slot === slot);
+  const cell = (slot: number, m: { w: number }, r: number, bye: boolean) => {
+    if (slot < 0) return `<div class="tb-p tbd">${bye ? 'シード' : '？'}</div>`;
+    const e = name(slot);
+    // シード（相手なし）は勝ちの色にしない
+    const cls = m.w < 0 || bye ? '' : m.w === slot ? 'win' : 'lose';
+    return `<div class="tb-p ${cls} ${slot === net.slot ? 'me' : ''}"><span class="dot" style="background:${hex(SLOT_COLORS[slot % SLOT_COLORS.length])}"></span>${esc(e?.name ?? '？')}<small>${e ? getCharacter(e.charId).name : ''}</small>${r === t.rounds.length - 1 && m.w === slot ? ' 👑' : ''}</div>`;
+  };
+  return `<div class="tour-bracket">${t.rounds
+    .map(
+      (ms, r) => `<div class="tb-col"><div class="tb-round">${roundName(r, t.rounds.length)}</div><div class="tb-ms">${ms
+        .map((m, i) => {
+          const now = t.cur && t.cur[0] === r && t.cur[1] === i;
+          const bye = r === 0 && m.b < 0;
+          return `<div class="tb-match ${now ? 'now' : ''}">${cell(m.a, m, r, bye)}${cell(m.b, m, r, bye)}</div>`;
+        })
+        .join('')}</div></div>`,
+    )
+    .join('')}</div>`;
+}
+
+/** 次の試合の説明（だれとだれ・あと何秒） */
+function tourStatus(t: TourInfo): string {
+  if (t.champion >= 0) {
+    const e = t.entrants.find((x) => x.slot === t.champion);
+    return `<div class="tour-status champ">🏆 優勝：${esc(e?.name ?? '？')}${t.champion === net.slot ? '（あなた）' : ''}</div>`;
+  }
+  if (t.cur) return `<div class="tour-status">試合中…</div>`;
+  for (let r = 0; r < t.rounds.length; r++) {
+    for (const m of t.rounds[r]) {
+      if (m.w >= 0 || m.a < 0 || m.b < 0) continue;
+      const nm = (slot: number) => esc(t.entrants.find((x) => x.slot === slot)?.name ?? '？');
+      const left = tourDeadline ? Math.max(0, Math.ceil((tourDeadline - Date.now()) / 1000)) : 0;
+      const mine = m.a === net.slot || m.b === net.slot;
+      return `<div class="tour-status ${mine ? 'mine' : ''}">次の試合（${roundName(r, t.rounds.length)}）：${nm(m.a)} vs ${nm(m.b)}${mine ? '　← あなたの出番！' : ''}<span class="tour-left" data-tour-left>${left ? `あと${left}秒で開始` : ''}</span></div>`;
+    }
+  }
+  return '';
+}
+
+/** ロビーの情報が届いたとき：自動開始の時刻と、優勝のごほうび */
+function onTourLobby(l: LobbyInfo): void {
+  const t = l.tour;
+  tourDeadline = t && t.nextIn > 0 ? Date.now() + t.nextIn : 0;
+  if (t && t.champion >= 0 && t.champion === net.slot && tourPaid !== t.id) {
+    tourPaid = t.id;
+    wallet.coins += TOUR_PRIZE;
+    saveWallet(wallet);
+    toast(`🏆 トーナメント優勝！ +${TOUR_PRIZE} コイン`, 4000);
+  }
+  updateTourInfo();
+}
+
+/** 結果画面・ロビーのトーナメント表示を最新にする */
+function updateTourInfo(): void {
+  const el = screensEl.querySelector<HTMLElement>('[data-tour]');
+  const t = lobby?.tour;
+  if (!el) return;
+  el.innerHTML = t && lobby?.tourOn ? `${tourStatus(t)}${tourBracket(t)}` : '';
+  // 結果画面のホストのボタン
+  const btn = screensEl.querySelector<HTMLElement>('#rematch');
+  if (btn && t && lobby?.tourOn) btn.textContent = t.champion >= 0 ? 'もう一度トーナメント' : '次の試合へ';
+  if (!tourTick) {
+    tourTick = window.setInterval(() => {
+      const left = screensEl.querySelector<HTMLElement>('[data-tour-left]');
+      if (!left) return;
+      const n = tourDeadline ? Math.max(0, Math.ceil((tourDeadline - Date.now()) / 1000)) : 0;
+      left.textContent = n ? `あと${n}秒で開始` : '';
+    }, 500);
+  }
+}
+
 /** 結果画面：「もう1戦したい」の人数と、自分が押しているか */
 function updateAgainInfo(): void {
   const el = screensEl.querySelector<HTMLElement>('[data-again]');
@@ -1756,11 +1841,13 @@ function updateAgainInfo(): void {
   const humans = lobby.players.filter((p) => !p.cpu && p.connected);
   const want = (lobby.again ?? []).filter((s) => humans.some((h) => h.slot === s));
   const isHost = lobby.hostSlot === net.slot;
-  el.textContent = want.length ? `もう1戦したい：${want.length}/${humans.length}人${isHost ? '' : '（全員そろうと始まります）'}` : isHost ? '' : '全員が押すか、ホストが始めると再戦します';
+  const tour = lobby.tourOn && lobby.tour ? (lobby.tour.champion >= 0 ? 'again' : 'next') : null;
+  const label = tour === 'next' ? 'すぐ次の試合へ' : tour === 'again' ? 'もう一度トーナメント' : 'もう1戦したい';
+  el.textContent = want.length ? `${label}：${want.length}/${humans.length}人${isHost ? '' : '（全員そろうと始まります）'}` : isHost || tour === 'next' ? '' : '全員が押すか、ホストが始めると再戦します';
   const btn = screensEl.querySelector<HTMLElement>('#want-again');
   if (btn) {
     const mine = want.includes(net.slot);
-    btn.textContent = mine ? 'もう1戦したい（取り消す）' : 'もう1戦したい！';
+    btn.textContent = mine ? `${label}（取り消す）` : `${label}！`;
     btn.classList.toggle('primary', !mine);
   }
 }
@@ -1845,6 +1932,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
   showScreen(
     `<h2 style="text-align:center">${resultTitle(results, setup, winner)}</h2>
      ${reward}
+     ${online && lobby?.tourOn ? '<div data-tour></div>' : ''}
      <div class="results">${rows}</div>
      ${online && net.slot >= 0 ? stampBar() : ''}
      ${online ? '<div class="again-count muted" data-again></div>' : ''}
@@ -1876,6 +1964,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
         sfx.click();
       });
       updateAgainInfo();
+      updateTourInfo();
       bindStampBar(root);
       root.querySelector('#again')?.addEventListener('click', () => {
         if (lastSetup) {
@@ -3094,6 +3183,7 @@ const net = new NetClient({
   onLobby(l) {
     lobby = l;
     updateAgainInfo();
+    onTourLobby(l);
     updateRoomShare();
     // 対戦中：通信が切れた・抜けた人の枠に「CPUが操作中」を出す
     if (session?.kind === 'net') hud.setAway(new Set(l.players.filter((p) => !p.cpu && !p.connected).map((p) => p.slot)));
@@ -3256,6 +3346,8 @@ function showLobby(): void {
   const prevBody = screensEl.querySelector('[data-lobby]')?.closest('.screen')?.querySelector<HTMLElement>('.screen-body');
   const prevScroll = prevBody?.scrollTop ?? 0;
   const isHost = l.hostSlot === net.slot;
+  const tourOn = !!l.tourOn;
+  const tourLive = tourOn && !!l.tour && l.tour.champion < 0;
   const me = l.players.find((p) => p.slot === net.slot);
   const humans = l.players.filter((p) => !p.cpu).length;
   const cpus = l.players.filter((p) => p.cpu);
@@ -3279,12 +3371,15 @@ function showLobby(): void {
   const hostControls = isHost
     ? `${ruleTabs(lobbyTab)}
       <div data-pane="stage">${stageCards(l.stageId)}</div>
-      <div data-pane="rule"><div class="setup-grid wide">${ruleControls(rules)}</div></div>
+      <div data-pane="rule"><div class="setup-grid wide">
+        <div class="opt opt-wide">対戦の形式 ${seg('fmt', [['all', '全員で'], ['tour', 'トーナメント']], tourOn ? 'tour' : 'all')}</div>
+        <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">ルームの全員（CPUも）で1対1の勝ち抜き戦。3人から。人数が半端ならシード（1回戦なし）ができます。試合に出ない人は観戦し、試合が終わると15秒後に次の試合が自動で始まります。チーム戦の設定は使いません</span></div>
+        ${ruleControls(rules)}</div></div>
       <div data-pane="cpu"><div class="setup-grid wide">
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
       </div></div>`
-    : `<p class="help">ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
+    : `<p class="help">${tourOn ? '<b>トーナメント</b>（1対1の勝ち抜き戦） ／ ' : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
   const teamCount = new Set(l.players.map((p) => p.team ?? 0)).size;
   // 準備OK：人（CPU以外）のうち押している数。全員そろうとホストの開始ボタンが光る
   const humanList = l.players.filter((p) => !p.cpu && p.connected);
@@ -3292,7 +3387,8 @@ function showLobby(): void {
   const humanN = humanList.length;
   const allReady = humanN >= 2 && readyN === humanN;
   const meReady = !!l.players.find((p) => p.slot === net.slot)?.ready;
-  const canStart = l.players.length >= 2 && !l.inMatch && (!l.rules.teams || teamCount >= 2);
+  const canStart = !l.inMatch && (tourLive || (tourOn ? l.players.length >= 3 : l.players.length >= 2 && (!l.rules.teams || teamCount >= 2)));
+  const startLabel = tourLive ? '次の試合へ！' : tourOn ? 'トーナメント開始！' : '対戦開始！';
   const lobbyEl = showScreen(
     `<div data-lobby class="row" style="justify-content:space-between">
        <div><div style="font-size:12px;color:var(--muted)">ルームコード（友達に教えてください）</div><div class="code-big">${l.code}</div></div>
@@ -3312,13 +3408,15 @@ function showLobby(): void {
        ${l.spectators ? `<span class="muted">観戦 ${l.spectators}人</span>` : ''}
      </div>
      ${net.spectating ? '' : stampBar()}
+     ${tourOn && l.tour ? '<div data-tour></div>' : ''}
      ${hostControls}
      <div class="footer">
        <button class="btn" id="leave">抜ける</button>
-       ${isHost && l.rules.teams && teamCount < 2 ? '<span class="muted">2チーム以上に分けてください</span>' : ''}
-       ${isHost ? `<span class="rule-sum">${esc(ruleSummary(l.rules, l.stageId, cpus.length, cpuLevel))}</span>` : ''}
+       ${isHost && !tourOn && l.rules.teams && teamCount < 2 ? '<span class="muted">2チーム以上に分けてください</span>' : ''}
+       ${isHost && tourOn && !tourLive && l.players.length < 3 ? '<span class="muted">トーナメントは3人から（CPUを足せます）</span>' : ''}
+       ${isHost ? `<span class="rule-sum">${tourOn ? 'トーナメント・' : ''}${esc(ruleSummary(l.rules, l.stageId, cpus.length, cpuLevel))}</span>` : ''}
        ${isHost ? `<span class="ready-count ${allReady ? 'all' : ''}">準備OK ${readyN}/${humanN}</span>` : ''}
-       ${isHost ? `<button class="btn primary ${allReady && canStart ? 'glow' : ''}" id="start" ${canStart ? '' : 'disabled'}>対戦開始！</button>` : ''}
+       ${isHost ? `<button class="btn primary ${allReady && canStart ? 'glow' : ''}" id="start" ${canStart ? '' : 'disabled'}>${startLabel}</button>` : ''}
      </div>`,
     'overlay',
     (root) => {
@@ -3364,7 +3462,14 @@ function showLobby(): void {
         let cpuCount = cpus.length;
         let lv = cpuLevel;
         let stageId = l.stageId;
-        const push = () => net.config(rules, stageId, cpuCount, lv);
+        let fmtTour = tourOn;
+        const push = () => net.config(rules, stageId, cpuCount, lv, fmtTour);
+        bindSeg(root, 'fmt', (v) => {
+          // 進行中のトーナメントがあれば終わりになるので、確かめる
+          if (v !== 'tour' && tourLive && !confirm('進行中のトーナメントを終わりにしますか？')) return showLobby();
+          fmtTour = v === 'tour';
+          push();
+        });
         bindSeg(root, 'cpu', (v) => {
           cpuCount = Number(v);
           push();
@@ -3382,6 +3487,7 @@ function showLobby(): void {
       }
     },
   );
+  updateTourInfo();
   const body = lobbyEl.querySelector<HTMLElement>('.screen-body');
   if (body && prevScroll) body.scrollTop = prevScroll;
 }
