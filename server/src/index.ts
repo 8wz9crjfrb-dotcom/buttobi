@@ -23,10 +23,13 @@ import { RANDOM_STAGE, resolveStage, STAGES } from '../../src/shared/stages';
 import { DEFAULT_HP, DEFAULT_RULES, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup } from '../../src/shared/types';
 
 export { TransferBox } from './transfer';
+export { Social } from './social';
+import type { Social } from './social';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
   TRANSFERS: DurableObjectNamespace<TransferBox>;
+  SOCIAL: DurableObjectNamespace<Social>;
 }
 
 /** ブラウザ（別のドメインのページ）から呼べるようにするヘッダー */
@@ -74,6 +77,8 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === '/transfer' || url.pathname.startsWith('/transfer/')) return handleTransfer(req, env, url.pathname);
+    // フレンド機能（全員ぶんを1つで管理する）
+    if (url.pathname === '/social') return env.SOCIAL.get(env.SOCIAL.idFromName('global')).fetch(req);
     const m = url.pathname.match(/^\/room\/(\d{4})$/);
     if (m) {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('WebSocket only', { status: 426 });

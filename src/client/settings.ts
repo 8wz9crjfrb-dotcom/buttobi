@@ -31,6 +31,10 @@ export interface Settings {
   leftHanded: boolean;
   /** ボタンを動かした位置（画面の幅・高さに対する割合。ボタンの名前ごと） */
   btnPos: Record<string, { x: number; y: number }>;
+  /** フレンドにオンラインかどうかを見せない */
+  hideOnline: boolean;
+  /** 自分のルームをフレンドに公開する（ルームコードを教えなくても、フレンドの一覧から参加できる） */
+  shareRoom: boolean;
 }
 
 const KEY = 'buttobi-settings-v1';
@@ -69,6 +73,8 @@ export function loadSettings(): Settings {
     autoQuality: true,
     leftHanded: false,
     btnPos: {},
+    hideOnline: false,
+    shareRoom: true,
   };
   try {
     const raw = localStorage.getItem(KEY);

@@ -1,10 +1,12 @@
-// データ引き継ぎ：この端末のデータ（コイン・衣装・戦績・称号・ミッション・設定）を対戦サーバーに一時的に預け、
+// データ引き継ぎ：この端末のデータ（コイン・衣装・戦績・称号・ミッション・設定・フレンド）を対戦サーバーに一時的に預け、
 // 引き継ぎコードを別の端末で入力して受け取る。コードは1回だけ使え、使わなければ30日で消える（server/src/transfer.ts）。
 
 const KEYS = {
   wallet: 'buttobi-wallet-v1',
   progress: 'buttobi-progress-v1',
   settings: 'buttobi-settings-v1',
+  /** フレンド機能の番号（引き継ぐと、フレンドコードとフレンドもそのまま） */
+  social: 'buttobi-social-v1',
 } as const;
 
 interface Packed {
@@ -14,6 +16,8 @@ interface Packed {
   wallet: string | null;
   progress: string | null;
   settings: string | null;
+  /** フレンド（あとから足したので、ないこともある） */
+  social?: string | null;
 }
 
 /** 対戦サーバーの URL（wss://〜）から、ふつうの通信の URL（https://〜）を作る */
@@ -30,7 +34,7 @@ export function packData(): string {
       return null;
     }
   };
-  const data: Packed = { v: 1, at: Date.now(), wallet: get(KEYS.wallet), progress: get(KEYS.progress), settings: get(KEYS.settings) };
+  const data: Packed = { v: 1, at: Date.now(), wallet: get(KEYS.wallet), progress: get(KEYS.progress), settings: get(KEYS.settings), social: get(KEYS.social) };
   return JSON.stringify(data);
 }
 
@@ -66,6 +70,7 @@ export function applyData(raw: string, keepServerUrl: string): void {
     }
   };
   if (okJson(d.wallet)) localStorage.setItem(KEYS.wallet, d.wallet);
+  if (okJson(d.social)) localStorage.setItem(KEYS.social, d.social);
   if (okJson(d.progress)) localStorage.setItem(KEYS.progress, d.progress);
   if (okJson(d.settings)) {
     const s = JSON.parse(d.settings) as Record<string, unknown>;

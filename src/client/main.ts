@@ -14,6 +14,7 @@ import { ICONS, iconTile } from './icons';
 import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
+import { SocialClient } from './social';
 import { NetClient } from './net';
 import { Predictor } from './predictor';
 import {
@@ -340,6 +341,7 @@ function startDemo(): void {
 function endToMenu(): void {
   void keepAwake(false);
   net.close();
+  social.shareRoom(null);
   startDemo();
   showMenu();
 }
@@ -524,6 +526,89 @@ function showScreen(html: string, cls = '', bind?: (root: HTMLElement) => void):
   });
   bind?.(el);
   return el;
+}
+
+// ---------------------------------------------------------------------------
+// フレンド：自分のフレンドコード・追加・届いた申請・フレンド一覧（オンライン・公開ルームへ参加）
+function showFriends(): void {
+  const st = social.state;
+  const y = screensEl.querySelector<HTMLElement>('.screen-body')?.scrollTop ?? 0;
+  const typed = screensEl.querySelector<HTMLInputElement>('#fr-code')?.value ?? '';
+  const sorted = [...st.friends].sort((a, b) => Number(!!b.room) - Number(!!a.room) || Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+  const friendRows = sorted.length
+    ? sorted
+        .map((f) => {
+          const status = f.room
+            ? `<span class="fr-room">ルーム公開中（${f.room.n}/${f.room.max}人${f.room.match ? '・対戦中' : ''}）</span>`
+            : f.online
+              ? '<span class="fr-on">オンライン</span>'
+              : '<span class="muted">オフライン</span>';
+          return `<div class="fr-row"><span class="fr-dot ${f.online || f.room ? 'on' : ''}"></span>
+            <div class="grow"><b>${esc(f.name)}</b> <small class="muted">${f.code}</small><br/>${status}</div>
+            ${f.room ? `<button class="btn small primary" data-join="${f.room.code}">参加</button>` : ''}
+            <button class="btn small" data-remove="${f.code}" data-name="${esc(f.name)}">外す</button></div>`;
+        })
+        .join('')
+    : '<p class="muted">まだフレンドがいません。フレンドコードを教え合って追加しましょう。</p>';
+  const inbox = st.inbox.length
+    ? `<div class="opt-label">届いた申請</div>${st.inbox
+        .map((r) => `<div class="fr-row"><div class="grow"><b>${esc(r.name)}</b> <small class="muted">${r.code}</small></div><button class="btn small primary" data-accept="${r.code}">承認</button><button class="btn small" data-decline="${r.code}">断る</button></div>`)
+        .join('')}`
+    : '';
+  const sent = st.sent.length
+    ? `<div class="opt-label">送った申請（相手の承認待ち）</div>${st.sent
+        .map((r) => `<div class="fr-row"><div class="grow">${esc(r.name)} <small class="muted">${r.code}</small></div><button class="btn small" data-cancel="${r.code}">取り消す</button></div>`)
+        .join('')}`
+    : '';
+  showScreen(
+    `<h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2>
+     <div class="screen-body" data-friends>
+       <div class="fr-me">あなたのフレンドコード：<b class="fr-code">${social.code || '…'}</b>
+         <button class="btn small" id="fr-copy" ${social.code ? '' : 'disabled'}>コピー</button>
+         <span class="muted">${settings.hideOnline ? '（オンライン状態は隠しています）' : ''}</span></div>
+       <div class="row fr-add"><input type="text" id="fr-code" maxlength="9" placeholder="フレンドのコード（例 ABCD-EFGH）" value="${esc(typed)}" autocomplete="off" autocapitalize="characters"/>
+         <button class="btn primary" id="fr-send">申請</button></div>
+       ${inbox}
+       <div class="opt-label">フレンド（${st.friends.length}人）</div>
+       ${friendRows}
+       ${sent}
+       <p class="muted small-note">フレンドがルームを「フレンドに公開」にすると、ここに「参加」が出て、ルームコードを教えてもらわなくても入れます。オンライン状態は設定画面で隠せます（隠していても、自分で公開したルームはフレンドに見えます）。</p>
+     </div>
+     <div class="footer"><button class="btn" id="back">もどる</button></div>`,
+    'overlay',
+    (root) => {
+      const body = root.querySelector<HTMLElement>('.screen-body');
+      if (body) body.scrollTop = y;
+      root.querySelector('#back')!.addEventListener('click', () => showMenu('multi'));
+      root.querySelector('#fr-copy')?.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(social.code);
+          toast('フレンドコードをコピーしました');
+        } catch {
+          toast(`フレンドコード：${social.code}`, 5000);
+        }
+      });
+      const send = () => {
+        const box = root.querySelector<HTMLInputElement>('#fr-code')!;
+        if (!box.value.trim()) return;
+        social.add(box.value);
+        box.value = '';
+      };
+      root.querySelector('#fr-send')!.addEventListener('click', send);
+      root.querySelector<HTMLInputElement>('#fr-code')!.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') send();
+      });
+      root.querySelectorAll<HTMLElement>('[data-accept]').forEach((b) => b.addEventListener('click', () => social.accept(b.dataset.accept!)));
+      root.querySelectorAll<HTMLElement>('[data-decline]').forEach((b) => b.addEventListener('click', () => social.decline(b.dataset.decline!)));
+      root.querySelectorAll<HTMLElement>('[data-cancel]').forEach((b) => b.addEventListener('click', () => social.cancel(b.dataset.cancel!)));
+      root.querySelectorAll<HTMLElement>('[data-remove]').forEach((b) =>
+        b.addEventListener('click', () => {
+          if (confirm(`${b.dataset.name} さんをフレンドから外しますか？`)) social.remove(b.dataset.remove!);
+        }),
+      );
+      root.querySelectorAll<HTMLElement>('[data-join]').forEach((b) => b.addEventListener('click', () => joinRoom(b.dataset.join!, showFriends)));
+    },
+  );
 }
 
 /** このゲームのURL（ルームコードなどは付けない。友達に教える用） */
@@ -915,6 +1000,8 @@ function showTitle(): void {
         unlockAudio();
         settings.name = (root.querySelector('#name') as HTMLInputElement).value.trim().slice(0, 10);
         saveSettings(settings);
+        startSocial();
+        social.setName(settings.name || 'プレイヤー');
         // 招待リンクから開いたときは、そのルームへの参加に進む
         const room = new URLSearchParams(location.search).get('room');
         if (room && isRoomCode(room) && settings.serverUrl) {
@@ -955,7 +1042,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
   // アイコンの台の色（ボタンごと）
   const tile: Record<string, string> = {
     solo: '#ff8a3d', multi: '#3d8bff', gacha: '#ff4fa3', records: '#e0a800',
-    cpu: '#ff8a3d', horde: '#e5484d', training: '#2fbf71', create: '#3d8bff', join: '#8a5cff', invite: '#2fbf71',
+    cpu: '#ff8a3d', horde: '#e5484d', training: '#2fbf71', create: '#3d8bff', join: '#8a5cff', invite: '#2fbf71', friends: '#ff8a3d',
   };
   const big = (id: string, _icon: string, title: string, desc: string, extra = '', cls = '') =>
     `<button class="m-btn ${cls}" id="${id}">${iconTile(id, tile[id] ?? '#555')}<span class="m-tx"><b>${title}</b><small>${desc}</small></span>${extra}</button>`;
@@ -969,9 +1056,10 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
         ? `<div class="m-subhead"><button class="btn small" id="m-back">‹ もどる</button><b>みんなで</b></div>
            ${big('create', '🏠', 'ルームを作る', online ? '友達とオンライン対戦' : 'サーバーが設定されていません', '', online ? 'primary' : 'off')}
            ${big('join', '🔢', 'コードで参加', online ? '4桁の合言葉を入力' : 'サーバーが設定されていません', '', online ? '' : 'off')}
+           ${big('friends', '👥', 'フレンド', online ? (social.connected ? `オンライン ${social.onlineCount}人・公開ルームに参加` : 'フレンドの追加・オンラインの確認') : 'サーバーが設定されていません', dot(social.state.inbox.length > 0), online ? '' : 'off')}
            ${big('invite', '🔗', '友達にゲームを教える', 'このゲームのURLをコピー')}`
         : `${big('solo', '🎮', 'ひとりで', 'CPU対戦・100人組手・練習', '', 'primary')}
-           ${big('multi', '🌐', 'みんなで', 'ルームを作る・コードで参加')}
+           ${big('multi', '🌐', 'みんなで', 'ルーム・フレンド', dot(social.state.inbox.length > 0))}
            ${big('gacha', '🎁', 'ガチャ・衣装', '衣装を引く・着替える', dot(gachaBadge(progress, wallet, GACHA_COST.one)))}
            ${big('records', '🏆', '戦績・ミッション', '今日のミッション', `<span class="m-prog">${done}/3</span>${dot(recordsBadge(progress))}`)}`;
   const c = getCharacter(settings.charId);
@@ -1005,6 +1093,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
         on('join', () => toast('オンライン対戦のサーバーが設定されていません（設定画面で指定できます）'));
       }
       on('invite', showGameUrl);
+      on('friends', () => (online ? showFriends() : toast('オンライン対戦のサーバーが設定されていません（設定画面で指定できます）')));
       on('gacha', showGacha);
       on('records', () => showRecords('missions'));
       on('howto', showHowTo);
@@ -1240,6 +1329,13 @@ function resultTitle(results: ResultEntry[], setup: MatchSetup, winner: PlayerSe
   return setup.rules.teams ? `${TEAM_NAMES[(winner.team ?? 0) % TEAM_NAMES.length]}チームの勝ち！` : esc(winner.name) + ' の勝ち！';
 }
 
+/** ホストのとき、ルームをフレンドに公開する（設定で「しない」なら取り消す） */
+function updateRoomShare(): void {
+  const l = lobby;
+  if (!l || net.spectating || l.hostSlot !== net.slot || !settings.shareRoom) return social.shareRoom(null);
+  social.shareRoom({ code: l.code, n: l.players.length, max: MAX_PLAYERS, match: l.inMatch });
+}
+
 /** 結果画面：「もう1戦したい」の人数と、自分が押しているか */
 function updateAgainInfo(): void {
   const el = screensEl.querySelector<HTMLElement>('[data-again]');
@@ -1461,6 +1557,7 @@ function showSettings(): void {
        <div class="opt">スティック上でジャンプ ${seg('tj', [['on', 'する'], ['off', 'しない']], settings.tapJump ? 'on' : 'off')}</div>
        <div class="opt">振動（Androidのみ） ${seg('vib', [['on', 'する'], ['off', 'しない']], settings.vibration ? 'on' : 'off')}</div>
        <div class="opt">フレームレート表示（対戦中） ${seg('fps', [['on', 'する'], ['off', 'しない']], settings.showFps ? 'on' : 'off')}</div>
+       <div class="opt">オンライン状態（フレンドに） ${seg('hide', [['off', '見せる'], ['on', '隠す']], settings.hideOnline ? 'on' : 'off')}</div>
        <div class="opt">効果音 ${seg('vol', [[0, 'なし'], [0.4, '小'], [0.7, '中'], [1, '大']], settings.volume)}</div>
        <div class="opt">BGM ${seg('bgm', [[0, 'なし'], [0.3, '小'], [0.5, '中'], [0.8, '大']], settings.bgmVolume)}</div>
        <div class="opt" style="grid-column:1/-1">データ引き継ぎ（機種変更など） <span class="row" style="gap:8px">
@@ -1484,6 +1581,10 @@ function showSettings(): void {
       bindSeg(root, 'tj', (v) => (settings.tapJump = v === 'on'));
       bindSeg(root, 'vib', (v) => (settings.vibration = v === 'on'));
       bindSeg(root, 'fps', (v) => (settings.showFps = v === 'on'));
+      bindSeg(root, 'hide', (v) => {
+        settings.hideOnline = v === 'on';
+        social.setHidden(settings.hideOnline);
+      });
       bindSeg(root, 'bgm', (v) => {
         settings.bgmVolume = Number(v);
         music.volume = settings.bgmVolume;
@@ -1496,6 +1597,7 @@ function showSettings(): void {
       root.querySelector('#back')!.addEventListener('click', () => {
         settings.serverUrl = (root.querySelector('#server') as HTMLInputElement).value.trim();
         saveSettings(settings);
+        startSocial();
         showMenu();
       });
       root.querySelector('#xfer-out')!.addEventListener('click', () => {
@@ -1527,7 +1629,7 @@ function showTransferOut(root: HTMLElement): void {
   const p = popup(
     root,
     `<div class="lb-title">引き継ぎコードを発行</div>
-     <div class="xfer-note">今のデータ（コイン・衣装・戦績・称号・ミッション・設定）をサーバーに預けて、引き継ぎコードを作ります。<br/>
+     <div class="xfer-note">今のデータ（コイン・衣装・戦績・称号・ミッション・設定・フレンド）をサーバーに預けて、引き継ぎコードを作ります。<br/>
      新しい端末の「設定 → コードを入力して引き継ぐ」で入力してください。</div>
      <ul class="xfer-list"><li>コードは<b>1回だけ</b>使えます（使うとサーバーから消えます）</li><li>使わなければ<b>30日</b>で消えます</li><li>この端末のデータはそのまま残ります</li></ul>
      <div class="row" style="justify-content:center;gap:10px"><button class="btn" id="x-cancel">やめる</button><button class="btn primary" id="x-go">発行する</button></div>`,
@@ -2521,6 +2623,19 @@ let lastJoinCode = '';
 let creating = false;
 let createAttempts = 0;
 
+// フレンド機能（アプリを開いている間つなぎっぱなし）
+const social = new SocialClient();
+social.onNotice = (msg) => toast(msg, 3000);
+social.onChange = () => {
+  // フレンド画面を開いていれば描き直す。メニューの印も更新する
+  if (screensEl.querySelector('[data-friends]')) showFriends();
+  const dotEl = screensEl.querySelector<HTMLElement>('#friends .m-dot, #multi .m-dot');
+  if (dotEl) dotEl.classList.toggle('hidden', social.state.inbox.length === 0);
+};
+function startSocial(): void {
+  social.start(settings.serverUrl, settings.name || 'プレイヤー', settings.hideOnline);
+}
+
 const net = new NetClient({
   onWelcome() {
     creating = false;
@@ -2528,6 +2643,7 @@ const net = new NetClient({
   onLobby(l) {
     lobby = l;
     updateAgainInfo();
+    updateRoomShare();
     // ロビーからキャラ選択を開いている間は画面を切り替えない（戻ったときに最新の内容を出す）
     if (screensEl.querySelector('[data-charsel]')) return;
     if (screensEl.querySelector('[data-lobby]')) showLobby();
@@ -2543,6 +2659,7 @@ const net = new NetClient({
     }
   },
   onError(code, msg) {
+    social.shareRoom(null);
     if (code === 'taken' && creating && createAttempts < 6) {
       createRoom(createAttempts + 1);
       return;
@@ -2717,6 +2834,7 @@ function showLobby(): void {
        <button class="btn small" id="change-char">キャラを変える</button>`
        }
        <button class="btn small" id="invite">招待リンクを送る</button>
+       ${isHost ? `<button class="btn small ${settings.shareRoom ? 'on-toggle' : ''}" id="share-friends">フレンドに公開：${settings.shareRoom ? 'する' : 'しない'}</button>` : ''}
        ${l.spectators ? `<span class="muted">観戦 ${l.spectators}人</span>` : ''}
      </div>
      ${hostControls}
@@ -2728,6 +2846,13 @@ function showLobby(): void {
     'overlay',
     (root) => {
       root.querySelector('#invite')!.addEventListener('click', () => void shareInvite(l.code));
+      root.querySelector('#share-friends')?.addEventListener('click', () => {
+        settings.shareRoom = !settings.shareRoom;
+        saveSettings(settings);
+        updateRoomShare();
+        toast(settings.shareRoom ? 'フレンドの一覧にこのルームが出ます' : 'フレンドへの公開をやめました');
+        showLobby();
+      });
       root.querySelectorAll<HTMLElement>('.pslot.team-tap').forEach((el) =>
         el.addEventListener('click', () => {
           const slot = Number(el.dataset.slot);
@@ -2750,6 +2875,7 @@ function showLobby(): void {
       );
       root.querySelector('#leave')!.addEventListener('click', () => {
         net.close();
+        social.shareRoom(null);
         lobby = null;
         showMenu();
       });

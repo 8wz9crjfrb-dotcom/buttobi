@@ -73,6 +73,14 @@ export const ICONS: Record<string, string> = {
   settings: svg(
     `<path d="M24 5l3 4.5 5.3-1.2 1.2 5.3L38 16.5l-1.2 5.3L41 24l-4.2 2.2 1.2 5.3-4.5 2.9-1.2 5.3-5.3-1.2L24 43l-3-4.5-5.3 1.2-1.2-5.3-4.5-2.9 1.2-5.3L7 24l4.2-2.2-1.2-5.3 4.5-2.9 1.2-5.3 5.3 1.2z" stroke-width="3"/><circle cx="24" cy="24" r="6"/>`,
   ),
+  // フレンド：並んだ2人と、ハート
+  friends: svg(
+    `<circle cx="17" cy="15" r="6" fill="currentColor" stroke="none"/>
+     <path d="M7 40v-5a10 10 0 0 1 20 0v5z" fill="currentColor" stroke="none"/>
+     <circle cx="33" cy="17" r="5" fill="currentColor" stroke="none" opacity=".75"/>
+     <path d="M25 40v-4a8 8 0 0 1 16 0v4z" fill="currentColor" stroke="none" opacity=".75"/>
+     <path d="M36 4.5c-1.6-1.8-4.4-.6-4.2 1.7.1 1.6 2.4 3 4.2 4.6 1.8-1.6 4.1-3 4.2-4.6.2-2.3-2.6-3.5-4.2-1.7z" fill="currentColor" stroke="none"/>`,
+  ),
   // 友達にゲームを教える：くさりのリンク
   invite: svg(
     `<path d="M20 28l8-8"/>

@@ -19,3 +19,12 @@ class_name = "TransferBox"
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["TransferBox"]
+
+# フレンド機能（フレンドコード・申請・オンライン・フレンドに公開したルーム）
+[[durable_objects.bindings]]
+name = "SOCIAL"
+class_name = "Social"
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Social"]
