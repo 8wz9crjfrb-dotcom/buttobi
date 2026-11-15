@@ -3456,15 +3456,16 @@ table.rec td:first-child {
   -webkit-box-orient: vertical;
 }
 
-/* キャラ選択の「技を見る」：技の並びの最後に、押せるボタンとして置く */
-.mv.mv-list {
-  appearance: none;
-  border: 1.5px solid var(--accent);
-  background: rgba(255, 210, 63, 0.12);
-  color: var(--accent);
-  font: inherit;
-  font-weight: 800;
-  cursor: pointer;
+/* タブで分けたステージ一覧：1列に詰めず、大きめの絵で何段かに並べる */
+[data-pane='stage'] .stages {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+[data-pane='stage'] .stage-card .nm {
+  font-size: 13px;
+}
+[data-pane='stage'] .stage-card .who {
+  font-size: 10px;
 }
 
 /* ロビー：準備OK */

@@ -784,7 +784,6 @@ function charDetail(id: string): string {
     <div class="cd-trait"><span class="tag">特性</span><b>${c.trait.name}</b>：${c.trait.desc}</div>
     <div class="cd-moves">
       ${row('n', 'B', n.n)}${row('s', '横B', n.s)}${row('d', '下B', n.d)}${row('u', '上B', n.u)}${row('charge', '共通', '溜め攻撃（A長押し）')}${row('grab', '共通', 'つかみ（ガード＋A）')}
-      <button type="button" class="mv mv-list" data-movelist>📖 技を見る（一覧）</button>
     </div>
     <div class="cd-hint">技を長押ししても説明が出ます</div>`;
 }
@@ -863,6 +862,12 @@ function bindMovePopups(root: HTMLElement, charId: () => string): void {
     if ((e.target as HTMLElement).closest('.mv')) e.preventDefault();
   });
   root.addEventListener('scroll', hide);
+  // 説明が出ているときは、画面のどこをタップしても消す（キャラの3D部分など、この画面の外側でも）
+  const onDoc = (e: PointerEvent) => {
+    if (!root.isConnected) return document.removeEventListener('pointerdown', onDoc, true);
+    if (pop && !pop.contains(e.target as Node)) hide();
+  };
+  document.addEventListener('pointerdown', onDoc, true);
 }
 
 interface CharSelectOptions {
@@ -914,10 +919,6 @@ function showCharSelect(o: CharSelectOptions): void {
         sfx.click();
       });
       bindMovePopups(root, () => picked);
-      // 技の一覧（説明欄は描き直されるので、外側で受ける）
-      root.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('[data-movelist]')) openMoveList(picked);
-      });
       // 左側をなぞるとキャラが回る。タップするとアクション
       bindPreviewSpin(root);
       root.querySelector('#back')!.addEventListener('click', o.onBack);
@@ -1221,7 +1222,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
         sfx.click();
         showCharSelect({ title: 'キャラ・衣装を変える', slot: 0, current: settings.charId, nextLabel: '決定', onBack: () => showMenu(), onNext: () => showMenu() });
       });
-      // 左のキャラ：なぞると回り、タップするとアクション（出る衣装の画面と同じ）
+      // 左のキャラ：なぞると回り、タップするとアクション（排出衣装の画面と同じ）
       const hit = root.querySelector<HTMLElement>('#m-char')!;
       let lastX: number | null = null;
       let startX = 0;
@@ -1982,7 +1983,7 @@ function showGacha(): void {
      <div class="footer">
        <button class="btn" id="back">もどる</button>
        <div class="row" style="gap:8px">
-         <button class="btn" id="lineup">出る衣装</button>
+         <button class="btn" id="lineup">排出衣装</button>
          <button class="btn" id="list">衣装一覧</button>
          <button class="btn primary" id="one" ${wallet.coins < GACHA_COST.one ? 'disabled' : ''}>1回 <small>${GACHA_COST.one}</small></button>
          <button class="btn primary" id="ten" ${wallet.coins < GACHA_COST.ten ? 'disabled' : ''}>10回 <small>${GACHA_COST.ten}</small></button>
@@ -2262,7 +2263,7 @@ function showLineup(): void {
     `<div class="cs-drag" data-charsel></div>
      <div class="cs-nameplate">${label(shown)}</div>
      <div class="lu-head">
-       <h2>ガチャで出る衣装 <small class="h2-sub">持っている ${have} / ${pool.length}</small></h2>
+       <h2>ガチャの排出衣装 <small class="h2-sub">持っている ${have} / ${pool.length}</small></h2>
      </div>
      <div class="lineup">${cards}</div>
      <div class="footer"><button class="btn" id="back">もどる</button></div>`,
