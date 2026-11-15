@@ -1105,7 +1105,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
        <button class="m-icon" id="howto" title="遊び方">${ICONS.help}</button>
        <button class="m-icon" id="settings" title="設定">${ICONS.settings}</button>
      </div>
-     <div class="m-plate"><div class="r">${c.name}</div><div class="n">${cos.name}</div><div class="t">タップでキャラ・衣装を変更</div></div>
+     <button type="button" class="m-plate" id="m-plate"><div class="r">${c.name}</div><div class="n">${cos.name}</div><div class="t">タップでキャラ・衣装を変更 ›</div></button>
      <div class="m-col">${col}</div>`,
     'menu-screen',
     (root) => {
@@ -1131,7 +1131,12 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
       on('howto', showHowTo);
       on('settings', showSettings);
       on('install', () => void promptInstall().then(() => showMenu()));
-      // 左のキャラ：なぞると回り、タップするとキャラ・衣装の変更へ
+      // 下の衣装名の札：タップするとキャラ・衣装の変更へ
+      root.querySelector('#m-plate')!.addEventListener('click', () => {
+        sfx.click();
+        showCharSelect({ title: 'キャラ・衣装を変える', slot: 0, current: settings.charId, nextLabel: '決定', onBack: () => showMenu(), onNext: () => showMenu() });
+      });
+      // 左のキャラ：なぞると回り、タップするとアクション（出る衣装の画面と同じ）
       const hit = root.querySelector<HTMLElement>('#m-char')!;
       let lastX: number | null = null;
       let startX = 0;
@@ -1149,10 +1154,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
       hit.addEventListener('pointerup', (e) => {
         if (lastX === null) return;
         lastX = null;
-        if (Math.hypot(e.clientX - startX, e.clientY - startY) < 8) {
-          sfx.click();
-          showCharSelect({ title: 'キャラ・衣装を変える', slot: 0, current: settings.charId, nextLabel: '決定', onBack: () => showMenu(), onNext: () => showMenu() });
-        }
+        if (Math.hypot(e.clientX - startX, e.clientY - startY) < 8) renderer.menuCharAction();
       });
       if (sub) return;
       // ログインボーナス（その日はじめてメニューを開いたとき）
