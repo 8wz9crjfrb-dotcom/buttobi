@@ -102,7 +102,7 @@ const SNAPSHOT_KEYS = [
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHp', 'bikeHitCd', 'wallHit', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
-  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'goals', 'closeCall', 'size', 'warpCd',
+  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'goals', 'closeCall', 'size', 'warpCd', 'moveAim',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -199,6 +199,8 @@ export class Fighter {
   size = 0;
   /** ワープホール（電脳空間）を続けてくぐれないようにする待ち時間 */
   warpCd = 0;
+  /** 技を出したときのスティックの上下（玉入れのねらい。上で山なり、下で低く） */
+  moveAim = 0;
   /** 自転車の残りの耐久（%）。弱い攻撃はこの分まで受けても降りない */
   bikeHp = 0;
   /** 最後に一撃を受けた壁（物理ファイアウォール）の番号。同じ壁からは1回だけ */
@@ -360,6 +362,13 @@ export const BALL = {
   kickDmg: 0.8,
   kickKb: 0.5,
   maxSpeed: 22,
+  /** 弱い技でも、これくらいは飛ぶ */
+  kickMin: 10.5,
+  /** 技がボールに当たる判定のおまけ（当てやすく） */
+  hitPad: 0.3,
+  /** スティックを斜め上に入れて打つと山なり（この角度以上）、斜め下に入れると低く速く（この角度以下） */
+  lobAngle: 58,
+  lowAngle: 14,
   /** ゴールや場外のあと、ボールが出てくるまで（フレーム） */
   respawn: 100,
   /** 何点先取で勝ちか（未指定のとき） */
@@ -386,6 +395,8 @@ const DOPA_STREAK_MAX = 3;
 /** 24時間ジムの清掃タイム（床がすべる）のフレーム数と、すべるときのブレーキの効き（1 = ふつう） */
 export const GYM_SLIP = 300;
 export const GYM_GRIP = 0.12;
+/** 当たり判定の巻き戻しの上限（フレーム。約0.13秒） */
+export const LAG_COMP_MAX = 8;
 /** 24時間ジムの清掃タイム中（床がすべる）か。試合の経過フレームだけで決まる（先行表示・画面の演出でも同じ） */
 export function isSlippery(frame: number, gimmicks: boolean, kind: string): boolean {
   const at = gimmickAt(frame, gimmicks, kind, 'gym');
@@ -405,8 +416,33 @@ export function gimmickPhase(frame: number, gimmicks: boolean, kind: string, wan
   const t = frame - COUNTDOWN_FRAMES - 300;
   return t < 0 ? -1 : t % GIMMICK.interval;
 }
-/** 電脳空間のワープホール：出ている時間、台の端からの位置、床からの高さ、大きさ、続けてくぐれない時間 */
-export const WARP = { time: 300, inset: 1.1, y: 0.95, r: 0.85, cd: 40 };
+/** 電脳空間のワープホール：出ている時間、台の端からの余白、床からの高さ、大きさ、続けてくぐれない時間、2つの間の最短距離 */
+export const WARP = { time: 300, inset: 1.1, y: 0.95, r: 0.85, cd: 40, minGap: 5 };
+
+/**
+ * ワープホールの2つの場所（毎回ランダム）。床の上か、少し高い空中のどこか。試合の種と何回目かだけで決まるので、
+ * サーバーと端末（画面の表示）で同じ場所になる
+ */
+export function warpSpots(stage: StageDef, seed: number, frame: number): { x: number; y: number }[] {
+  const t = Math.max(0, frame - COUNTDOWN_FRAMES - 300);
+  const round = Math.floor(t / GIMMICK.interval);
+  const m = stage.main;
+  const x1 = m.x1 + WARP.inset;
+  const x2 = m.x2 - WARP.inset;
+  const pick = (k: number) => {
+    const h = hash32(seed + round * 7919, k);
+    const x = x1 + ((h % 10000) / 10000) * (x2 - x1);
+    // 3回に1回は空中（ジャンプで入る高さ）
+    const y = m.top + ((h >>> 14) % 3 === 0 ? 2.6 + ((h >>> 20) % 100) / 100 : WARP.y);
+    return { x, y };
+  };
+  const a = pick(1);
+  // 2つめは、1つめから十分はなれた場所になるまで選び直す
+  let b = pick(2);
+  for (let k = 3; k < 12 && Math.abs(b.x - a.x) < WARP.minGap; k++) b = pick(k);
+  if (Math.abs(b.x - a.x) < WARP.minGap) b = { x: a.x < (x1 + x2) / 2 ? x2 : x1, y: b.y };
+  return [a, b];
+}
 /** ガチャ会場の当たり床ルーレット：マスの数、当たり・ハズレの数、当たりの回復量、ルーレットが止まるタイミング（予告の何フレーム目か） */
 export const ROULETTE = { tiles: 6, win: 2, lose: 2, heal: 10, stopAt: 45 };
 /** 配信スタジオの視聴者リクエスト：大きさが変わる時間、でっかい・ちっちゃいの倍率 */
@@ -463,6 +499,13 @@ export class Sim {
    */
   /** 先行表示用に自分だけを動かしている（ほかの選手はいない） */
   private solo = false;
+  /**
+   * オンライン対戦の当たり判定の巻き戻し（サーバーだけが使う）：攻撃した人（slot）ごとに、何フレーム前の相手の位置にも当たるか。
+   * 相手の画面には、通信の遅れと表示のなめらかさの分だけ少し前の相手が映っているので、そこに当てた攻撃も当たりにする
+   */
+  readonly lagComp = new Map<number, number>();
+  /** 選手の位置の記録（巻き戻し用。新しいものが最後） */
+  private posHist: Map<number, { x: number; y: number }>[] = [];
 
   constructor(setup: MatchSetup, onlySlot?: number) {
     this.solo = onlySlot !== undefined;
@@ -540,11 +583,20 @@ export class Sim {
       for (const hb of md.hitboxes) {
         const cx = a.x + hb.x * a.facing * s;
         const cy = a.y + hb.y * s;
-        if (Math.hypot(cx - b.x, cy - b.y) > hb.r * s + r) continue;
+        const reach = hb.r * s + r + BALL.hitPad;
+        // オンライン：打った人の画面に映っていた（少し前の）ボールの位置に当たっていても当たり
+        if (Math.hypot(cx - b.x, cy - b.y) > reach && !this.ballPastNear(a, cx, cy, reach)) continue;
         a.ballHit = true;
         // 真横・真下に近い技は、少し上向きに飛ばす（床を転がるだけにならないように）
-        const ang = ((md.angle <= 10 && md.angle >= -10 ? 30 : md.angle < -10 ? 20 : md.angle) * Math.PI) / 180;
-        const sp = (BALL.kickBase + md.dmg * BALL.kickDmg + md.base * BALL.kickKb) * a.def.dmgMul;
+        let deg = md.angle <= 10 && md.angle >= -10 ? 30 : md.angle < -10 ? 20 : md.angle;
+        // ねらい：スティックを斜め上に入れて打つと山なり（かごに入れやすい）、斜め下で低く速く
+        //（真上・真下に入れると上攻撃・下攻撃になるので、斜めでも効くようにする）
+        // 技を出したときの向きで決める（当たる瞬間にスティックを離していても効く）
+        const aim = Math.abs(a.input.my) > 0.3 ? a.input.my : a.moveAim;
+        if (aim > 0.3) deg = Math.max(deg, BALL.lobAngle);
+        else if (aim < -0.3) deg = Math.min(deg, BALL.lowAngle);
+        const ang = (deg * Math.PI) / 180;
+        const sp = Math.max(BALL.kickMin, (BALL.kickBase + md.dmg * BALL.kickDmg + md.base * BALL.kickKb) * a.def.dmgMul);
         this.kickBall(Math.cos(ang) * sp * a.facing, Math.sin(ang) * sp, a.slot);
         this.events.push({ k: 'kick', x: b.x, y: b.y, p: sp });
         break;
@@ -616,6 +668,19 @@ export class Sim {
       b.timer = BALL.respawn / 2;
     }
   }
+
+  /** 巻き戻し：打った人の画面に映っていた（少し前の）ボールの位置のどこかに届いていたか */
+  private ballPastNear(a: Fighter, cx: number, cy: number, reach: number): boolean {
+    const lag = Math.min(LAG_COMP_MAX, this.lagComp.get(a.slot) ?? 0);
+    for (let k = 1; k <= lag; k++) {
+      const p = this.ballHist[this.ballHist.length - k];
+      if (!p) break;
+      if (Math.hypot(cx - p.x, cy - p.y) <= reach) return true;
+    }
+    return false;
+  }
+  /** ボールの位置の記録（巻き戻し用） */
+  private ballHist: { x: number; y: number }[] = [];
 
   private ballView(): BallView {
     return { x: this.ball.x, y: this.ball.y, vx: this.ball.vx, on: this.ball.on, score: [...this.ballScore] as [number, number], target: this.ballTarget };
@@ -826,6 +891,14 @@ export class Sim {
     if (playing && !this.solo && this.setup.rules.mode === 'area') this.updateArea();
     if (playing && !this.solo && this.setup.rules.mode === 'ball') this.updateBall();
     for (const f of this.fighters) this.updateAntiLock(f);
+    if (this.lagComp.size) {
+      this.posHist.push(new Map(this.fighters.map((f) => [f.slot, { x: f.x, y: f.y }])));
+      if (this.posHist.length > LAG_COMP_MAX + 1) this.posHist.shift();
+      if (this.setup.rules.mode === 'ball') {
+        this.ballHist.push({ x: this.ball.x, y: this.ball.y });
+        if (this.ballHist.length > LAG_COMP_MAX + 1) this.ballHist.shift();
+      }
+    }
     this.checkEnd();
     for (const f of this.fighters) {
       // ヒットストップで止まっていた選手は前回の入力を更新しない（押しっぱなしなら、止まりが解けた時に押したことになる）
@@ -1321,9 +1394,11 @@ export class Sim {
       f.absorbCharge = false;
     }
     // 必殺技の再使用の待ち時間（連打でハメられないように）
-    if (id in SPECIAL_CD && md.cd) f[SPECIAL_CD[id as keyof typeof SPECIAL_CD]] = md.cd;
+    // （キャッシュの罠は、置いたときではなく爆発したときから数える）
+    if (id in SPECIAL_CD && md.cd && md.special !== 'trap') f[SPECIAL_CD[id as keyof typeof SPECIAL_CD]] = md.cd;
     f.move = id;
     f.moveFrame = 0;
+    f.moveAim = f.input.my;
     f.moveHit = new Set();
     f.charge = 0;
     f.holdA = id === 'jab';
@@ -1538,17 +1613,23 @@ export class Sim {
         }
         break;
       case 'cyber':
-        // ワープホール：台の左右の端に出入口。くぐると反対側の出入口から出てくる（勢いはそのまま）
+        // ワープホール：毎回ランダムな2か所に出入口。くぐると、もう一方から出てくる（勢いはそのまま）
         if (at < WARP.time) {
+          const spots = warpSpots(this.stage, this.setup.seed, this.frame);
           for (const f of this.fighters) {
             if (!f.alive || f.warpCd > 0 || f.state === 'grabbed' || f.state === 'ledge' || f.grabbing >= 0) continue;
-            for (const side of [-1, 1]) {
-              const px = side < 0 ? m.x1 + WARP.inset : m.x2 - WARP.inset;
-              const py = m.top + WARP.y;
-              if (Math.hypot(f.x - px, f.y + f.h / 2 - py) > WARP.r) continue;
-              const ox = side < 0 ? m.x2 - WARP.inset : m.x1 + WARP.inset;
+            for (const [i, p] of spots.entries()) {
+              if (Math.hypot(f.x - p.x, f.y + f.h / 2 - p.y) > WARP.r) continue;
+              const o = spots[1 - i];
               this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot });
-              f.x = ox + (f.x - px);
+              f.x = o.x + (f.x - p.x);
+              f.y = o.y + (f.y - p.y);
+              // 空中の出入口から出たら落ちはじめる
+              if (o.y > this.stage.main.top + 1.5) {
+                f.grounded = false;
+                f.groundRef = -1;
+                if (f.state === 'idle' || f.state === 'run') this.setState(f, 'air');
+              }
               f.warpCd = WARP.cd;
               this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot });
               break;
@@ -2235,6 +2316,8 @@ export class Sim {
             hit.hitlag = 5;
             this.events.push({ k: 'boom', x: e.x, y: e.y + 0.3 });
             this.events.push({ k: 'hit', x: e.x, y: e.y + 0.3, p: md.dmg, s: hit.slot, a: e.owner });
+            // 爆発したら、しばらく置き直せない
+            if (owner && md.cd) owner.cdD = Math.max(owner.cdD, md.cd);
             continue;
           }
         }
@@ -2596,7 +2679,7 @@ export class Sim {
         const r = hb.r * s;
         for (const v of this.fighters) {
           if (v === a || !v.alive || v.invuln > 0 || a.moveHit.has(v.slot) || this.friendly(a.slot, v)) continue;
-          if (!circleHitsBox(cx, cy, r, v)) continue;
+          if (!circleHitsBox(cx, cy, r, v) && !this.hitsPast(a, v, cx, cy, r)) continue;
           if (md.special === 'grab' && !v.grounded) continue;
           a.moveHit.add(v.slot);
           this.applyHit(a, v, md, cx, cy);
@@ -2717,6 +2800,21 @@ export class Sim {
     a.hitlag = lag;
     v.hitlag = lag;
     this.events.push({ k: 'hit', x: hx, y: hy, p: dmg, s: v.slot, a: a.slot });
+  }
+
+  /** 巻き戻し：攻撃した人の画面に映っていた（少し前の）相手の位置に当たっているか */
+  private hitsPast(a: Fighter, v: Fighter, cx: number, cy: number, r: number): boolean {
+    const lag = Math.min(LAG_COMP_MAX, this.lagComp.get(a.slot) ?? 0);
+    if (lag <= 0) return false;
+    // 見えていた範囲（今〜lag フレーム前）のどこかに当たっていれば当たり
+    for (let k = 1; k <= lag; k++) {
+      const p = this.posHist[this.posHist.length - k]?.get(v.slot);
+      if (!p) break;
+      const nx = Math.max(p.x - v.hw, Math.min(cx, p.x + v.hw));
+      const ny = Math.max(p.y, Math.min(cy, p.y + v.h));
+      if ((cx - nx) ** 2 + (cy - ny) ** 2 <= r * r) return true;
+    }
+    return false;
   }
 
   /** 抜き取り（データ泥棒）：与えたダメージの1/5だけ回復 */

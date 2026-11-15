@@ -1,5 +1,5 @@
 // 技の最適化（2026年11月）で変えた動きが、意図どおりかを確かめる
-import { Sim, COUNTDOWN_FRAMES, GYM_SLIP, ROULETTE, SIZE_REQ, VAULT_LASER, WARP } from '../src/shared/sim';
+import { Sim, COUNTDOWN_FRAMES, GYM_SLIP, ROULETTE, SIZE_REQ, VAULT_LASER, WARP, warpSpots, BALL } from '../src/shared/sim';
 import { BIKE, CLOSE, DEFLECT, DRONE, GIMMICK, WALL } from '../src/shared/moves';
 import { BTN_A, BTN_B, type GameEvent, type InputState } from '../src/shared/types';
 import { CpuController } from '../src/shared/ai';
@@ -256,25 +256,32 @@ function gimmickSim(stageId: string, a = 'guard', b = 'thief'): Sim {
   while (sim.frame < COUNTDOWN_FRAMES + 299) sim.step(new Map());
   return sim;
 }
-// 電脳空間：ワープホール
+// 電脳空間：ワープホール（毎回ランダムな2か所）
 {
   const sim = gimmickSim('cyber');
-  const m = sim.stage.main;
   run(sim, GIMMICK.warn + 5);
+  const spots = warpSpots(sim.stage, sim.setup.seed, sim.frame);
+  check('電脳空間：ワープホールの2か所は十分はなれている', Math.abs(spots[0].x - spots[1].x) >= WARP.minGap - 1e-9, spots.map((p) => `(${p.x.toFixed(1)}, ${p.y.toFixed(1)})`).join(' ↔ '));
+  // 何回分か調べて、場所が毎回変わること
+  const xs = new Set<string>();
+  for (let r = 0; r < 6; r++) xs.add(warpSpots(sim.stage, sim.setup.seed, COUNTDOWN_FRAMES + 300 + r * GIMMICK.interval + GIMMICK.warn).map((p) => p.x.toFixed(1)).join(','));
+  check('電脳空間：ワープホールの場所は毎回変わる', xs.size >= 5, `${xs.size}通り / 6回`);
+  // 1つめの出入口の中に入ると、2つめから出てくる
   const f = sim.fighters[0];
-  sim.fighters[1].x = 0;
-  f.x = m.x2 - WARP.inset - 2.5;
-  let warped = false;
-  for (let i = 0; i < 90 && !warped; i++) {
-    run(sim, 1, () => ({ mx: 1, my: 0, buttons: 0 }));
-    if (f.x < 0) warped = true;
-  }
-  check('電脳空間：右のワープホールに入ると、左から出てくる', warped, `x=${f.x.toFixed(2)}`);
+  sim.fighters[1].x = 50;
+  f.x = spots[0].x;
+  f.y = spots[0].y - f.h / 2;
+  f.vx = 0;
+  f.vy = 0;
+  run(sim, 1);
+  check('電脳空間：ワープホールに入ると、もう一方から出てくる', Math.abs(f.x - spots[1].x) < 1 && Math.abs(f.y + f.h / 2 - spots[1].y) < 1, `x=${f.x.toFixed(2)}（出口 ${spots[1].x.toFixed(2)}）`);
   run(sim, WARP.time);
+  const s2 = warpSpots(sim.stage, sim.setup.seed, sim.frame);
+  f.x = s2[0].x;
+  f.y = s2[0].y - f.h / 2;
   const x0 = f.x;
-  f.x = m.x2 - WARP.inset;
-  run(sim, 3);
-  check('電脳空間：ワープホールが消えたあとは、くぐれない', f.x > 0, `x=${f.x.toFixed(2)}（前 ${x0.toFixed(2)}）`);
+  run(sim, 1);
+  check('電脳空間：ワープホールが消えたあとは、くぐれない', Math.abs(f.x - x0) < 0.5, `x=${f.x.toFixed(2)}`);
 }
 // ガチャ会場：当たり床ルーレット
 {
@@ -323,5 +330,71 @@ function gimmickSim(stageId: string, a = 'guard', b = 'thief'): Sim {
   const angled = aims.some((e) => e.k === 'aim' && Math.abs(e.vy) > 1);
   check('金庫室：レーザーの通り道を先に見せる（3本）', aims.length === VAULT_LASER.count);
   check('金庫室：レーザーは高さと角度がばらばら', ys.size >= 2 && angled);
+}
+// ---- オンラインの当たり判定の巻き戻し：攻撃した人の画面に映っていた（少し前の）相手の位置にも当たる
+{
+  const swing = (lag: number) => {
+    const sim = make('guard', 'thief');
+    const [a, v] = sim.fighters;
+    if (lag) sim.lagComp.set(0, lag);
+    a.x = 0;
+    a.facing = 1;
+    v.x = 1.75;
+    v.vx = 9;
+    // 相手は右へ走って離れていく。攻撃した人の画面では、まだ近くにいるように見えている
+    let hit = false;
+    run(sim, 30, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N), () => ({ mx: 1, my: 0, buttons: 0 }));
+    hit = v.damage > 0;
+    return hit;
+  };
+  check('巻き戻しなし：走って離れる相手には弱攻撃が当たらない', !swing(0));
+  check('巻き戻しあり（約0.1秒）：画面で見えていた位置に当たる', swing(6));
+}
+// ---- 玉入れ：スティック上で山なり、下で低く速く
+{
+  const kick = (my: number) => {
+    const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'guard', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: 'thief', cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'ball', stocks: 3, timeLimit: 180 }, seed: 1 });
+    while (sim.frame <= COUNTDOWN_FRAMES + 120) sim.step(new Map());
+    const a = sim.fighters[0];
+    const ball = (sim as unknown as { ball: { x: number; y: number; vx: number; vy: number; on: boolean } }).ball;
+    a.x = ball.x - 0.9;
+    a.facing = 1;
+    sim.fighters[1].x = 30;
+    // 斜めに入れて攻撃（my = 0 なら真横）
+    const mx = my ? 0.8 : 0.8;
+    for (let i = 0; i < 20; i++) sim.step(new Map([[0, i === 0 ? { mx, my, buttons: BTN_A } : { mx: 0, my: 0, buttons: 0 }]]));
+    return Math.atan2(ball.vy, ball.vx) * (180 / Math.PI);
+  };
+  const flat = kick(0), lob = kick(0.45), low = kick(-0.45);
+  check('玉入れ：斜め上＋攻撃で山なり、斜め下＋攻撃で低く飛ぶ', lob > flat + 10 && low < flat, `ふつう${flat.toFixed(0)}° / 上${lob.toFixed(0)}° / 下${low.toFixed(0)}°`);
+}
+// ---- ハッカー：キャッシュは置くのに時間がかかり、爆発したあとしばらく置き直せない。DDoS は撃ったあと約1秒撃てない
+{
+  const sim = make('hacker', 'guard');
+  const h = sim.fighters[0];
+  const g = sim.fighters[1];
+  g.x = 6;
+  const down = { mx: 0, my: -1, buttons: BTN_B };
+  let placedAt = -1;
+  for (let i = 0; i < 40 && placedAt < 0; i++) {
+    run(sim, 1, () => (i === 0 ? down : N));
+    if (sim.entities.some((e) => e.kind === 'trap')) placedAt = i;
+  }
+  check('キャッシュ：置くのに少し時間がかかる（0.4秒くらい）', placedAt >= 20, `${placedAt}フレーム`);
+  check('キャッシュ：置いただけでは待ち時間にならない', h.cdD === 0, `残り${h.cdD}`);
+  const trap = sim.entities.find((e) => e.kind === 'trap')!;
+  run(sim, 40);
+  g.x = trap.x;
+  g.y = trap.y;
+  run(sim, 2);
+  check('キャッシュ：爆発すると、しばらく（約2.5秒）置き直せない', !sim.entities.some((e) => e.kind === 'trap') && h.cdD > 120, `残り${h.cdD}フレーム`);
+  const sim2 = make('hacker', 'guard');
+  sim2.fighters[1].x = 8;
+  let shots = 0;
+  for (let i = 0; i < 180; i++) {
+    run(sim2, 1, () => (i % 4 === 0 ? { mx: 0, my: 0, buttons: BTN_B } : N));
+    for (const e of sim2.events) if (e.k === 'shot') shots++;
+  }
+  check('DDoS：3秒連打しても、撃ったあと約1秒は撃てない', shots <= 3 * 3 + 3, `${shots}発`);
 }
 process.exit(fail ? 1 : 0);

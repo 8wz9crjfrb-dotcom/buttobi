@@ -527,7 +527,11 @@ input[inputmode='numeric'] {
   animation: blink-notice 0.5s steps(2) infinite;
 }
 .hud-area-notice.fight {
-  color: #ff7a7a;
+  /* チームの色（赤など）と見まちがえないよう、白い文字に灰色の帯 */
+  color: #ffffff;
+  background: rgba(90, 95, 120, 0.85);
+  padding: 1px 10px;
+  border-radius: 999px;
 }
 @keyframes blink-notice {
   50% {

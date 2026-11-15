@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { areaColor, getCharacter, ITEM_COLORS, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES, TEAM_COLORS } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
-import { BALL, ballBaskets, COUNTDOWN_FRAMES, gimmickAt, gimmickPhase, isSlippery, ROULETTE, WARP } from '../shared/sim';
+import { BALL, ballBaskets, COUNTDOWN_FRAMES, gimmickAt, gimmickPhase, isSlippery, ROULETTE, WARP, warpSpots } from '../shared/sim';
 import { GIMMICK } from '../shared/moves';
 import { FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
 import { getCostume } from '../shared/costumes';
@@ -310,9 +310,12 @@ export class GameRenderer {
     if (this.portals.length) {
       const at = gimmickAt(view.frame, on, kind, 'cyber');
       const show = at >= 0 && at < WARP.time;
+      // 場所は毎回ランダム（サーバーと同じ計算）
+      const spots = show ? warpSpots(st, this.setup!.seed, view.frame) : [];
       for (const [i, g] of this.portals.entries()) {
         g.visible = show;
         if (!show) continue;
+        g.position.set(spots[i].x, spots[i].y, 0.1);
         const grow = Math.min(1, at / 15, (WARP.time - at) / 15);
         g.scale.setScalar(Math.max(0.01, grow));
         g.rotation.z = this.time * (i ? -2 : 2);
@@ -1199,7 +1202,7 @@ export class GameRenderer {
       vault: 'レーザー警報！（黄色い線からにげろ）',
       arcade: 'スクーターが来る！（ジャンプでよけろ）',
       studio: e.d > 0 ? '視聴者リクエスト：全員でっかくなれ！' : '視聴者リクエスト：全員ちっちゃくなれ！',
-      cyber: 'ワープホール出現！（左右の端がつながる）',
+      cyber: 'ワープホール出現！（2つの穴がつながる）',
       timeline: '通知の嵐！',
       gacha: '当たり床ルーレット！',
       lab: 'AIの光線が来る！',
@@ -1346,7 +1349,7 @@ export class GameRenderer {
 
   // ---------------------------------------------------------------- エリアバトルのエリア
   // 床の光る帯・下から上へうすくなる光の柱・左右のふち。色はエリアを取っている人（チーム）の色。
-  // 取り合い中は赤と淡い金色で点滅、だれもいなければ淡い金色。次のエリア（予告）は金色で点滅
+  // 取り合い中は白と灰色で点滅（チームの色と見まちがえない）、だれもいなければ淡い金色。次のエリア（予告）は金色で点滅
   private areaMeshes: { g: THREE.Group; floor: THREE.Mesh; col: THREE.Mesh; edges: THREE.Mesh[]; key: string }[] = [];
   private areaGrad: THREE.CanvasTexture | null = null;
 
@@ -1403,7 +1406,8 @@ export class GameRenderer {
       const blink = Math.floor(this.time * 6) % 2 === 0;
       // 白い床でも見えるように、だれもいないエリアは淡い金色、予告は金色にする
       let color = z.next ? 0xffd23f : 0xfff0a0;
-      if (z.holder === -2) color = blink ? 0xff4a4a : 0xfff0a0;
+      // 取り合い中：どのチーム・プレイヤーの色とも違う、白と灰色の点滅（赤チームと見まちがえないように）
+      if (z.holder === -2) color = blink ? 0xffffff : 0x5a5f78;
       else if (z.holder >= 0) color = areaColor(this.setup, z.holder);
       const mats = [m.floor, m.col, ...m.edges].map((x) => x.material as THREE.MeshBasicMaterial);
       mats.forEach((mt) => mt.color.setHex(color));

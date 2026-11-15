@@ -162,7 +162,7 @@ export class Hud {
     // 取り合い中・エリアの移動の予告
     const contested = holders.has(-2);
     const sec = Math.ceil(v.area.nextIn / 60);
-    const msg = v.ended ? '' : v.area.next.length ? `エリア移動まで ${sec}` : contested ? '取り合い中！' : '';
+    const msg = v.ended ? '' : v.area.next.length ? `エリア移動まで ${sec}` : contested ? '⚔ 取り合い中（カウント停止）' : '';
     if (msg !== a.last) {
       a.notice.textContent = msg;
       a.notice.className = `hud-area-notice ${v.area.next.length ? 'move' : contested ? 'fight' : ''}`;

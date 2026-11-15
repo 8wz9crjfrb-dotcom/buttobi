@@ -18,7 +18,7 @@ import {
   type LobbyPlayer,
   type ServerMsg,
 } from '../../src/shared/protocol';
-import { Sim } from '../../src/shared/sim';
+import { LAG_COMP_MAX, Sim } from '../../src/shared/sim';
 import { isFriendHash } from '../../src/shared/social';
 import { MAX_BYTES, makeTransferCode, normalizeTransferCode, TransferBox } from './transfer';
 import { RANDOM_STAGE, resolveStage, STAGES } from '../../src/shared/stages';
@@ -150,6 +150,8 @@ const QUEUE_SOFT = 6;
 /** これより長くなったら（通信が長く止まった等）、一気に QUEUE_SOFT まで捨てる */
 const QUEUE_HARD = 40;
 const SNAP_EVERY = 2; // 60fps のうち 2 フレームに 1 回送る = 30回/秒
+/** 端末が相手の表示をなめらかにするために遅らせている時間（ms。src/client/net.ts の INTERP_DELAY と同じ） */
+const CLIENT_INTERP_MS = 80;
 /** 通信が切れてから、同じ枠に戻れる時間（ms） */
 const REJOIN_GRACE = 60_000;
 /** 観戦できる人数 */
@@ -300,7 +302,11 @@ export class Room extends DurableObject<Env> {
     const att = ws.deserializeAttachment() as (Attachment & { code?: string }) | null;
     const slot = att?.slot ?? -1;
 
-    if (msg.t === 'ping') return this.send(ws, { t: 'pong', c: msg.c });
+    if (msg.t === 'ping') {
+      // 往復の時間を覚えておく（当たり判定の巻き戻しに使う）
+      if (slot >= 0 && typeof msg.r === 'number' && msg.r > 0 && msg.r < 2000) this.rtt.set(slot, msg.r);
+      return this.send(ws, { t: 'pong', c: msg.c });
+    }
 
     if (msg.t === 'hello') {
       if (slot >= 0) return;
@@ -640,6 +646,22 @@ export class Room extends DurableObject<Env> {
     this.loop = setInterval(() => this.tick(), TICK_MS);
   }
 
+  /** 人ごとの往復の時間（ms） */
+  private rtt = new Map<number, number>();
+
+  /**
+   * 当たり判定の巻き戻し：その人の画面に映る相手は「片道の遅れ＋表示のなめらかさ（80ms）」だけ前のもの。
+   * さらに入力がサーバーで待っている分も遅れるので、その分だけ前の相手の位置にも当たるようにする（上限は LAG_COMP_MAX）
+   */
+  private updateLagComp(sim: Sim): void {
+    for (const f of sim.fighters) {
+      if (this.cpuSlots.has(f.slot)) continue;
+      const rtt = this.rtt.get(f.slot) ?? 60;
+      const wait = this.queues.get(f.slot)?.items.length ?? 0;
+      sim.lagComp.set(f.slot, Math.max(0, Math.min(LAG_COMP_MAX, Math.round((rtt / 2 + CLIENT_INTERP_MS) / TICK_MS) + wait)));
+    }
+  }
+
   private queue(slot: number): InputQueue {
     let q = this.queues.get(slot);
     if (!q) {
@@ -712,6 +734,7 @@ export class Room extends DurableObject<Env> {
     } else {
       this.lastTick += steps * TICK_MS;
     }
+    this.updateLagComp(sim);
     for (let i = 0; i < steps; i++) {
       const inputs = new Map<number, InputState>();
       for (const f of sim.fighters) {

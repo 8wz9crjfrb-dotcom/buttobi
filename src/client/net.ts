@@ -145,7 +145,8 @@ export class NetClient {
     ws.onopen = () => {
       const fh = this.friendHash();
       this.send({ t: 'hello', v: PROTOCOL_VERSION, name: p.name, charId: p.charId, costume: p.costume, create: rejoin ? false : create, rejoin, spectate: p.spectate || undefined, ...(fh ? { fh } : {}) });
-      this.pingTimer = setInterval(() => this.send({ t: 'ping', c: performance.now() }), 2000);
+      // 往復の時間（r）もサーバーに伝える（当たり判定の巻き戻しに使う）
+      this.pingTimer = setInterval(() => this.send({ t: 'ping', c: performance.now(), r: Math.round(this.rtt) }), 1000);
     };
     ws.onmessage = (ev) => {
       let m: ServerMsg;

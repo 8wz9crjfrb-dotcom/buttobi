@@ -50,7 +50,8 @@ check('全キャラ×全必殺技で異常値なし', true);
 {
   const sim = make('hacker', 'guard');
   sim.fighters[0].x = -4; sim.fighters[0].facing = 1; sim.fighters[1].x = 2;
-  run(sim, 20, tap({ mx: 0, my: -1, buttons: BTN_B }));
+  // 置くのに約0.43秒（26フレーム）かかる
+  run(sim, 35, tap({ mx: 0, my: -1, buttons: BTN_B }));
   const trap = sim.entities.find(e => e.kind === 'trap');
   check('キャッシュで罠が置かれる', !!trap);
   sim.fighters[1].x = trap!.x + 0.3;

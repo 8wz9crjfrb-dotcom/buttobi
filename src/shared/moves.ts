@@ -243,8 +243,8 @@ const SPECIALS: Record<string, Specials> = {
       growth: 0,
       angle: 0,
       air: true,
-      special: 'shot', cd: 30,
-      shots: [0, 5, 10].map((at) => ({ at, kind: 'bullet' as const, x: 0.9, y: 1.0, vx: 16, vy: 0, life: 40, r: 0.25, dmg: 2.2, base: 2.5, growth: 2, angle: 25 })),
+      special: 'shot', cd: 60,
+      shots: [0, 5, 10].map((at) => ({ at, kind: 'bullet' as const, x: 0.9, y: 1.0, vx: 16, vy: 0, life: 40, r: 0.25, dmg: 2.8, base: 2.8, growth: 2.2, angle: 25 })),
     },
     // 全体メール誤送信：封筒が3方向に広がって飛ぶ
     sspecial: {
@@ -262,7 +262,8 @@ const SPECIALS: Record<string, Specials> = {
       shots: [-3.5, 0, 3.5].map((vy) => ({ at: 0, kind: 'mail' as const, x: 0.8, y: 1.0, vx: 10, vy, life: 45, r: 0.35, dmg: 3.5, base: 4, growth: 5, angle: 35 })),
     },
     // キャッシュ：足元に罠を置く（1個まで）。触れると爆発
-    dspecial: { startup: 10, active: 1, end: 16, hitboxes: [], dmg: 10, base: 7.5, growth: 12.5, angle: 80, air: true, special: 'trap' },
+    // 置くのに少し時間がかかる。爆発したあと約2.5秒は置き直せない（cd は爆発したときから数える）
+    dspecial: { startup: 26, active: 1, end: 20, hitboxes: [], dmg: 12, base: 8, growth: 13, angle: 80, air: true, special: 'trap', cd: 150 },
     // ポップアップ広告：足元に窓を出し、足場にして上昇
     uspecial: {
       startup: 4,

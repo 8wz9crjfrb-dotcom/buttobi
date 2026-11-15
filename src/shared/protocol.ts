@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 24;
+export const PROTOCOL_VERSION = 25;
 
 /** 定型文のスタンプ（文字を打たずに気持ちを伝える。自由な文は送れない） */
 export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って'];
@@ -65,7 +65,7 @@ export type ClientMsg =
   | { t: 'stamp'; id: number }
   /** 入力。s = 最初の入力の通し番号、i = 1フレームごとの [mx, my, ボタン] */
   | { t: 'in'; s: number; i: [number, number, number][] }
-  | { t: 'ping'; c: number }
+  | { t: 'ping'; c: number; r?: number }
   | { t: 'leave' };
 
 /** サーバー → 端末 */
