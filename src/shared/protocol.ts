@@ -12,7 +12,10 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 17;
+export const PROTOCOL_VERSION = 18;
+
+/** 定型文のスタンプ（文字を打たずに気持ちを伝える。自由な文は送れない） */
+export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って'];
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -26,6 +29,8 @@ export interface LobbyPlayer {
   costume?: string;
   /** チーム（0〜3） */
   team?: number;
+  /** ロビーで「準備OK」を押している（ホストはいつも準備OK） */
+  ready?: boolean;
 }
 
 export interface LobbyInfo {
@@ -52,6 +57,10 @@ export type ClientMsg =
   | { t: 'start' }
   /** 結果画面の「もう1戦したい」（on = 押した / 取り消した）。人が全員押すと再戦が始まる */
   | { t: 'again'; on: boolean }
+  /** ロビーの「準備OK」 */
+  | { t: 'ready'; on: boolean }
+  /** 定型文のスタンプ（STAMPS の番号） */
+  | { t: 'stamp'; id: number }
   /** 入力。s = 最初の入力の通し番号、i = 1フレームごとの [mx, my, ボタン] */
   | { t: 'in'; s: number; i: [number, number, number][] }
   | { t: 'ping'; c: number }
@@ -68,6 +77,8 @@ export type ServerMsg =
   | { t: 'end'; results: ResultEntry[] }
   /** ほかの人のお知らせ（抜けた・通信が切れた・戻ってきた） */
   | { t: 'notice'; msg: string }
+  /** だれかが送ったスタンプ */
+  | { t: 'stamp'; slot: number; name: string; id: number }
   | { t: 'pong'; c: number }
   | { t: 'error'; code: 'full' | 'taken' | 'notfound' | 'inmatch' | 'version' | 'bad'; msg: string };
 

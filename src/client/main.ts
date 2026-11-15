@@ -3,7 +3,7 @@
 import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, getCharacter, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
-import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
+import { MAX_PLAYERS, STAMPS, isRoomCode, type LobbyInfo } from '../shared/protocol';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
 import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
@@ -432,6 +432,8 @@ function loop(t: number): void {
   // 待ち受け画面のCPU同士の試合では、撃墜確定のスロー演出はしない
   if (session?.kind === 'demo') events = events.filter((e) => e.k !== 'finish');
   renderer.render(lastView, dt, events);
+  // 画面の外にいるキャラを、画面の端に顔と矢印で出す
+  if (session && session.kind !== 'demo' && lastView) hud.updateOffscreen(lastView, (x, y) => renderer.project(x, y));
   updateFps(t);
   requestAnimationFrame(loop);
 }
@@ -506,6 +508,23 @@ function clearScreen(): void {
   screensEl.innerHTML = '';
 }
 
+// 画面の切り替え：進むときは右から、もどるときは左から、すっと入る。
+// 同じ画面の描き直し（ロビーの更新など）では動かさない
+let navBack = false;
+let lastScreenKey = '';
+screensEl.addEventListener(
+  'click',
+  (e) => {
+    const b = (e.target as HTMLElement).closest('button');
+    if (!b) return;
+    if (['back', 'm-back', 'to-menu', 'no'].includes(b.id) || /^(‹ )?もどる/.test(b.textContent?.trim() ?? '')) {
+      navBack = true;
+      setTimeout(() => (navBack = false), 500);
+    }
+  },
+  true,
+);
+
 function showScreen(html: string, cls = '', bind?: (root: HTMLElement) => void): HTMLElement {
   // キャラ選択の3D表示は、キャラ選択画面（showCharSelect）でだけ出す。メニューのキャラも消す（メニューを出すときに出し直す）
   renderer.hidePreview();
@@ -514,6 +533,11 @@ function showScreen(html: string, cls = '', bind?: (root: HTMLElement) => void):
   const el = document.createElement('div');
   el.className = `screen ${cls}`;
   el.innerHTML = html;
+  // 画面の種類（見出しと種類）。変わったときだけ切り替えの動きを付ける
+  const key = `${cls}|${(el.querySelector('h2')?.textContent ?? '').replace(/[0-9０-９]/g, '')}|${el.querySelector('.m-subhead')?.textContent ?? ''}`;
+  if (key !== lastScreenKey && lastScreenKey) el.classList.add(navBack ? 'enter-back' : 'enter-fwd');
+  lastScreenKey = key;
+  navBack = false;
   // 下のボタン列（.footer）がある画面は、中身とボタンを別の段に分ける（ボタンが文字の上に重ならないように）。
   // 中身だけがスクロールし、ボタンはいつも一番下に見える
   const footer = [...el.children].find((c) => c.classList.contains('footer'));
@@ -685,11 +709,41 @@ function showGameUrl(): void {
   );
 }
 
-function toast(msg: string, ms = 2500): void {
-  toastEl.textContent = msg;
-  toastEl.classList.remove('hidden');
-  clearTimeout((toast as unknown as { t?: number }).t);
-  (toast as unknown as { t?: number }).t = window.setTimeout(() => toastEl.classList.add('hidden'), ms);
+// お知らせ（トースト）：続けて出したときは上書きせず、順番に出す。種類（成功・注意・ふつう）で色を分ける
+type ToastKind = 'ok' | 'warn' | 'info';
+const toastQueue: { msg: string; ms: number; kind: ToastKind }[] = [];
+let toastNow: { msg: string; timer: number } | null = null;
+/** 文面から種類を決める（はっきり指定したいときは kind を渡す） */
+function toastKind(msg: string): ToastKind {
+  if (/できません|できなかった|切れ|ません|エラー|失敗|いっぱい|違います|見つかりません|足りません/.test(msg)) return 'warn';
+  if (/しました|ました！|もらいました|手に入れた|コピー|そろいました|戻ってきました/.test(msg)) return 'ok';
+  return 'info';
+}
+function toast(msg: string, ms = 2500, kind: ToastKind = toastKind(msg)): void {
+  // 同じお知らせが続いたら、出ている時間を延ばすだけにする
+  if (toastNow?.msg === msg) {
+    clearTimeout(toastNow.timer);
+    toastNow.timer = window.setTimeout(nextToast, ms);
+    return;
+  }
+  if (toastQueue.some((t) => t.msg === msg)) return;
+  toastQueue.push({ msg, ms, kind });
+  // たまりすぎたら古いものを捨てる
+  while (toastQueue.length > 4) toastQueue.shift();
+  if (!toastNow) nextToast();
+}
+function nextToast(): void {
+  const t = toastQueue.shift();
+  if (!t) {
+    toastNow = null;
+    toastEl.classList.add('hidden');
+    return;
+  }
+  toastEl.textContent = t.msg;
+  toastEl.className = `toast-${t.kind}`;
+  // 次が待っているときは短めに
+  const ms = toastQueue.length ? Math.min(t.ms, 1800) : t.ms;
+  toastNow = { msg: t.msg, timer: window.setTimeout(nextToast, ms) };
 }
 
 function seg<T extends string | number>(name: string, options: [T, string][], value: T): string {
@@ -730,8 +784,33 @@ function charDetail(id: string): string {
     <div class="cd-trait"><span class="tag">特性</span><b>${c.trait.name}</b>：${c.trait.desc}</div>
     <div class="cd-moves">
       ${row('n', 'B', n.n)}${row('s', '横B', n.s)}${row('d', '下B', n.d)}${row('u', '上B', n.u)}${row('charge', '共通', '溜め攻撃（A長押し）')}${row('grab', '共通', 'つかみ（ガード＋A）')}
+      <button type="button" class="mv mv-list" data-movelist>📖 技を見る（一覧）</button>
     </div>
-    <div class="cd-hint">技を長押しすると説明が出ます</div>`;
+    <div class="cd-hint">技を長押ししても説明が出ます</div>`;
+}
+
+/** 技の一覧（4つの必殺技・特性・共通の技の説明）を、今の画面の上に重ねて出す。閉じると元の画面に戻る */
+function openMoveList(charId: string): void {
+  const c = getCharacter(charId);
+  const n = c.specialNames;
+  const d = SPECIAL_DESCS[charId];
+  const row = (label: string, name: string, desc: string) => `<div class="ml-row"><span class="key">${label}</span><div><b>${name}</b><div class="ml-d">${desc}</div></div></div>`;
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.innerHTML = `<div class="modal-box">
+      <h3>${c.name}の技</h3>
+      <div class="modal-body">
+        <div class="cd-trait"><span class="tag">特性</span><b>${c.trait.name}</b>：${c.trait.desc}</div>
+        ${row('B', n.n, d?.n ?? '')}${row('横B', n.s, d?.s ?? '')}${row('下B', n.d, d?.d ?? '')}${row('上B', n.u, d?.u ?? '')}
+        ${row('共通', '溜め攻撃（A長押し）', CHARGE_DESC)}${row('共通', 'つかみ（ガード＋A）', GRAB_DESC)}
+      </div>
+      <div class="footer"><button class="btn primary" data-close>閉じる</button></div>
+    </div>`;
+  const close = () => el.remove();
+  el.addEventListener('click', (e) => {
+    if (e.target === el || (e.target as HTMLElement).closest('[data-close]')) close();
+  });
+  screensEl.appendChild(el);
 }
 
 /** 技の説明のポップアップ：長押し（0.35秒）で出し、どこかを触ると消す */
@@ -835,6 +914,10 @@ function showCharSelect(o: CharSelectOptions): void {
         sfx.click();
       });
       bindMovePopups(root, () => picked);
+      // 技の一覧（説明欄は描き直されるので、外側で受ける）
+      root.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('[data-movelist]')) openMoveList(picked);
+      });
       // 左側をなぞるとキャラが回る。タップするとアクション
       bindPreviewSpin(root);
       root.querySelector('#back')!.addEventListener('click', o.onBack);
@@ -1078,17 +1161,19 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
     `<button class="m-btn ${cls}" id="${id}">${iconTile(id, tile[id] ?? '#555')}<span class="m-tx"><b>${title}</b><small>${desc}</small></span>${extra}</button>`;
   const col =
     sub === 'solo'
-      ? `<div class="m-subhead"><button class="btn small" id="m-back">‹ もどる</button><b>ひとりで</b></div>
+      ? `<div class="m-subhead"><b>ひとりで</b></div>
          ${big('cpu', '🤖', 'CPUと対戦', 'ステージとルールを選んで対戦', '', 'primary')}
          ${big('horde', '🔥', '100人組手', progress.hordeBest ? `自己ベスト ${progress.hordeBest.kos}人` : '次々に来る敵を倒す')}
-         ${big('training', '🥊', '練習モード', '技やコンボを試す')}`
+         ${big('training', '🥊', '練習モード', '技やコンボを試す')}
+         <div class="m-foot"><button class="btn" id="m-back">もどる</button></div>`
       : sub === 'multi'
-        ? `<div class="m-subhead"><button class="btn small" id="m-back">‹ もどる</button><b>みんなで</b></div>
+        ? `<div class="m-subhead"><b>みんなで</b></div>
            ${online && loadRejoin() ? big('rejoin', '↩', `ルーム ${loadRejoin()!.code} の対戦に戻る`, '途中で抜けた対戦の続きに入る', '', 'primary') : ''}
            ${big('create', '🏠', 'ルームを作る', online ? '友達とオンライン対戦' : 'サーバーが設定されていません', '', online ? 'primary' : 'off')}
            ${big('join', '🔢', 'コードで参加', online ? '4桁の合言葉を入力' : 'サーバーが設定されていません', '', online ? '' : 'off')}
            ${big('friends', '👥', 'フレンド', online ? (social.connected ? `オンライン ${social.onlineCount}人・公開ルームに参加` : 'フレンドの追加・オンラインの確認') : 'サーバーが設定されていません', dot(social.state.inbox.length > 0), online ? '' : 'off')}
-           ${big('invite', '🔗', '友達にゲームを教える', 'このゲームのURLをコピー')}`
+           ${big('invite', '🔗', '友達にゲームを教える', 'このゲームのURLをコピー')}
+           <div class="m-foot"><button class="btn" id="m-back">もどる</button></div>`
         : `${big('solo', '🎮', 'ひとりで', 'CPU対戦・100人組手・練習', '', 'primary')}
            ${big('multi', '🌐', 'みんなで', 'ルーム・フレンド', dot(social.state.inbox.length > 0))}
            ${big('gacha', '🎁', 'ガチャ・衣装', '衣装を引く・着替える', dot(gachaBadge(progress, wallet, GACHA_COST.one)))}
@@ -1213,21 +1298,61 @@ function showLocalSetup(fromRules = false): void {
 /** CPU戦のチーム分け（あなた・CPU1〜5）。はじめは あなた=赤、CPUは青・赤…と交互 */
 const localTeams = [0, 1, 0, 1, 0, 1];
 
+/** ルール画面のタブ（ステージ・ルール・CPU）。key は今のタブ */
+const RULE_TABS: [string, string][] = [
+  ['stage', 'ステージ'],
+  ['rule', 'ルール'],
+  ['cpu', 'CPU'],
+];
+function ruleTabs(current: string): string {
+  return `<div class="tabs" data-tabs>${RULE_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === current ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+}
+/** タブを押すと、そのタブの中身（data-pane）だけを出す */
+function bindTabs(root: HTMLElement, onPick: (k: string) => void): void {
+  const show = (k: string) => {
+    root.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === k));
+    root.querySelectorAll<HTMLElement>('[data-pane]').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== k));
+  };
+  root.querySelector('[data-tabs]')?.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
+    if (!b) return;
+    show(b.dataset.tab!);
+    onPick(b.dataset.tab!);
+  });
+  show(root.querySelector<HTMLElement>('[data-tab].on')?.dataset.tab ?? 'stage');
+}
+/** 選んだ内容のまとめ（対戦開始ボタンの横に出す） */
+function ruleSummary(rules: MatchRules, stageId: string, cpu: number | null, cpuLevel: number): string {
+  const st = stageId === RANDOM_STAGE ? 'ステージおまかせ' : getStage(stageId).name;
+  return [st, ruleText(rules), cpu === null ? '' : `CPU${cpu}人（強さ${cpuLevel}）`, `アイテム${rules.items ? 'あり' : 'なし'}`].filter(Boolean).join('・');
+}
+let localRulesTab = 'stage';
+let lobbyTab = 'stage';
+
 function showLocalRules(): void {
   const rules = { ...settings.rules };
   if (settings.stageId !== RANDOM_STAGE && !STAGES.some((s) => s.id === settings.stageId)) settings.stageId = STAGES[0].id;
   showScreen(
     `<h2>CPUと対戦：ステージとルール <small class="h2-sub">使うキャラ：${getCharacter(settings.charId).name}</small></h2>
-     ${stageCards(settings.stageId)}
-     <div class="setup-grid">
-       <div class="opt">CPUの人数 ${seg('cpu', [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']], settings.cpuCount)}</div>
-       <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], settings.cpuLevel)}</div>
-       ${ruleControls(rules)}
+     ${ruleTabs(localRulesTab)}
+     <div data-pane="stage">${stageCards(settings.stageId)}</div>
+     <div data-pane="rule"><div class="setup-grid">${ruleControls(rules)}</div></div>
+     <div data-pane="cpu">
+       <div class="setup-grid">
+         <div class="opt">CPUの人数 ${seg('cpu', [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']], settings.cpuCount)}</div>
+         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], settings.cpuLevel)}</div>
+       </div>
+       <div class="team-pick" data-team></div>
      </div>
-     <div class="team-pick" data-team></div>
-     <div class="footer"><button class="btn" id="to-menu">もどる</button><button class="btn" id="back">キャラを変える</button><button class="btn primary" id="start">対戦開始！</button></div>`,
+     <div class="footer"><button class="btn" id="to-menu">もどる</button><span class="rule-sum" data-sum></span><button class="btn" id="back">キャラを変える</button><button class="btn primary" id="start">対戦開始！</button></div>`,
     'overlay',
     (root) => {
+      bindTabs(root, (k) => (localRulesTab = k));
+      // 選んだ内容のまとめ（何かを押すたびに更新）
+      const sum = root.querySelector<HTMLElement>('[data-sum]')!;
+      const drawSum = () => (sum.textContent = ruleSummary(rules, settings.stageId, settings.cpuCount, settings.cpuLevel));
+      root.addEventListener('click', () => setTimeout(drawSum));
+      drawSum();
       // チーム分け（タップでチームが変わる）
       const teamBox = root.querySelector<HTMLElement>('.team-pick')!;
       const drawTeams = () => {
@@ -1370,6 +1495,35 @@ function resultTitle(results: ResultEntry[], setup: MatchSetup, winner: PlayerSe
   return setup.rules.teams ? `${TEAM_NAMES[(winner.team ?? 0) % TEAM_NAMES.length]}チームの勝ち！` : esc(winner.name) + ' の勝ち！';
 }
 
+// 定型文のスタンプ：ロビーと結果画面の下にボタンを並べ、届いたら画面の下に吹き出しで出す
+const stampLayer = document.createElement('div');
+stampLayer.id = 'stamps';
+document.getElementById('app')!.appendChild(stampLayer);
+function stampBar(): string {
+  return `<div class="stamp-bar">${STAMPS.map((t, i) => `<button type="button" class="stamp-btn" data-stamp="${i}">${t}</button>`).join('')}</div>`;
+}
+function bindStampBar(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('[data-stamp]').forEach((b) =>
+    b.addEventListener('click', () => {
+      net.stamp(Number(b.dataset.stamp));
+      // 連打しすぎないよう、少しの間押せなくする（サーバーも1.2秒に1回まで）
+      root.querySelectorAll<HTMLButtonElement>('[data-stamp]').forEach((x) => (x.disabled = true));
+      setTimeout(() => root.querySelectorAll<HTMLButtonElement>('[data-stamp]').forEach((x) => (x.disabled = false)), 1200);
+    }),
+  );
+}
+function showStamp(slot: number, name: string, text: string): void {
+  if (!text) return;
+  const el = document.createElement('div');
+  el.className = 'stamp-pop';
+  el.style.setProperty('--pc', hex(SLOT_COLORS[slot % SLOT_COLORS.length]));
+  el.innerHTML = `<small>${esc(name)}</small>${esc(text)}`;
+  stampLayer.appendChild(el);
+  // 多いときは古いものから消す
+  while (stampLayer.children.length > 4) stampLayer.firstElementChild?.remove();
+  setTimeout(() => el.remove(), 2800);
+}
+
 /** ホストのとき、ルームをフレンドに公開する（設定で「しない」なら取り消す） */
 function updateRoomShare(): void {
   const l = lobby;
@@ -1474,6 +1628,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
     `<h2 style="text-align:center">${resultTitle(results, setup, winner)}</h2>
      ${reward}
      <div class="results">${rows}</div>
+     ${online && net.slot >= 0 ? stampBar() : ''}
      ${online ? '<div class="again-count muted" data-again></div>' : ''}
      <div class="footer">
        <button class="btn" id="menu">メニューへ</button>
@@ -1503,6 +1658,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
         sfx.click();
       });
       updateAgainInfo();
+      bindStampBar(root);
       root.querySelector('#again')?.addEventListener('click', () => {
         if (lastSetup) {
           const seed = (Math.random() * 1e9) | 0;
@@ -1524,13 +1680,34 @@ function showPause(): void {
     `<h2 style="text-align:center">${online ? 'メニュー（対戦は続いています）' : 'ポーズ'}</h2>
      <div class="menu-grid">
        <button class="btn primary" id="resume">${online ? 'もどる' : '続ける'}</button>
+       <button class="btn" id="moves">技の一覧</button>
        <button class="btn" id="quit">${online ? 'ルームから抜ける' : '対戦をやめる'}</button>
+     </div>
+     <div class="setup-grid pause-opts">
+       <div class="opt">効果音 ${seg('vol', [[0, 'なし'], [0.4, '小'], [0.7, '中'], [1, '大']], settings.volume)}</div>
+       <div class="opt">BGM ${seg('bgm', [[0, 'なし'], [0.3, '小'], [0.5, '中'], [0.8, '大']], settings.bgmVolume)}</div>
      </div>`,
     'overlay',
     (root) => {
       root.querySelector('#resume')!.addEventListener('click', () => {
         if (session) session.paused = false;
         clearScreen();
+      });
+      // 自分のキャラの技の一覧
+      root.querySelector('#moves')!.addEventListener('click', () => {
+        const me = session?.setup.players.find((p) => p.slot === session?.mySlot);
+        openMoveList(me?.charId ?? settings.charId);
+      });
+      bindSeg(root, 'vol', (v) => {
+        settings.volume = Number(v);
+        sfx.volume = settings.volume;
+        sfx.beep();
+        saveSettings(settings);
+      });
+      bindSeg(root, 'bgm', (v) => {
+        settings.bgmVolume = Number(v);
+        music.volume = settings.bgmVolume;
+        saveSettings(settings);
       });
       root.querySelector('#quit')!.addEventListener('click', endToMenu);
     },
@@ -2086,9 +2263,9 @@ function showLineup(): void {
      <div class="cs-nameplate">${label(shown)}</div>
      <div class="lu-head">
        <h2>ガチャで出る衣装 <small class="h2-sub">持っている ${have} / ${pool.length}</small></h2>
-       <button class="btn small" id="back">もどる</button>
      </div>
-     <div class="lineup">${cards}</div>`,
+     <div class="lineup">${cards}</div>
+     <div class="footer"><button class="btn" id="back">もどる</button></div>`,
     'overlay charsel-screen',
     (root) => {
       root.querySelectorAll<HTMLElement>('.gcard').forEach((el) =>
@@ -2753,6 +2930,9 @@ const net = new NetClient({
   onNotice(msg) {
     toast(msg, 4000);
   },
+  onStamp(slot, name, id) {
+    showStamp(slot, name, STAMPS[id] ?? '');
+  },
   onClose() {
     toast('サーバーとの接続が切れました', 3500);
     lobby = null;
@@ -2856,22 +3036,28 @@ function showLobby(): void {
     const dot = l.rules.teams ? TEAM_COLORS[team % TEAM_COLORS.length] : SLOT_COLORS[i];
     const teamTag = l.rules.teams ? `<span class="team-tag" style="--tc:${hex(dot)}">${TEAM_NAMES[team % TEAM_NAMES.length]}${canTap ? ' ⇄' : ''}</span>` : '';
     return `<div class="pslot ${canTap ? 'team-tap' : ''}" data-slot="${p.slot}" data-tm="${team}"><span class="dot" style="background:${hex(dot)}"></span>
-      <div><div>${esc(p.name)}${tags} ${teamTag}</div><div style="font-size:11px;color:var(--muted)">${c.name}</div></div></div>`;
+      <div><div>${esc(p.name)}${tags} ${teamTag}${!p.cpu && p.ready ? '<span class="ready-tag">準備OK</span>' : ''}</div><div style="font-size:11px;color:var(--muted)">${c.name}</div></div></div>`;
   }).join('');
   const rules = { ...l.rules };
   const maxCpu = MAX_PLAYERS - humans;
   const cpuLevel = cpus[0]?.cpuLevel ?? 3;
   const cpuOpts = Array.from({ length: maxCpu + 1 }, (_, i) => [i, String(i)] as [number, string]);
   const hostControls = isHost
-    ? `<div class="opt-label">ステージ</div>
-      ${stageCards(l.stageId)}
-      <div class="setup-grid wide">
+    ? `${ruleTabs(lobbyTab)}
+      <div data-pane="stage">${stageCards(l.stageId)}</div>
+      <div data-pane="rule"><div class="setup-grid wide">${ruleControls(rules)}</div></div>
+      <div data-pane="cpu"><div class="setup-grid wide">
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
-        ${ruleControls(rules)}
-      </div>`
+      </div></div>`
     : `<p class="help">ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
   const teamCount = new Set(l.players.map((p) => p.team ?? 0)).size;
+  // 準備OK：人（CPU以外）のうち押している数。全員そろうとホストの開始ボタンが光る
+  const humanList = l.players.filter((p) => !p.cpu && p.connected);
+  const readyN = humanList.filter((p) => p.ready).length;
+  const humanN = humanList.length;
+  const allReady = humanN >= 2 && readyN === humanN;
+  const meReady = !!l.players.find((p) => p.slot === net.slot)?.ready;
   const canStart = l.players.length >= 2 && !l.inMatch && (!l.rules.teams || teamCount >= 2);
   const lobbyEl = showScreen(
     `<div data-lobby class="row" style="justify-content:space-between">
@@ -2886,19 +3072,25 @@ function showLobby(): void {
        <div>あなたのキャラ：<b>${getCharacter(me?.charId ?? settings.charId).name}</b></div>
        <button class="btn small" id="change-char">キャラを変える</button>`
        }
+       ${!net.spectating && !isHost ? `<button class="btn small ${meReady ? 'on-toggle' : 'primary'}" id="ready">${meReady ? '準備OK（取り消す）' : '準備OK'}</button>` : ''}
        <button class="btn small" id="invite">招待リンクを送る</button>
        ${isHost ? `<button class="btn small ${settings.shareRoom ? 'on-toggle' : ''}" id="share-friends">フレンドに公開：${settings.shareRoom ? 'する' : 'しない'}</button>` : ''}
        ${l.spectators ? `<span class="muted">観戦 ${l.spectators}人</span>` : ''}
      </div>
+     ${net.spectating ? '' : stampBar()}
      ${hostControls}
      <div class="footer">
        <button class="btn" id="leave">抜ける</button>
        ${isHost && l.rules.teams && teamCount < 2 ? '<span class="muted">2チーム以上に分けてください</span>' : ''}
-       ${isHost ? `<button class="btn primary" id="start" ${canStart ? '' : 'disabled'}>対戦開始！</button>` : ''}
+       ${isHost ? `<span class="rule-sum">${esc(ruleSummary(l.rules, l.stageId, cpus.length, cpuLevel))}</span>` : ''}
+       ${isHost ? `<span class="ready-count ${allReady ? 'all' : ''}">準備OK ${readyN}/${humanN}</span>` : ''}
+       ${isHost ? `<button class="btn primary ${allReady && canStart ? 'glow' : ''}" id="start" ${canStart ? '' : 'disabled'}>対戦開始！</button>` : ''}
      </div>`,
     'overlay',
     (root) => {
       root.querySelector('#invite')!.addEventListener('click', () => void shareInvite(l.code));
+      root.querySelector('#ready')?.addEventListener('click', () => net.setReady(!meReady));
+      bindStampBar(root);
       root.querySelector('#share-friends')?.addEventListener('click', () => {
         settings.shareRoom = !settings.shareRoom;
         saveSettings(settings);
@@ -2934,6 +3126,7 @@ function showLobby(): void {
         showMenu();
       });
       if (isHost) {
+        bindTabs(root, (k) => (lobbyTab = k));
         let cpuCount = cpus.length;
         let lv = cpuLevel;
         let stageId = l.stageId;

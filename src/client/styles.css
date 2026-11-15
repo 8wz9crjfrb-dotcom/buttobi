@@ -3255,3 +3255,305 @@ table.rec td:first-child {
   color: #1b1b28;
   white-space: nowrap;
 }
+
+/* 画面の外にいるキャラ：画面の端に、顔（プレイヤーの色のふち）と、その向きの矢印 */
+.offscreen {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 46px;
+  height: 46px;
+  pointer-events: none;
+  z-index: 3;
+}
+.offscreen img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 3px solid var(--pc);
+  background: rgba(10, 12, 30, 0.7);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+.offscreen .arr {
+  position: absolute;
+  inset: 0;
+}
+.offscreen .arr::after {
+  content: '';
+  position: absolute;
+  right: -13px;
+  top: 50%;
+  margin-top: -9px;
+  border-left: 13px solid var(--pc);
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+}
+
+/* ダメージ%が大きく増えたとき、数字が弾む */
+.hud-p .dmg.bump {
+  animation: dmg-bump 0.35s ease-out;
+}
+@keyframes dmg-bump {
+  30% {
+    transform: scale(1.35);
+  }
+}
+
+/* 画面の上に重ねる小窓（技の一覧など） */
+.modal {
+  position: fixed;
+  inset: 0;
+  /* キャラ選択のなぞる場所などより手前に出す */
+  z-index: 1000;
+  /* 親（#screens）は試合の操作を通すため押せない設定なので、ここで押せるようにする */
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 6, 18, 0.6);
+  padding: 12px;
+  animation: modal-in 0.18s ease-out;
+}
+@keyframes modal-in {
+  from {
+    opacity: 0;
+  }
+}
+.modal-box {
+  width: min(620px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: var(--panel, #1b1f3b);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  padding: 12px 14px;
+  animation: modal-pop 0.22s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+@keyframes modal-pop {
+  from {
+    transform: scale(0.9);
+  }
+}
+.modal-box h3 {
+  margin: 0 0 6px;
+}
+.modal-body {
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.modal-body::-webkit-scrollbar {
+  display: none;
+}
+.ml-row {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+}
+.ml-row .key {
+  flex: none;
+  min-width: 36px;
+  text-align: center;
+  font-weight: 900;
+  color: var(--accent);
+}
+.ml-d {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.pause-opts {
+  margin-top: 10px;
+}
+
+/* メニューの「ひとりで」「みんなで」：もどるは左下（ほかの画面と同じ場所） */
+.m-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-start;
+  margin-top: auto;
+}
+
+/* 画面の切り替え：進むときは右から、もどるときは左から */
+.screen.enter-fwd {
+  animation: scr-in-fwd 0.22s ease-out;
+}
+.screen.enter-back {
+  animation: scr-in-back 0.22s ease-out;
+}
+@keyframes scr-in-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+@keyframes scr-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .screen.enter-fwd,
+  .screen.enter-back {
+    animation: none;
+  }
+}
+
+/* お知らせ：種類で左のふちの色を変える（成功＝緑、注意＝橙、ふつう＝青） */
+#toast {
+  border-left: 5px solid #6ab8ff;
+  animation: toast-in 0.2s ease-out;
+}
+#toast.toast-ok {
+  border-left-color: #4fd18b;
+}
+#toast.toast-warn {
+  border-left-color: #ff8a3d;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+}
+
+/* ルール画面のタブ（ステージ・ルール・CPU） */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 2px 0 8px;
+}
+.tabs button {
+  appearance: none;
+  border: 0;
+  padding: 7px 16px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--panel-2);
+  cursor: pointer;
+}
+.tabs button.on {
+  color: #1b1b28;
+  background: var(--accent);
+}
+/* 選んだ内容のまとめ（下の段、ボタンの間） */
+.rule-sum {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* キャラ選択の「技を見る」：技の並びの最後に、押せるボタンとして置く */
+.mv.mv-list {
+  appearance: none;
+  border: 1.5px solid var(--accent);
+  background: rgba(255, 210, 63, 0.12);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* ロビー：準備OK */
+.ready-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #1b1b28;
+  background: #4fd18b;
+}
+.ready-count {
+  font-size: 12px;
+  color: var(--muted);
+  align-self: center;
+}
+.ready-count.all {
+  color: #4fd18b;
+  font-weight: 900;
+}
+/* 全員が準備OK：開始ボタンが光る */
+.btn.glow {
+  animation: start-glow 0.8s ease-in-out infinite alternate;
+}
+@keyframes start-glow {
+  to {
+    box-shadow: 0 0 0 3px #fff, 0 0 18px #ffd23f;
+  }
+}
+/* 定型文のスタンプ */
+.stamp-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 6px 0;
+}
+.stamp-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 5px 10px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+.stamp-btn:disabled {
+  opacity: 0.45;
+}
+#stamps {
+  position: absolute;
+  right: calc(16px + var(--safe-r));
+  bottom: calc(80px + var(--safe-b));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 60;
+}
+.stamp-pop {
+  padding: 6px 14px 7px;
+  border-radius: 16px;
+  background: rgba(10, 12, 30, 0.92);
+  border: 2px solid var(--pc);
+  font-size: 16px;
+  font-weight: 900;
+  text-align: center;
+  animation: stamp-in 0.25s cubic-bezier(0.3, 1.5, 0.5, 1), stamp-out 0.4s ease-in 2.4s forwards;
+}
+.stamp-pop small {
+  display: block;
+  font-size: 10px;
+  color: var(--pc);
+}
+@keyframes stamp-in {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+}
+@keyframes stamp-out {
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}

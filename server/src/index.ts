@@ -8,6 +8,7 @@ import { COSTUMES } from '../../src/shared/costumes';
 import {
   MAX_INPUTS_PER_MSG,
   MAX_PLAYERS,
+  STAMPS,
   PROTOCOL_VERSION,
   encodeState,
   isRoomCode,
@@ -107,6 +108,8 @@ interface StoredHuman {
   token: string;
   /** 通信が切れた時刻（つながっている間は 0）。猶予の間は枠を残す */
   goneAt: number;
+  /** ロビーで「準備OK」を押している */
+  ready?: boolean;
 }
 
 interface StoredLobby {
@@ -163,6 +166,8 @@ function makeToken(): string {
 }
 
 export class Room extends DurableObject<Env> {
+  /** スタンプを最後に送った時刻（slot ごと） */
+  private lastStamp = new Map<number, number>();
   private lobby: StoredLobby | null = null;
   private sim: Sim | null = null;
   private cpu: CpuController | null = null;
@@ -256,7 +261,7 @@ export class Room extends DurableObject<Env> {
   private lobbyInfo(): LobbyInfo {
     const l = this.lobby!;
     const connected = this.connectedSlots();
-    const players: LobbyPlayer[] = l.humans.map((h) => ({ slot: h.slot, name: h.name, charId: h.charId, costume: h.costume, cpu: false, cpuLevel: 0, connected: connected.has(h.slot), team: h.team ?? h.slot % 2 }));
+    const players: LobbyPlayer[] = l.humans.map((h) => ({ slot: h.slot, name: h.name, charId: h.charId, costume: h.costume, cpu: false, cpuLevel: 0, connected: connected.has(h.slot), team: h.team ?? h.slot % 2, ready: h.slot === l.hostSlot || !!h.ready }));
     if (this.sim) {
       for (const [slot, level] of this.cpuSlots) {
         if (players.some((p) => p.slot === slot)) continue;
@@ -473,6 +478,27 @@ export class Room extends DurableObject<Env> {
         this.startFromLobby();
         return;
       }
+      case 'ready': {
+        // ロビーの「準備OK」（対戦中は変えない）
+        if (this.sim) return;
+        const h = l.humans.find((x) => x.slot === slot);
+        if (!h) return;
+        h.ready = !!msg.on;
+        await this.save();
+        this.pushLobby();
+        return;
+      }
+      case 'stamp': {
+        // 定型文のスタンプ。送りすぎないよう、1人1.2秒に1回まで
+        const id = Number(msg.id) | 0;
+        if (id < 0 || id >= STAMPS.length) return;
+        const now = Date.now();
+        if (now - (this.lastStamp.get(slot) ?? 0) < 1200) return;
+        this.lastStamp.set(slot, now);
+        const h = l.humans.find((x) => x.slot === slot);
+        if (h) this.broadcast({ t: 'stamp', slot, name: h.name, id });
+        return;
+      }
       case 'again': {
         // 結果画面の「もう1戦したい」。つながっている人が全員押したら、ホストを待たずに再戦する
         if (this.sim) return;
@@ -594,7 +620,11 @@ export class Room extends DurableObject<Env> {
 
   // ---------------------------------------------------------------
   private startMatch(setup: MatchSetup): void {
-    if (this.lobby) this.lobby.again = [];
+    if (this.lobby) {
+      this.lobby.again = [];
+      // 次の試合に向けて「準備OK」は外す
+      for (const h of this.lobby.humans) h.ready = false;
+    }
     this.setup = setup;
     this.sim = new Sim(setup);
     this.cpu = new CpuController(setup.seed);

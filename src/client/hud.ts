@@ -8,7 +8,7 @@ const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 export class Hud {
   private el: HTMLElement;
-  private panels = new Map<number, { root: HTMLElement; dmg: HTMLElement; stk: HTMLElement; last: number; job: HTMLElement; fitted: boolean; buffs: HTMLElement; lastBuffs: string }>();
+  private panels = new Map<number, { root: HTMLElement; dmg: HTMLElement; stk: HTMLElement; last: number; job: HTMLElement; fitted: boolean; buffs: HTMLElement; lastBuffs: string; shown: number; t: number }>();
   private timer: HTMLElement;
   private center: HTMLElement;
   private net: HTMLElement;
@@ -43,6 +43,9 @@ export class Hud {
     this.noLimit = setup.rules.timeLimit <= 0;
     this.el.innerHTML = '';
     this.panels.clear();
+    this.offscreen.clear();
+    this.portraits = portraits;
+    this.colors = Object.fromEntries(setup.players.map((p) => [p.slot, hex(playerColor(setup, p.slot))]));
     this.cdRow = null;
     this.lastCd = '';
     this.stockMode = setup.rules.mode !== 'time' && setup.rules.mode !== 'area';
@@ -100,7 +103,7 @@ export class Hud {
         this.cdRow = { root: row, bars };
       }
       wrap.appendChild(root);
-      this.panels.set(p.slot, { root, dmg, stk, last: -1, job, fitted: false, buffs, lastBuffs: '' });
+      this.panels.set(p.slot, { root, dmg, stk, last: -1, job, fitted: false, buffs, lastBuffs: '', shown: -1, t: performance.now() });
     }
     this.timer.className = 'hud-timer';
     this.center.className = 'hud-center';
@@ -186,7 +189,24 @@ export class Hud {
           if (span.offsetWidth > room) span.style.transform = `scaleX(${(room / span.offsetWidth).toFixed(3)})`;
         }
       }
-      const d = this.hp ? Math.max(0, Math.ceil(this.hp - f.damage)) : Math.floor(f.damage);
+      const target = this.hp ? Math.max(0, Math.ceil(this.hp - f.damage)) : Math.floor(f.damage);
+      // 数字は一気に変えず、数えるように近づける（大きく増えたときは枠を弾ませる）
+      const now = performance.now();
+      // 重い端末で1コマが長くても、一気に変わらないよう上限をつける
+      const dt = Math.min(0.04, (now - p.t) / 1000);
+      p.t = now;
+      if (p.shown < 0 || target < p.shown - 30 || (this.hp && target > p.shown)) p.shown = target;
+      else if (target !== p.shown) {
+        const jump = Math.abs(target - p.shown);
+        if (jump >= 8 && p.last === Math.round(p.shown)) {
+          p.dmg.classList.remove('bump');
+          void p.dmg.offsetWidth;
+          p.dmg.classList.add('bump');
+        }
+        const step = Math.max(1, jump * Math.min(1, dt * 12));
+        p.shown = target > p.shown ? Math.min(target, p.shown + step) : Math.max(target, p.shown - step);
+      }
+      const d = Math.round(p.shown);
       if (d !== p.last) {
         // 体力制は残りHP（減るほど赤く）、ふつうはダメージ%（増えるほど赤く）
         p.dmg.innerHTML = this.hp ? `${d}<small>HP</small>` : `${d}<small>%</small>`;
@@ -261,6 +281,54 @@ export class Hud {
       if (c) this.center.classList.add('pop');
       this.lastCenter = c;
     }
+  }
+
+  /** 画面の外にいるキャラの目印（slot ごと） */
+  private offscreen = new Map<number, { el: HTMLElement; arrow: HTMLElement }>();
+  private portraits: Record<number, string> = {};
+  private colors: Record<number, string> = {};
+
+  /**
+   * 画面の外にいるキャラを、画面の端に顔と矢印で出す。遠いほど小さくする。
+   * project は試合の中の位置を画面のピクセルに変える関数
+   */
+  updateOffscreen(v: ViewState, project: (x: number, y: number) => { x: number; y: number }): void {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const M = 34; // 端からの余白
+    const seen = new Set<number>();
+    for (const f of v.fighters) {
+      if (f.state === 'dead' || f.out || this.horde) continue;
+      const p = project(f.x, f.y + 0.9);
+      const inside = p.x >= 0 && p.x <= W && p.y >= 0 && p.y <= H;
+      if (inside) continue;
+      seen.add(f.slot);
+      let o = this.offscreen.get(f.slot);
+      if (!o) {
+        const el = document.createElement('div');
+        el.className = 'offscreen';
+        el.style.setProperty('--pc', this.colors[f.slot] ?? '#fff');
+        el.innerHTML = `${this.portraits[f.slot] ? `<img alt="" src="${this.portraits[f.slot]}"/>` : ''}<i class="arr"></i>`;
+        this.el.appendChild(el);
+        o = { el, arrow: el.querySelector('.arr')! };
+        this.offscreen.set(f.slot, o);
+      }
+      // 画面の中心から、その位置へ向かう線が画面の端と交わる所に置く
+      const cx = W / 2;
+      const cy = H / 2;
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      const k = Math.min((W / 2 - M) / Math.max(1e-6, Math.abs(dx)), (H / 2 - M) / Math.max(1e-6, Math.abs(dy)));
+      const ex = cx + dx * k;
+      const ey = cy + dy * k;
+      // 画面からの離れぐあい（画面の大きさ1つぶん離れると半分の大きさ）
+      const far = Math.max(0, Math.hypot(Math.max(0, -p.x, p.x - W), Math.max(0, -p.y, p.y - H)) / Math.max(W, H));
+      const sc = Math.max(0.55, 1 - far * 0.5);
+      o.el.style.transform = `translate(${ex}px, ${ey}px) translate(-50%, -50%) scale(${sc.toFixed(2)})`;
+      o.arrow.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+      o.el.style.display = '';
+    }
+    for (const [slot, o] of this.offscreen) if (!seen.has(slot)) o.el.style.display = 'none';
   }
 
   /** オンライン：通信が切れた・抜けた人（CPU が代わりに操作中） */

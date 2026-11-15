@@ -24,6 +24,8 @@ export interface NetHandlers {
   onReconnected(): void;
   /** ほかの人のお知らせ（抜けた・通信が切れた・戻ってきた） */
   onNotice(msg: string): void;
+  /** だれかが送ったスタンプ */
+  onStamp(slot: number, name: string, id: number): void;
 }
 
 /** 対戦中のルームに戻るための情報（アプリを閉じても残す。30分で使えなくなる） */
@@ -224,6 +226,9 @@ export class NetClient {
       case 'notice':
         this.handlers.onNotice(m.msg);
         break;
+      case 'stamp':
+        this.handlers.onStamp(m.slot, m.name, m.id);
+        break;
       case 'pong':
         this.rtt = performance.now() - m.c;
         break;
@@ -322,6 +327,16 @@ export class NetClient {
 
   start(): void {
     this.send({ t: 'start' });
+  }
+
+  /** ロビーの「準備OK」 */
+  setReady(on: boolean): void {
+    this.send({ t: 'ready', on });
+  }
+
+  /** 定型文のスタンプを送る */
+  stamp(id: number): void {
+    this.send({ t: 'stamp', id });
   }
 
   /** 結果画面の「もう1戦したい」 */

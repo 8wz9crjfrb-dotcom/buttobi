@@ -480,6 +480,12 @@ export class GameRenderer {
     return url;
   }
 
+  /** 試合の中の位置（x, y）が、画面のどこに映るか（画面の左上が 0,0 のピクセル） */
+  project(x: number, y: number): { x: number; y: number } {
+    const v = new THREE.Vector3(x, y, 0).project(this.camera);
+    return { x: ((v.x + 1) / 2) * window.innerWidth, y: ((1 - v.y) / 2) * window.innerHeight };
+  }
+
   render(view: ViewState | null, dt: number, newEvents: GameEvent[]): void {
     this.time += dt;
     // 暗転：予告から1.5秒後に暗くなり、約3秒続いてから明るく戻る
