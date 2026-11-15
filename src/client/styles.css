@@ -3642,3 +3642,10 @@ table.rec td:first-child {
 .cpu-opt.rnd {
   grid-column: 1 / -1;
 }
+
+/* フレンド：一緒に戦った回数 */
+.fr-count {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}

@@ -31,6 +31,8 @@ export interface LobbyPlayer {
   team?: number;
   /** ロビーで「準備OK」を押している（ホストはいつも準備OK） */
   ready?: boolean;
+  /** フレンドコードの印（friendHash）。フレンドと一緒に戦った回数を数えるのに使う */
+  fh?: string;
 }
 
 export interface LobbyInfo {
@@ -49,7 +51,7 @@ export interface LobbyInfo {
 /** 端末 → サーバー */
 export type ClientMsg =
   /** rejoin：通信が切れた後に、同じ枠に戻る（welcome で受け取った合言葉を使う） */
-  | { t: 'hello'; v: number; name: string; charId: string; create: boolean; costume?: string; rejoin?: { slot: number; token: string }; spectate?: boolean }
+  | { t: 'hello'; v: number; name: string; charId: string; create: boolean; costume?: string; rejoin?: { slot: number; token: string }; spectate?: boolean; fh?: string }
   | { t: 'char'; charId: string; costume?: string }
   /** チーム戦のチームを変える（自分の枠。ホストは slot でCPUの枠も変えられる） */
   | { t: 'team'; team: number; slot?: number }

@@ -2,25 +2,37 @@
 // 人に見せない番号（id）はこの端末に保存する（データ引き継ぎで別の端末へ移せる）。
 
 import { httpBase } from './transfer';
-import { SOCIAL_VERSION, type FriendInfo, type SharedRoom, type SocialClientMsg, type SocialServerMsg } from '../shared/social';
+import { friendHash, SOCIAL_VERSION, type FriendInfo, type SharedRoom, type SocialClientMsg, type SocialServerMsg } from '../shared/social';
 
 export const SOCIAL_KEY = 'buttobi-social-v1';
 
-/** この端末の id（なければ作って保存する） */
-function loadId(): string {
+interface Stored {
+  id?: string;
+  /** フレンドコード → 一緒に戦った回数（オンライン対戦が最後まで終わったとき数える） */
+  together?: Record<string, number>;
+}
+function readStored(): Stored {
   try {
     const raw = localStorage.getItem(SOCIAL_KEY);
-    const v = raw ? (JSON.parse(raw) as { id?: string }) : null;
-    if (v?.id && /^[0-9a-f]{32}$/.test(v.id)) return v.id;
+    return raw ? (JSON.parse(raw) as Stored) : {};
   } catch {
-    // 読めないときは作り直す
+    return {};
   }
-  const id = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+function writeStored(v: Stored): void {
   try {
-    localStorage.setItem(SOCIAL_KEY, JSON.stringify({ id }));
+    localStorage.setItem(SOCIAL_KEY, JSON.stringify(v));
   } catch {
-    // 保存できない（プライベートブラウズなど）：今回だけの id で動かす
+    // 保存できない（プライベートブラウズなど）
   }
+}
+
+/** この端末の id（なければ作って保存する） */
+function loadId(): string {
+  const v = readStored();
+  if (v.id && /^[0-9a-f]{32}$/.test(v.id)) return v.id;
+  const id = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  writeStored({ ...v, id });
   return id;
 }
 
@@ -147,6 +159,25 @@ export class SocialClient {
     if (JSON.stringify(room) === JSON.stringify(this.room)) return;
     this.room = room;
     this.send({ t: 'room', room });
+  }
+
+  /** そのフレンドと一緒に戦った回数 */
+  together(code: string): number {
+    return readStored().together?.[code] ?? 0;
+  }
+  /** オンライン対戦が終わった：一緒にいたフレンド（印 fh で見分ける）の回数を1つ増やす */
+  countTogether(hashes: string[]): void {
+    const set = new Set(hashes);
+    const hit = this.state.friends.filter((f) => set.has(friendHash(f.code)));
+    if (!hit.length) return;
+    const v = readStored();
+    const t = { ...(v.together ?? {}) };
+    for (const f of hit) t[f.code] = (t[f.code] ?? 0) + 1;
+    writeStored({ ...v, together: t });
+  }
+  /** 自分のフレンドコードの印 */
+  get hash(): string {
+    return this.code ? friendHash(this.code) : '';
   }
 
   /** オンラインのフレンドの数 */

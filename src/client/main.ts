@@ -562,7 +562,9 @@ function showFriends(): void {
   const st = social.state;
   const y = screensEl.querySelector<HTMLElement>('.screen-body')?.scrollTop ?? 0;
   const typed = screensEl.querySelector<HTMLInputElement>('#fr-code')?.value ?? '';
-  const sorted = [...st.friends].sort((a, b) => Number(!!b.room) - Number(!!a.room) || Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+  // 並び順：オンライン（ルーム公開中を含む）の人が先、その中で一緒に戦った回数が多い順。同じなら名前順
+  const on = (f: (typeof st.friends)[number]) => Number(f.online || !!f.room);
+  const sorted = [...st.friends].sort((a, b) => on(b) - on(a) || social.together(b.code) - social.together(a.code) || a.name.localeCompare(b.name));
   const friendRows = sorted.length
     ? sorted
         .map((f) => {
@@ -572,7 +574,7 @@ function showFriends(): void {
               ? '<span class="fr-on">オンライン</span>'
               : '<span class="muted">オフライン</span>';
           return `<div class="fr-row"><span class="fr-dot ${f.online || f.room ? 'on' : ''}"></span>
-            <div class="grow"><b>${esc(f.name)}</b> <small class="muted">${f.code}</small><br/>${status}</div>
+            <div class="grow"><b>${esc(f.name)}</b> <small class="muted">${f.code}</small><br/>${status}<span class="fr-count">一緒に戦った ${social.together(f.code)}回</span></div>
             ${f.room ? `<button class="btn small primary" data-join="${f.room.code}">参加</button>` : ''}
             <button class="btn small" data-remove="${f.code}" data-name="${esc(f.name)}">外す</button></div>`;
         })
@@ -2953,6 +2955,11 @@ const net = new NetClient({
     startSession(new NetSession(setup, setup.players.find((p) => p.slot === net.slot) ? net.slot : -1, net));
   },
   onEnd(results) {
+    // 一緒に戦ったフレンドの回数を数える（観戦は数えない）
+    if (session?.kind === 'net' && net.slot >= 0 && lobby) {
+      const inMatch = new Set(session.setup.players.map((p) => p.slot));
+      social.countTogether(lobby.players.filter((p) => p.slot !== net.slot && !p.cpu && inMatch.has(p.slot) && p.fh).map((p) => p.fh!));
+    }
     if (session?.kind === 'net') {
       resultsShown = true;
       showResults(results, session.setup, true);
@@ -3013,7 +3020,9 @@ const net = new NetClient({
     if (session?.kind === 'net') endToMenu();
     else showMenu();
   },
-});
+});// ルームでは、自分のフレンドコードの印を見せる（フレンドと一緒に戦った回数を数えるため）
+net.friendHash = () => social.hash;
+
 
 function createRoom(attempt: number): void {
   if (!settings.serverUrl) return toast('対戦サーバーが設定されていません');
@@ -3247,6 +3256,10 @@ requestAnimationFrame(loop);
     return lastView;
   },
   renderer,
+  /** 確認用：オンライン対戦の通信 */
+  get net() {
+    return net;
+  },
   /** 確認用：指定した組み合わせでCPU戦を始める */
   startLocal(setup: MatchSetup) {
     lastSetup = setup;

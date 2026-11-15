@@ -124,6 +124,9 @@ export class NetClient {
     this.open(false);
   }
 
+  /** 自分のフレンドコードの印（フレンドと一緒に戦った回数を数えるため。まだなければ空） */
+  friendHash: () => string = () => '';
+
   connect(baseUrl: string, code: string, create: boolean, name: string, charId: string, costume?: string, spectate = false): void {
     this.close();
     this.closedByUser = false;
@@ -140,7 +143,8 @@ export class NetClient {
     this.ws = ws;
     const rejoin = this.reconnecting && this.token ? { slot: this.slot, token: this.token } : undefined;
     ws.onopen = () => {
-      this.send({ t: 'hello', v: PROTOCOL_VERSION, name: p.name, charId: p.charId, costume: p.costume, create: rejoin ? false : create, rejoin, spectate: p.spectate || undefined });
+      const fh = this.friendHash();
+      this.send({ t: 'hello', v: PROTOCOL_VERSION, name: p.name, charId: p.charId, costume: p.costume, create: rejoin ? false : create, rejoin, spectate: p.spectate || undefined, ...(fh ? { fh } : {}) });
       this.pingTimer = setInterval(() => this.send({ t: 'ping', c: performance.now() }), 2000);
     };
     ws.onmessage = (ev) => {

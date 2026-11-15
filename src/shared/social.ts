@@ -49,6 +49,20 @@ export type SocialServerMsg =
   | { t: 'err'; msg: string }
   | { t: 'ok'; msg: string };
 
+/**
+ * フレンドコードから作る、元に戻せない短い印（8文字の16進数）。ルームの中ではコードそのものではなくこれを見せ合い、
+ * 「フレンドと一緒に戦った回数」を数えるのに使う（フレンドでない人にはコードが分からない）
+ */
+export function friendHash(code: string): string {
+  let h = 0x811c9dc5;
+  for (const ch of `tobase:${code}`) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}
+export const isFriendHash = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}$/.test(v);
+
 /** 人に見せない番号の形 */
 export function isSocialId(id: unknown): id is string {
   return typeof id === 'string' && /^[0-9a-f]{32}$/.test(id);

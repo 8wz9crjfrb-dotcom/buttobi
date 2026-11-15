@@ -19,6 +19,7 @@ import {
   type ServerMsg,
 } from '../../src/shared/protocol';
 import { Sim } from '../../src/shared/sim';
+import { isFriendHash } from '../../src/shared/social';
 import { MAX_BYTES, makeTransferCode, normalizeTransferCode, TransferBox } from './transfer';
 import { RANDOM_STAGE, resolveStage, STAGES } from '../../src/shared/stages';
 import { DEFAULT_HP, DEFAULT_RULES, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup } from '../../src/shared/types';
@@ -110,6 +111,8 @@ interface StoredHuman {
   goneAt: number;
   /** ロビーで「準備OK」を押している */
   ready?: boolean;
+  /** フレンドコードの印（コードそのものではない） */
+  fh?: string;
 }
 
 interface StoredLobby {
@@ -261,7 +264,7 @@ export class Room extends DurableObject<Env> {
   private lobbyInfo(): LobbyInfo {
     const l = this.lobby!;
     const connected = this.connectedSlots();
-    const players: LobbyPlayer[] = l.humans.map((h) => ({ slot: h.slot, name: h.name, charId: h.charId, costume: h.costume, cpu: false, cpuLevel: 0, connected: connected.has(h.slot), team: h.team ?? h.slot % 2, ready: h.slot === l.hostSlot || !!h.ready }));
+    const players: LobbyPlayer[] = l.humans.map((h) => ({ slot: h.slot, name: h.name, charId: h.charId, costume: h.costume, cpu: false, cpuLevel: 0, connected: connected.has(h.slot), team: h.team ?? h.slot % 2, ready: h.slot === l.hostSlot || !!h.ready, ...(h.fh ? { fh: h.fh } : {}) }));
     if (this.sim) {
       for (const [slot, level] of this.cpuSlots) {
         if (players.some((p) => p.slot === slot)) continue;
@@ -383,7 +386,7 @@ export class Room extends DurableObject<Env> {
       while (l.humans.some((h) => h.slot === s)) s++;
       const charId = CHARACTERS.some((c) => c.id === msg.charId) ? msg.charId : CHARACTERS[0].id;
       const token = makeToken();
-      l.humans.push({ slot: s, name: sanitizeName(msg.name), charId, costume: validCostume(charId, msg.costume), token, goneAt: 0 });
+      l.humans.push({ slot: s, name: sanitizeName(msg.name), charId, costume: validCostume(charId, msg.costume), token, goneAt: 0, ...(isFriendHash(msg.fh) ? { fh: msg.fh } : {}) });
       if (l.humans.length === 1 || !l.humans.some((h) => h.slot === l.hostSlot)) l.hostSlot = s;
       l.cpuCount = Math.min(l.cpuCount, MAX_PLAYERS - l.humans.length);
       ws.serializeAttachment({ slot: s, code: l.code });
