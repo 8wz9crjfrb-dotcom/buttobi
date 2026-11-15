@@ -656,7 +656,7 @@ function showFriends(): void {
     : `${profileCard(settings.name || 'あなた', social.code || '…', me)}
        <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
   showScreen(
-    `<h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2>
+    `<div class="fr-head"><button class="btn small" id="back">もどる</button><h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2></div>
      <div class="fr-wrap">
        <div class="fr-left">
          <button type="button" class="fr-item me ${friendPick === 'me' ? 'on' : ''}" data-pick="me">${friendFace(settings.name || 'あなた', me)}<span class="fr-txt"><b>自分のプロフィール</b><small>見る・編集する</small></span></button>
@@ -671,8 +671,7 @@ function showFriends(): void {
          <p class="muted small-note">フレンドがルームを「フレンドに公開」にすると「ルームに参加」が出ます。${settings.hideOnline ? 'あなたのオンライン状態は隠しています。' : 'オンライン状態は設定画面で隠せます。'}</p>
        </div>
        <div class="fr-right">${card}</div>
-     </div>
-     <div class="footer"><button class="btn" id="back">もどる</button></div>`,
+     </div>`,
     'overlay friends-screen',
     (root) => {
       const l = root.querySelector<HTMLElement>('.fr-left');
