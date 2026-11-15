@@ -3971,3 +3971,19 @@ table.rec td:first-child {
   font-size: 17px;
   letter-spacing: 1px;
 }
+
+/* 名刺カードのキャラ（3Dで動く）。動かせるときは静止画を隠す */
+.pc-pic {
+  position: relative;
+}
+.pc-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.pc-pic.live img {
+  visibility: hidden;
+}

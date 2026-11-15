@@ -211,7 +211,7 @@ const SPECIALS: Record<string, Specials> = {
       shots: [{ at: 0, kind: 'text', x: 0.9, y: 1.0, vx: 4.5, vy: 0, life: 120, r: 0.55, dmg: 7, base: 4, growth: 4, angle: 20, hitstunMul: 1.9 }],
     },
     // 物理ファイアウォール：前に壁を出す（飛び道具を消し、相手を押し返す）
-    sspecial: { startup: 8, active: 4, end: 18, hitboxes: [{ x: 1.0, y: 0.9, r: 0.7 }], dmg: 4, base: 7, growth: 4, angle: 30, air: true, special: 'wall', landLag: 10, cd: 50 },
+    sspecial: { startup: 8, active: 4, end: 18, hitboxes: [{ x: 1.0, y: 0.9, r: 0.7 }], dmg: 4, base: 7, growth: 4, angle: 30, air: true, special: 'wall', landLag: 10, cd: 90 },
     // クレーム対応：構えている間に攻撃されたら1.3倍で返す
     dspecial: { startup: 4, active: 30, end: 24, hitboxes: [], dmg: 0, base: 7, growth: 10, angle: 40, air: true, special: 'counter' },
     // 非常口ダッシュ：斜め上へ突進して復帰

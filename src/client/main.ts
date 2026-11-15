@@ -15,6 +15,7 @@ import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
 import { SocialClient } from './social';
+import { CardViewer } from './cardViewer';
 import { PROFILE_COLORS, PROFILE_COMMENTS, type Profile } from '../shared/social';
 import { clearRejoin, loadRejoin, NetClient } from './net';
 import { Predictor } from './predictor';
@@ -603,7 +604,7 @@ function profileCard(name: string, code: string, p: Profile | undefined, togethe
   const rar = rarityName(cos.rarity);
   const st = (v: string, label: string) => `<div class="pc-st"><b>${v}</b><small>${label}</small></div>`;
   return `<div class="pcard ${cos.rarity >= 6 ? 'ur' : ''}" style="--c1:${c1};--c2:${c2}">
-    <div class="pc-pic"><img alt="" src="${renderer.fullBody(p.charId, p.costume)}"/></div>
+    <div class="pc-pic" data-char="${p.charId}" data-cos="${esc(p.costume)}"><img alt="" src="${renderer.fullBody(p.charId, p.costume)}"/></div>
     <div class="pc-r">
       <div class="pc-nm">${esc(name)}</div>
       ${p.title ? `<div><span class="pc-title">称号：${esc(p.title)}</span></div>` : ''}
@@ -612,6 +613,13 @@ function profileCard(name: string, code: string, p: Profile | undefined, togethe
       <div class="pc-code">フレンドコード ${esc(code)}</div>
       <div class="pc-stats">${st(String(p.wins), '通算勝利')}${st(`${p.horde}人`, '100人組手')}${st(String(p.costumes), '衣装')}${together !== undefined ? st(`${together}回`, '一緒に戦った') : ''}</div>
     </div></div>`;
+}
+
+/** 名刺カードのキャラを3Dで動かす（入れ物は1つを使い回す）。タップするとアクション */
+const cardViewer = new CardViewer();
+function mountCardViewer(root: HTMLElement): void {
+  const pic = root.querySelector<HTMLElement>('.pc-pic[data-char]');
+  if (pic) cardViewer.mount(pic, pic.dataset.char!, pic.dataset.cos ?? '');
 }
 
 /** フレンド一覧の顔（プロフィールのキャラ。未設定なら名前の頭文字） */
@@ -676,6 +684,7 @@ function showFriends(): void {
     (root) => {
       const l = root.querySelector<HTMLElement>('.fr-left');
       if (l) l.scrollTop = y;
+      mountCardViewer(root);
       root.querySelector('#back')!.addEventListener('click', () => showMenu('multi'));
       root.querySelectorAll<HTMLElement>('[data-pick]').forEach((b) =>
         b.addEventListener('click', () => {
@@ -748,6 +757,7 @@ function showProfileEdit(): void {
       (root) => {
         const opts = root.querySelector<HTMLElement>('.pe-opts')!;
         opts.scrollTop = scroll;
+        mountCardViewer(root);
         const on = (sel: string, f: (el: HTMLElement) => void) =>
           root.querySelectorAll<HTMLElement>(sel).forEach((b) =>
             b.addEventListener('click', () => {
