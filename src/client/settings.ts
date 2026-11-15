@@ -85,6 +85,8 @@ export function loadSettings(): Settings {
       if (!CHARACTERS.some((c) => c.id === s.charId)) s.charId = def.charId;
       if (!s.costumes || typeof s.costumes !== 'object') s.costumes = {};
       if (!s.btnPos || typeof s.btnPos !== 'object') s.btnPos = {};
+      // ストック制は時間制限なし（前の版は7分の制限が保存されている）
+      if (s.rules?.mode === 'stock') s.rules.timeLimit = 0;
       return s;
     }
   } catch {

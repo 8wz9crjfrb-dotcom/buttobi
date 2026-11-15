@@ -1,7 +1,7 @@
 // 飛び道具・置かれる物（壁・罠・広告ウィンドウ）・状態表示（Zzz）の見た目
 
 import * as THREE from 'three';
-import { SLOT_COLORS } from '../shared/characters';
+import { ITEM_COLORS, ITEM_INFO, SLOT_COLORS } from '../shared/characters';
 import { POPUP, TRAP, WALL } from '../shared/moves';
 import { FX_CONFUSED, type ViewState } from '../shared/types';
 
@@ -311,6 +311,24 @@ export class PropRenderer {
           const em = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.12), basic(0xffd23f));
           body.add(em);
         }
+        // 上に効果の短い説明（回復・スピードアップ など）
+        const text = ITEM_INFO[k].short;
+        const W = Math.max(128, Math.ceil((text.length * 40 + 24) / 32) * 32);
+        const tex = canvasTexture(W, 64, (c) => {
+          c.font = `900 40px ${FONT}`;
+          c.textAlign = 'center';
+          c.lineWidth = 8;
+          c.strokeStyle = '#1b1b28';
+          c.strokeText(text, W / 2, 46);
+          c.fillStyle = ITEM_COLORS[k];
+          c.fillText(text, W / 2, 46);
+        });
+        const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, depthTest: false, transparent: true, color: 0xe0e0e0 }));
+        label.name = 'label';
+        label.scale.set((0.42 * W) / 64, 0.42, 1);
+        label.position.y = 1.05;
+        label.renderOrder = 9;
+        g.add(label);
         return g;
       }
       case 'spark': {

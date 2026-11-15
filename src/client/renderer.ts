@@ -1,7 +1,7 @@
 // three.js による描画：ステージ、キャラクター、カメラ、エフェクト
 
 import * as THREE from 'three';
-import { areaColor, getCharacter, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES, TEAM_COLORS } from '../shared/characters';
+import { areaColor, getCharacter, ITEM_COLORS, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES, TEAM_COLORS } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
 import { BALL, ballBaskets, COUNTDOWN_FRAMES } from '../shared/sim';
@@ -780,6 +780,9 @@ export class GameRenderer {
     }
   }
 
+  /** アイテムを拾った文字を出した時刻（続けて拾ったときにずらす） */
+  private itemTexts: number[] = [];
+
   private effect(e: GameEvent, view: ViewState): void {
     if (e.k === 'kick') {
       this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.3, 12, 0.05);
@@ -896,7 +899,12 @@ export class GameRenderer {
       return;
     }
     if (e.k === 'item') {
-      this.props.showText(ITEM_NAMES[e.t] ?? 'アイテム', ['#4fd18b', '#b6ff3a', '#ff5a5a', '#6ab8ff'][e.t] ?? '#fff', e.x, e.y + 1.4);
+      // 拾ったとき：効果を大きく、アイテムの名前を小さく。続けて拾ったときは、前の文字と重ならないよう上にずらす
+      this.itemTexts = this.itemTexts.filter((t) => this.time - t < 1.4);
+      const up = this.itemTexts.length * 1.9;
+      this.itemTexts.push(this.time);
+      this.props.showText(ITEM_INFO[e.t]?.effect ?? 'アイテム', ITEM_COLORS[e.t] ?? '#fff', e.x, e.y + 2.0 + up, true, 90);
+      this.props.showText(ITEM_NAMES[e.t] ?? '', '#ffffff', e.x, e.y + 1.15 + up, false, 90);
       this.spawn(this.ringGeo, [0x4fd18b, 0xb6ff3a, 0xff3b3b, 0x4f9dff][e.t] ?? 0xffffff, e.x, e.y, 0, 0, 0.4, 20, 0.06);
       if (e.t === 2) this.shake = Math.max(this.shake, 0.6);
       return;

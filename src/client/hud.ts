@@ -2,13 +2,13 @@
 
 import { areaColor, ballTeamOf, getCharacter, playerColor, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { COUNTDOWN_FRAMES } from '../shared/sim';
-import { DEFAULT_HP, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
+import { DEFAULT_HP, FX_SPEED, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 export class Hud {
   private el: HTMLElement;
-  private panels = new Map<number, { root: HTMLElement; dmg: HTMLElement; stk: HTMLElement; last: number; job: HTMLElement; fitted: boolean }>();
+  private panels = new Map<number, { root: HTMLElement; dmg: HTMLElement; stk: HTMLElement; last: number; job: HTMLElement; fitted: boolean; buffs: HTMLElement; lastBuffs: string }>();
   private timer: HTMLElement;
   private center: HTMLElement;
   private net: HTMLElement;
@@ -23,6 +23,8 @@ export class Hud {
 
   /** 練習モード：残機とタイマーを出さない */
   private training = false;
+  /** 時間制限なし（タイマーは経過時間を数える） */
+  private noLimit = false;
   /** 玉入れ：タイマーの下の点数 */
   private ball: { root: HTMLElement; red: HTMLElement; blue: HTMLElement; last: string } | null = null;
   /** 自分の枠に出す、必殺技の待ち時間（B・横B・下B・上B） */
@@ -38,6 +40,7 @@ export class Hud {
 
   setup(setup: MatchSetup, myslot: number | null, training = false, portraits: Record<number, string> = {}): void {
     this.training = training;
+    this.noLimit = setup.rules.timeLimit <= 0;
     this.el.innerHTML = '';
     this.panels.clear();
     this.cdRow = null;
@@ -79,7 +82,10 @@ export class Hud {
         face.alt = '';
         root.appendChild(face);
       }
-      root.append(job, dmg, stk, nm);
+      // アイテムなどの効果中のしるし（スピードアップ・無敵）
+      const buffs = document.createElement('div');
+      buffs.className = 'buffs';
+      root.append(job, dmg, stk, nm, buffs);
       if (myslot === p.slot) {
         // 必殺技の待ち時間（タッチのボタンを使わないとき）
         const row = document.createElement('div');
@@ -94,7 +100,7 @@ export class Hud {
         this.cdRow = { root: row, bars };
       }
       wrap.appendChild(root);
-      this.panels.set(p.slot, { root, dmg, stk, last: -1, job, fitted: false });
+      this.panels.set(p.slot, { root, dmg, stk, last: -1, job, fitted: false, buffs, lastBuffs: '' });
     }
     this.timer.className = 'hud-timer';
     this.center.className = 'hud-center';
@@ -190,6 +196,12 @@ export class Hud {
       }
       p.stk.textContent = this.training || this.area ? '' : this.stockMode ? '●'.repeat(Math.max(0, f.stocks)) : `${f.kos - f.falls >= 0 ? '+' : ''}${f.kos - f.falls}`;
       p.root.classList.toggle('out', f.out);
+      // 効果中のしるし（復活直後の無敵は出さない）
+      const b = `${f.fx & FX_SPEED ? '<span class="bf spd">スピードUP</span>' : ''}${f.invuln && f.state !== 'respawn' && f.state !== 'dead' ? '<span class="bf inv">無敵</span>' : ''}`;
+      if (b !== p.lastBuffs) {
+        p.buffs.innerHTML = b;
+        p.lastBuffs = b;
+      }
     }
     for (const e of events) {
       if (e.k === 'ko') {
@@ -232,11 +244,16 @@ export class Hud {
       // 100人組手：倒した数と経過時間
       const el = Math.max(0, Math.floor((v.frame - COUNTDOWN_FRAMES) / 60));
       this.timer.innerHTML = `撃破 <b>${v.horde ?? 0}</b> / ${this.horde}<small> ${Math.floor(el / 60)}:${String(el % 60).padStart(2, '0')}</small>`;
-    } else this.timer.textContent = this.training ? '練習モード' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    } else if (this.training) this.timer.textContent = '練習モード';
+    else if (this.noLimit) {
+      // 時間制限なし（ストック制）：経過時間を数える
+      const el = Math.max(0, Math.floor((v.frame - COUNTDOWN_FRAMES) / 60));
+      this.timer.textContent = `${Math.floor(el / 60)}:${String(el % 60).padStart(2, '0')}`;
+    } else this.timer.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     let c = '';
     if (v.countdown > 0) c = v.countdown > 100 ? '3' : v.countdown > 50 ? '2' : '1';
     else if (v.frame < 210) c = 'GO!';
-    if (v.ended) c = this.horde ? ((v.horde ?? 0) >= this.horde ? 'CLEAR!' : 'GAME!') : v.timeLeft <= 0 ? 'TIME UP!' : 'GAME!';
+    if (v.ended) c = this.horde ? ((v.horde ?? 0) >= this.horde ? 'CLEAR!' : 'GAME!') : v.timeLeft <= 0 && !this.noLimit ? 'TIME UP!' : 'GAME!';
     if (c !== this.lastCenter) {
       this.center.textContent = c;
       this.center.classList.remove('pop');

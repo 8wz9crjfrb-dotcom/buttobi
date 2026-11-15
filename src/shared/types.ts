@@ -137,7 +137,8 @@ export const DEFAULT_HP = 150;
 /** チームの数（赤・青・緑・黄） */
 export const TEAM_COUNT = 4;
 
-export const DEFAULT_RULES: MatchRules = { mode: 'stock', stocks: 3, timeLimit: 180, items: false, gimmicks: false };
+/** 決まりの初期値。ストック制は時間制限なし（timeLimit 0） */
+export const DEFAULT_RULES: MatchRules = { mode: 'stock', stocks: 3, timeLimit: 0, items: false, gimmicks: false };
 
 export interface PlayerSetup {
   slot: number;

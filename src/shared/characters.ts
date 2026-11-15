@@ -1,6 +1,7 @@
 // キャラクター定義（職業がそのままキャラクター）
 
 import type { MatchSetup } from './types';
+import { ITEMS, SPEEDUP } from './moves';
 
 export interface CharacterDef {
   id: string;
@@ -420,3 +421,11 @@ export const TAUNT_LINES: Record<string, { lines: string[]; ssr: string }> = {
 
 /** アイテムの名前（種類の番号順） */
 export const ITEM_NAMES = ['バグ修正パッチ', 'エナドリ', 'サーバーダウン', 'ファイアウォール'];
+/** アイテムの効果（short = 落ちているアイテムの上に出す短い説明、effect = 拾ったときに大きく出す説明。数値は moves.ts の設定どおり） */
+export const ITEM_INFO = [
+  { short: '回復', effect: `${ITEMS.heal}%回復！` },
+  { short: 'スピードアップ', effect: `${SPEEDUP.duration / 60}秒スピードアップ！` },
+  { short: '相手をストップ', effect: `ほかの人が${ITEMS.freeze / 60}秒ストップ！` },
+  { short: '無敵', effect: `${ITEMS.invuln / 60}秒無敵！` },
+];
+export const ITEM_COLORS = ['#4fd18b', '#b6ff3a', '#ff5a5a', '#6ab8ff'];

@@ -2,7 +2,7 @@
 
 import './styles.css';
 import { CpuController } from '../shared/ai';
-import { ballTeamOf, CHARACTERS, getCharacter, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
+import { ballTeamOf, CHARACTERS, getCharacter, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { MAX_PLAYERS, isRoomCode, type LobbyInfo } from '../shared/protocol';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
@@ -921,7 +921,8 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
   sync();
   bindSeg(root, 'mode', (v) => {
     rules.mode = v as MatchRules['mode'];
-    rules.timeLimit = rules.mode === 'time' ? 180 : rules.mode === 'area' || rules.mode === 'ball' ? 120 : 420;
+    // ストック制は時間制限なし（0）。体力制は7分
+    rules.timeLimit = rules.mode === 'time' ? 180 : rules.mode === 'area' || rules.mode === 'ball' ? 120 : rules.mode === 'stock' ? 0 : 420;
     if (rules.mode === 'area') rules.area ??= 'move';
     // 玉入れは参加した順に赤・青に分かれる（チーム戦の設定は使わない）
     if (rules.mode === 'ball') {
@@ -1534,7 +1535,7 @@ function showHowTo(): void {
        <p><b>体力制：</b>%のかわりにHPで戦います。HPが0になるとその場で撃墜。ふっとびは小さめなので、HPを削り切るのが基本です。</p>
        <p><b>チーム戦：</b>CPU戦はルール画面、オンラインはルームの枠をタップしてチームを分けます。「味方への攻撃：当たらない」なら、味方には攻撃も飛び道具も当たりません。</p>
        <p><b>100人組手：</b>1機だけで、次々に出てくる敵を100人倒すとクリア。10人倒すごとに少し回復し、30人倒すと敵が3人に増えます。</p>
-       <p><b>アイテム・ステージギミック：</b>ルールで「あり」にすると、アイテム（回復・倍速・相手を止める・無敵）が落ちてきて、触れると使えます。ギミックはキャラ別ステージごとに違う仕掛け（強風・レーザー・スクーターなど）で、来る前に予告が出ます。</p>
+       <p><b>アイテム・ステージギミック：</b>ルールで「あり」にすると、アイテムが落ちてきて、触れると使えます。落ちているアイテムの上に効果が書いてあり、効果中は自分の枠の上にしるしが出ます。${ITEM_NAMES.map((n, i) => `<br/>・${n}：${ITEM_INFO[i].effect.replace('！', '')}`).join('')}<br/>ギミックはキャラ別ステージごとに違う仕掛け（強風・レーザー・スクーターなど）で、来る前に予告が出ます。</p>
        <p><b>崖：</b>ステージの端に近づくと自動でつかまります。スティック上かジャンプで上がります。</p>
        <p><b>クレジット：</b>キャラクター・BGM・効果音はすべてこのゲームのプログラムで作っています。</p>
        <p><b>キーボード：</b>矢印/WASD＝移動、J＝A、K＝B、スペース＝ジャンプ、L＝ガード、Esc＝メニュー。<b>ゲームパッド：</b>左＝A、右＝B、下・上＝ジャンプ、肩＝ガード。</p>
