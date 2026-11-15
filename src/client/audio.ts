@@ -167,16 +167,6 @@ export class Sfx {
     this.tone(90, 0.5, 'sawtooth', 0.22, 40);
     this.tone(1760, 0.7, 'sine', 0.12, 1320);
   }
-  /** ギリギリ耐えるふっとび：ヒューッと上がる音 */
-  close(): void {
-    this.burst(0.25, 0.5, 260);
-    this.tone(500, 0.45, 'sine', 0.1, 1400);
-  }
-  /** ギリギリセーフ：明るい2音 */
-  safe(): void {
-    this.tone(784, 0.12, 'triangle', 0.14);
-    setTimeout(() => this.tone(1175, 0.25, 'triangle', 0.14), 110);
-  }
   swap(): void {
     this.tone(300, 0.15, 'sine', 0.16, 900);
     setTimeout(() => this.tone(900, 0.15, 'sine', 0.14, 300), 110);

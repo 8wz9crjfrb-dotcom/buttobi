@@ -1684,7 +1684,7 @@ function buildGym(kit: Kit): void {
     for (let x = 12; x < 256; x += 40) g.fillRect(x, 26, 20, 26);
   }, [3, 0.75]);
   mainSlab(kit, kit.std(0xffffff, { map: mat, roughness: 0.9 }), kit.toon(0xffffff, { map: front }), 0.7, 5);
-  // 床のランニングマシン（ギミックのとき流れる。ふだんはゆっくり）
+  // 床の中央：トレーニング用のゴムマット（清掃タイムには、この上がぬれてすべる）
   const floorBelt = kit.tex(64, 64, (g) => {
     g.fillStyle = '#1c1c22';
     g.fillRect(0, 0, 64, 64);
@@ -1695,7 +1695,6 @@ function buildGym(kit: Kit): void {
   const beltMesh = kit.plane(w - 3, 2.6, kit.basic(0xffffff, { map: floorBelt }), cx, m.top + 0.012, 0);
   beltMesh.rotation.x = -Math.PI / 2;
   for (const sd of [-1, 1]) kit.box(0.12, 0.06, 2.7, kit.toon(th.accentA), cx + sd * ((w - 3) / 2), m.top + 0.03, 0);
-  kit.anim((_t, dt) => (floorBelt.offset.x += dt * 0.3));
   // 台の下：鉄骨
   kit.box(w * 0.8, 2.4, 3.6, kit.toon(0x3a3a44), cx, m.top - 1.9, 0);
   for (let i = -3; i <= 3; i++) kit.box(0.2, 2.4, 0.2, kit.toon(th.accentA), cx + i * 2.4, m.top - 1.9, 1.85);

@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 21;
+export const PROTOCOL_VERSION = 22;
 
 /** 定型文のスタンプ（文字を打たずに気持ちを伝える。自由な文は送れない） */
 export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って'];

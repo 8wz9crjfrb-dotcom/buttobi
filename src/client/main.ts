@@ -430,7 +430,7 @@ function loop(t: number): void {
     }
   }
   // 待ち受け画面のCPU同士の試合では、撃墜確定のスロー演出はしない
-  if (session?.kind === 'demo') events = events.filter((e) => e.k !== 'finish' && e.k !== 'close');
+  if (session?.kind === 'demo') events = events.filter((e) => e.k !== 'finish');
   renderer.render(lastView, dt, events);
   // 画面の外にいるキャラを、画面の端に顔と矢印で出す
   if (session && session.kind !== 'demo' && lastView) hud.updateOffscreen(lastView, (x, y) => renderer.project(x, y));
@@ -491,11 +491,6 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'swap') sfx.swap();
     else if (e.k === 'pull') sfx.notify();
     else if (e.k === 'finish') sfx.finish();
-    else if (e.k === 'close') sfx.close();
-    else if (e.k === 'safe') {
-      sfx.safe();
-      hud.popText('ギリギリセーフ！', '#ffd23f', renderer.project(e.x, e.y + 1.6));
-    }
   }
   const c = view.countdown > 100 ? 3 : view.countdown > 50 ? 2 : view.countdown > 0 ? 1 : 0;
   if (c !== lastCountdownBeep) {
@@ -1348,6 +1343,7 @@ function showLocalRules(): void {
          <div class="opt">CPUの人数 ${seg('cpu', [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']], settings.cpuCount)}</div>
          <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], settings.cpuLevel)}</div>
        </div>
+       <div class="cpu-pick" data-cpupick></div>
        <div class="team-pick" data-team></div>
      </div>
      <div class="footer"><button class="btn" id="to-menu">もどる</button><span class="rule-sum" data-sum></span><button class="btn" id="back">キャラを変える</button><button class="btn primary" id="start">対戦開始！</button></div>`,
@@ -1376,10 +1372,34 @@ function showLocalRules(): void {
         sfx.click();
         drawTeams();
       });
+      // CPUの相手のキャラ（タップでえらぶ。ランダムは毎試合えらび直す）
+      const cpuBox = root.querySelector<HTMLElement>('[data-cpupick]')!;
+      const drawCpus = () => {
+        cpuBox.innerHTML =
+          `<div class="opt-label">相手のキャラ（タップで変える）</div>` +
+          Array.from({ length: settings.cpuCount }, (_, i) => {
+            const id = settings.cpuChars[i] ?? 'random';
+            const name = id === 'random' ? '🎲 ランダム' : getCharacter(id).name;
+            return `<button type="button" class="cpu-chip ${id === 'random' ? 'rnd' : ''}" data-cpu="${i}"><small>CPU${i + 1}</small>${esc(name)}</button>`;
+          }).join('');
+      };
+      drawCpus();
+      cpuBox.addEventListener('click', (e) => {
+        const b = (e.target as HTMLElement).closest<HTMLElement>('[data-cpu]');
+        if (!b) return;
+        const i = Number(b.dataset.cpu);
+        pickCpuChar(i, (id) => {
+          settings.cpuChars[i] = id;
+          saveSettings(settings);
+          drawCpus();
+          drawSum();
+        });
+      });
       bindStages(root, (v) => (settings.stageId = v));
       bindSeg(root, 'cpu', (v) => {
         settings.cpuCount = Number(v);
         drawTeams();
+        drawCpus();
       });
       bindSeg(root, 'lv', (v) => (settings.cpuLevel = Number(v)));
       bindRules(root, rules, () => (settings.rules = { ...rules }));
@@ -1400,12 +1420,11 @@ function showLocalRules(): void {
         if (rules.teams && teamsUsed.size < 2) return toast('チーム戦は2チーム以上に分けてください');
         saveSettings(settings);
         const players: MatchSetup['players'] = [{ slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0, costume: myCostume(settings.charId), team: localTeams[0] }];
-        // CPUは自分以外のキャラから順に選ぶ
-        const others = CHARACTERS.filter((c) => c.id !== settings.charId);
-        const offset = (Math.random() * others.length) | 0;
         for (let i = 1; i <= settings.cpuCount; i++) {
-          players.push({ slot: i, name: `CPU ${settings.cpuLevel}`, charId: others[(offset + i - 1) % others.length].id, cpu: true, cpuLevel: settings.cpuLevel, team: localTeams[i] });
+          players.push({ slot: i, name: `CPU ${settings.cpuLevel}`, charId: settings.cpuChars[i - 1] ?? 'random', cpu: true, cpuLevel: settings.cpuLevel, team: localTeams[i] });
         }
+        cpuSpec = players.map((p) => p.charId);
+        rollCpuChars(players);
         const seed = (Math.random() * 1e9) | 0;
         lastSetup = { players, stageId: resolveStage(settings.stageId, seed), rules: settings.rules, seed };
         startSession(new LocalSession(lastSetup));
@@ -1414,8 +1433,49 @@ function showLocalRules(): void {
   );
 }
 
+/** CPU戦で選んだ相手のキャラ（'random' を含む）。「もう一度」のたびにランダムをえらび直すために覚えておく */
+let cpuSpec: string[] | null = null;
+
+/** 'random' のCPUのキャラを決める（なるべく、自分やほかのCPUと同じキャラにならないように） */
+function rollCpuChars(players: MatchSetup['players']): void {
+  const used = new Set(players.filter((p) => p.charId !== 'random').map((p) => p.charId));
+  for (const p of players) {
+    if (p.charId !== 'random') continue;
+    const pool = CHARACTERS.filter((c) => !used.has(c.id));
+    const list = pool.length ? pool : CHARACTERS;
+    p.charId = list[(Math.random() * list.length) | 0].id;
+    used.add(p.charId);
+  }
+}
+
+/** 相手のCPUのキャラをえらぶ（ランダム＋全キャラ） */
+function pickCpuChar(i: number, onPick: (id: string) => void): void {
+  const cur = settings.cpuChars[i] ?? 'random';
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.innerHTML = `<div class="modal-box">
+      <h3>CPU${i + 1}のキャラ</h3>
+      <div class="modal-body cpu-grid">
+        <button type="button" class="cpu-opt rnd ${cur === 'random' ? 'on' : ''}" data-id="random">🎲 ランダム<small>毎試合かわる</small></button>
+        ${CHARACTERS.map((c) => `<button type="button" class="cpu-opt ${cur === c.id ? 'on' : ''}" data-id="${c.id}">${esc(c.name)}<small>${esc(c.role)}</small></button>`).join('')}
+      </div>
+      <div class="footer"><button class="btn" data-close>閉じる</button></div>
+    </div>`;
+  el.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const b = t.closest<HTMLElement>('[data-id]');
+    if (b) {
+      onPick(b.dataset.id!);
+      sfx.click();
+      el.remove();
+    } else if (t === el || t.closest('[data-close]')) el.remove();
+  });
+  screensEl.appendChild(el);
+}
+
 /** 100人組手を始める（自分＋敵3人。敵は倒されると次の敵が出てくる） */
 function startHorde(): void {
+  cpuSpec = null;
   const others = CHARACTERS.filter((c) => c.id !== settings.charId);
   const offset = (Math.random() * others.length) | 0;
   const players: MatchSetup['players'] = [{ slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0, costume: myCostume(settings.charId) }];
@@ -1670,6 +1730,13 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
           const seed = (Math.random() * 1e9) | 0;
           // ステージ「おまかせ」なら、もう一度のたびに選び直す
           lastSetup = { ...lastSetup, seed, stageId: settings.stageId === RANDOM_STAGE && !lastSetup.rules.horde ? resolveStage(RANDOM_STAGE, seed) : lastSetup.stageId };
+          // 相手のキャラが「ランダム」なら、もう一度のたびにえらび直す
+          if (cpuSpec && !lastSetup.rules.horde && cpuSpec.length === lastSetup.players.length) {
+            const spec = cpuSpec;
+            const players = lastSetup.players.map((p, i) => ({ ...p, charId: spec[i] }));
+            rollCpuChars(players);
+            lastSetup = { ...lastSetup, players };
+          }
           startSession(new LocalSession(lastSetup));
         }
       });
@@ -1751,7 +1818,7 @@ function showHowTo(): void {
        <p><b>ガード：</b>押している間ガード。ガード中にスティックをはじくと回避。空中で押すと空中回避。</p>
        <p><b>つかみ：</b>ガード中にAで目の前の相手をつかみます（ガードを崩せます）。つかんでいる間はAでつかみ攻撃、スティックを倒した方向（前・後ろ・上・下）へ投げます。つかまれたらボタン連打で早く抜けられます。</p>
        <p><b>アピール：</b>ガード中にスティックを上にはじくと、キャラごとの一言（SSR衣装なら特別なセリフ）。</p>
-       <p><b>ギリギリセーフ：</b>そこまで強くない攻撃なら、場外の線の手前でギリギリ踏んばって止まることがあります（「ギリギリセーフ！」と出ます）。止まったあとは自分で台へ戻りましょう。強い攻撃や、%がとても高いときはそのまま飛ばされます。</p>
+       <p><b>ギリギリで耐える：</b>そこまで強くない攻撃なら、場外の線の手前でギリギリ踏んばって止まることがあります。止まったあとは自分で台へ戻りましょう。強い攻撃や、%がとても高いときはそのまま飛ばされます。</p>
        <p><b>ハメ防止：</b>攻撃を受け続けて、ほとんど動けない状態（少しだけ動けてもすぐまた当てられる状態を含む）が約1.5秒続くと、すぐに動けるようになり、少しの間（約0.75秒）無敵になって抜け出せます。また、突撃する技・引き寄せる技・入れ替える技・連射しやすい技には、使ったあと少しの待ち時間があります（キャラ選択で技を長押しすると確認できます）。</p>
        <p><b>エリアバトル：</b>エリアに自分（チーム）だけが立っている間ゲージが溜まり、先に満タンにするか、時間切れでゲージの多い人の勝ち。敵が1人でもエリアにいると止まります。味方が多いほど少し速く溜まります。ふっとばされても復活します。</p>
        <p><b>玉入れ：</b>赤と青の2チームに分かれ（参加した順に交互）、ボールを攻撃でふっとばして、相手チームのかご（赤は右、青は左）に上から入れると1点。先取点（3・5・7点）か、時間切れで点の多いチームの勝ち。ルールで「相手への攻撃：当たらない」にすると、攻撃はボールにだけ当たります。弱攻撃はかごまで4〜6mくらい、横攻撃は8〜12mくらいから入りやすいです。</p>

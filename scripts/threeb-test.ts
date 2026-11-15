@@ -15,7 +15,8 @@ function make(job = 0, b = 'guard'): Sim {
   for (let j = 0; j < job; j++) {
     sim.fighters[1].x = 8;
     run(sim, 1, () => ({ mx: 0, my: -1, buttons: BTN_B }));
-    run(sim, 80);
+    // ジョブチェンジの待ち時間（技が終わってから約1.25秒）が明けるまで待つ
+    run(sim, 110);
   }
   sim.fighters[0].jobBuff = 0;
   return sim;
@@ -46,9 +47,9 @@ const place = (sim: Sim, dx: number) => {
   run(sim, 5, at(0, { mx: 0, my: -1, buttons: BTN_B }));
   run(sim, 30);
   check('続けてはすぐ着替えられない（待ち時間）', f.job === 1);
-  run(sim, 60);
+  run(sim, 80);
   run(sim, 30, at(0, { mx: 0, my: -1, buttons: BTN_B }));
-  run(sim, 60);
+  run(sim, 100);
   run(sim, 30, at(0, { mx: 0, my: -1, buttons: BTN_B }));
   check('バーテンダーの次は美容師に戻る', f.job === 0, `job=${f.job}`);
   // 状態の書き出し・読み込みで仕事と性能が戻る

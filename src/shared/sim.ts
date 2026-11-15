@@ -377,8 +377,17 @@ function hash32(a: number, b: number): number {
 /** 飽き性（ドパガキ）：違う技を1つ続けるごとの威力アップと、その回数の上限（最大 1 + 0.08×3 = 1.24倍） */
 const DOPA_STEP = 0.08;
 const DOPA_STREAK_MAX = 3;
-/** 24時間ジムのランニングマシンが動くフレーム数 */
-export const GYM_BELT = 240;
+/** 24時間ジムの清掃タイム（床がすべる）のフレーム数と、すべるときのブレーキの効き（1 = ふつう） */
+export const GYM_SLIP = 300;
+export const GYM_GRIP = 0.12;
+/** 24時間ジムの清掃タイム中（床がすべる）か。試合の経過フレームだけで決まる（先行表示・画面の演出でも同じ） */
+export function isSlippery(frame: number, gimmicks: boolean, kind: string): boolean {
+  if (!gimmicks || kind !== 'gym') return false;
+  const t = frame - COUNTDOWN_FRAMES - 300;
+  if (t < 0) return false;
+  const at = (t % GIMMICK.interval) - GIMMICK.warn;
+  return at >= 0 && at < GYM_SLIP;
+}
 
 export class Sim {
   readonly setup: MatchSetup;
@@ -854,6 +863,11 @@ export class Sim {
       const k = SPECIAL_CD[id];
       // 自転車は、降りてから数える
       if (id === 'sspecial' && f.bike > 0) continue;
+      // エージェント起動は、ドローンがいる間は待ち時間のまま（消えてから数える）
+      if (id === 'dspecial' && f.def.id === 'ai' && this.entities.some((e) => e.kind === 'drone' && e.owner === f.slot && e.life > 0)) {
+        f[k] = Math.max(f[k], DRONE.cd);
+        continue;
+      }
       if (f[k] > 0 && !(f.state === 'attack' && f.move === id)) f[k]--;
     }
     if (f.armorCd > 0) f.armorCd--;
@@ -900,7 +914,22 @@ export class Sim {
 
     const inp = f.input;
     const d = f.def;
+    const vxBefore = f.vx;
 
+    this.updateState(f, inp, d);
+    // 清掃タイム（24時間ジム）：台の床の上では、止まる・向きを変える力が弱くなる（走り出しや技の勢いはそのまま）
+    if (f.grounded && f.groundRef === -1 && this.slippery()) {
+      const dv = f.vx - vxBefore;
+      if (vxBefore !== 0 && Math.sign(dv) !== Math.sign(vxBefore)) f.vx = vxBefore + dv * GYM_GRIP;
+    }
+  }
+
+  /** 24時間ジムの清掃タイム中（床がすべる）か */
+  slippery(): boolean {
+    return isSlippery(this.frame, !!this.setup.rules.gimmicks, this.stage.theme.kind);
+  }
+
+  private updateState(f: Fighter, inp: InputState, d: CharacterDef): void {
     switch (f.state) {
       case 'idle':
       case 'run':
@@ -1422,13 +1451,7 @@ export class Sim {
         // 照明が落ちる：見た目だけ（画面を暗くするのは renderer）
         break;
       case 'gym':
-        // ランニングマシン：4秒間、床（すり抜け足場ではなく本体の台）に立っている全員が横へ流される
-        if (at < GYM_BELT) {
-          for (const f of this.fighters) {
-            if (!f.alive || !f.grounded || f.groundRef !== -1 || f.state === 'grabbed') continue;
-            f.x += d * 0.07;
-          }
-        }
+        // 清掃タイム：5秒間、台の床がすべる（slippery() で判定して、動きの計算で使う）
         break;
       case 'lab':
         // 予告した場所に、上から光線
@@ -1780,8 +1803,8 @@ export class Sim {
           break;
         }
         case 'drone':
-          // エージェント起動：AIドローンを呼び出す（1機まで）
-          this.removeEntities(f.slot, 'drone');
+          // エージェント起動：AIドローンを呼び出す（1機まで。いる間と、消えてから DRONE.cd は呼べない）
+          if (this.entities.some((e) => e.kind === 'drone' && e.owner === f.slot && e.life > 0)) break;
           this.addEntity('drone', f.slot, f.x - f.facing * 0.8, f.y + 2.2 * sc, DRONE.life, f.facing);
           break;
         case 'pull': {

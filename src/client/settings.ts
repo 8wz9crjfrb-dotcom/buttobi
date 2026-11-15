@@ -21,6 +21,8 @@ export interface Settings {
   serverUrl: string;
   cpuCount: number;
   cpuLevel: number;
+  /** CPU戦の相手のキャラ（CPU1〜5の順。'random' = 毎試合ランダム） */
+  cpuChars: string[];
   stageId: string;
   rules: MatchRules;
   /** キャラごとに着ている衣装の id */
@@ -67,6 +69,7 @@ export function loadSettings(): Settings {
     serverUrl: defaultServerUrl(),
     cpuCount: 3,
     cpuLevel: 3,
+    cpuChars: ['random', 'random', 'random', 'random', 'random'],
     stageId: STAGES[0].id,
     rules: { ...DEFAULT_RULES },
     costumes: {},
@@ -85,6 +88,11 @@ export function loadSettings(): Settings {
       if (!CHARACTERS.some((c) => c.id === s.charId)) s.charId = def.charId;
       if (!s.costumes || typeof s.costumes !== 'object') s.costumes = {};
       if (!s.btnPos || typeof s.btnPos !== 'object') s.btnPos = {};
+      // CPUの相手のキャラ：なければ（前の版）全員ランダム。知らないキャラはランダムに戻す
+      s.cpuChars = Array.from({ length: 5 }, (_, i) => {
+        const c = Array.isArray(s.cpuChars) ? s.cpuChars[i] : undefined;
+        return c && CHARACTERS.some((x) => x.id === c) ? c : 'random';
+      });
       // ストック制は時間制限なし（前の版は7分の制限が保存されている）
       if (s.rules?.mode === 'stock') s.rules.timeLimit = 0;
       return s;

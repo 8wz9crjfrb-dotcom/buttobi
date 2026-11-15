@@ -1,6 +1,6 @@
 // 技の最適化（2026年11月）で変えた動きが、意図どおりかを確かめる
-import { Sim, COUNTDOWN_FRAMES } from '../src/shared/sim';
-import { BIKE, CLOSE, DEFLECT, WALL } from '../src/shared/moves';
+import { Sim, COUNTDOWN_FRAMES, GYM_SLIP } from '../src/shared/sim';
+import { BIKE, CLOSE, DEFLECT, DRONE, GIMMICK, WALL } from '../src/shared/moves';
 import { BTN_A, BTN_B, type InputState } from '../src/shared/types';
 import { CpuController } from '../src/shared/ai';
 
@@ -171,5 +171,81 @@ function run(sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   let strongKo = -1;
   for (let d = edge; d <= 400 && strongKo < 0; d += 5) if (launch(d).ko) strongKo = d;
   check('もっと強い一撃（高い%）なら撃墜される', strongKo > edge && strongKo - edge < 60, `${strongKo}%で撃墜（耐える幅 ${strongKo - edge}%）`);
+}
+// ---- 24時間ジム：清掃タイムは床がすべる（止まるまでに長くすべる）
+{
+  const slide = (cleaning: boolean) => {
+    const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'guard', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: 'thief', cpu: false, cpuLevel: 1 }], stageId: 'gym', rules: { mode: 'stock', stocks: 3, timeLimit: 300, gimmicks: true }, seed: 1 });
+    // 清掃タイムの最中（または清掃タイムの前）まで進める
+    const target = COUNTDOWN_FRAMES + 300 + (cleaning ? GIMMICK.warn + 20 : -60);
+    while (sim.frame < target) sim.step(new Map());
+    const f = sim.fighters[0];
+    f.x = -4;
+    sim.fighters[1].x = 8;
+    run(sim, 40, () => ({ mx: 1, my: 0, buttons: 0 }));
+    const x0 = f.x;
+    run(sim, 60);
+    return { d: f.x - x0, slip: sim.slippery() };
+  };
+  const normal = slide(false);
+  const wet = slide(true);
+  check('清掃タイムの最中だけ床がすべる', wet.slip && !normal.slip);
+  check('清掃タイムは止まるまでに長くすべる', wet.d > normal.d * 3 && wet.d > 1.5, `ふだん${normal.d.toFixed(2)}m / 清掃タイム${wet.d.toFixed(2)}m（${GYM_SLIP / 60}秒間）`);
+}
+
+// ---- AIエンジニアのエージェント起動：ドローンがいる間と、消えてから2秒は呼べない
+{
+  const sim = make('ai', 'guard');
+  sim.fighters[1].x = 30;
+  const down = { mx: 0, my: -1, buttons: BTN_B };
+  run(sim, 30, (i) => (i === 0 ? down : N));
+  const drones = () => sim.entities.filter((e) => e.kind === 'drone').length;
+  check('下Bでドローンが出る', drones() === 1);
+  const id0 = sim.entities.find((e) => e.kind === 'drone')!.id;
+  run(sim, 60, (i) => (i % 10 === 0 ? down : N));
+  check('ドローンがいる間は、呼び直せない', sim.entities.find((e) => e.kind === 'drone')?.id === id0);
+  // ドローンが消えるまで待つ
+  let gone = -1;
+  for (let i = 0; i < DRONE.life + 60 && gone < 0; i++) {
+    run(sim, 1);
+    if (drones() === 0) gone = sim.frame;
+  }
+  run(sim, 60, (i) => (i % 10 === 0 ? down : N));
+  check('消えてから1秒では、まだ呼べない', drones() === 0, `待ち時間の残り${sim.fighters[0].cdD}フレーム`);
+  run(sim, 90, (i) => (i === 65 ? down : N));
+  check('消えてから2秒たつと呼べる', drones() === 1);
+}
+
+// ---- 3Bのジョブチェンジ：続けて着替えられない（少し待ち時間）
+{
+  const sim = make('threeb', 'guard');
+  sim.fighters[1].x = 30;
+  const down = { mx: 0, my: -1, buttons: BTN_B };
+  let changes = 0;
+  let last = sim.fighters[0].job;
+  for (let i = 0; i < 300; i++) {
+    run(sim, 1, () => (i % 4 === 0 ? down : N));
+    if (sim.fighters[0].job !== last) {
+      changes++;
+      last = sim.fighters[0].job;
+    }
+  }
+  check('ジョブチェンジを連打しても、5秒で4回まで（待ち時間なしなら5回）', changes >= 3 && changes <= 4, `${changes}回`);
+}
+
+// ---- 配達員の配達バッグ投げ：前より遠くまで届く（約5m）
+{
+  const sim = make('courier', 'guard');
+  const c = sim.fighters[0];
+  c.x = -8;
+  c.facing = 1;
+  sim.fighters[1].x = 100;
+  const x0 = c.x;
+  let reach = 0;
+  for (let i = 0; i < 120; i++) {
+    run(sim, 1, () => (i === 0 ? { mx: 0, my: 0, buttons: BTN_B } : N));
+    for (const p of sim.projectiles) reach = Math.max(reach, p.x - x0);
+  }
+  check('配達バッグが約5m先まで届く', reach > 4.6, `${reach.toFixed(2)}m`);
 }
 process.exit(fail ? 1 : 0);

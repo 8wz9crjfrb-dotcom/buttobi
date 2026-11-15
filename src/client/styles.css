@@ -3574,36 +3574,71 @@ table.rec td:first-child {
   }
 }
 
-/* 画面の上に出す大きな文字（ギリギリセーフ！など） */
-.pop-text {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  font-size: 30px;
-  font-weight: 900;
-  white-space: nowrap;
-  pointer-events: none;
-  -webkit-text-stroke: 6px #1b1b28;
-  paint-order: stroke fill;
-  z-index: 30;
-  animation: pop-text 1.4s ease-out forwards;
+/* CPU戦：相手のキャラ */
+.cpu-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 4px;
 }
-@keyframes pop-text {
-  0% {
-    transform: translate(-50%, -50%) scale(0.4);
-    opacity: 0;
-  }
-  15% {
-    transform: translate(-50%, -50%) scale(1.15);
-    opacity: 1;
-  }
-  25% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-  80% {
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-50%, -80%) scale(1);
-    opacity: 0;
-  }
+.cpu-pick .opt-label {
+  width: 100%;
+}
+.cpu-chip {
+  appearance: none;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  background: var(--panel-2);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 5px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.cpu-chip small {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.cpu-chip.rnd {
+  border-color: var(--accent);
+}
+.cpu-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.cpu-opt {
+  appearance: none;
+  border: 2px solid transparent;
+  background: var(--panel-2);
+  color: #fff;
+  font: inherit;
+  font-size: min(12px, 1.08vw);
+  letter-spacing: -0.05em;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 7px 4px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+}
+.cpu-opt small {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.cpu-opt.on {
+  border-color: var(--accent);
+  background: rgba(255, 210, 63, 0.15);
+}
+.cpu-opt.rnd {
+  grid-column: 1 / -1;
 }

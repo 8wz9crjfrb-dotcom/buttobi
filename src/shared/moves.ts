@@ -459,7 +459,7 @@ const SPECIALS: Record<string, Specials> = {
       angle: 0,
       air: true,
       special: 'shot', cd: 45,
-      shots: [{ at: 0, kind: 'bag', x: 0.8, y: 1.0, vx: 12, vy: 0, life: 110, r: 0.4, dmg: 6, base: 5, growth: 5, angle: 40, boomerang: 22 }],
+      shots: [{ at: 0, kind: 'bag', x: 0.8, y: 1.0, vx: 15, vy: 0, life: 150, r: 0.4, dmg: 6, base: 5, growth: 5, angle: 40, boomerang: 30 }],
     },
     // 自転車：乗ったまま走り回れる（ぶつかるとダメージ、ジャンプで降りる）
     sspecial: { startup: 8, active: 1, end: 6, hitboxes: [], dmg: 6, base: 6, growth: 6.5, angle: 35, air: false, special: 'bike', cd: 60 },
@@ -500,7 +500,7 @@ const SPECIALS: Record<string, Specials> = {
     // 学習：構えている間に飛んできた飛び道具を吸収し、次の攻撃を強化
     sspecial: { startup: 4, active: 40, end: 16, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'absorb' },
     // エージェント起動：AIドローンを呼び出す（そばを飛び、近くの相手を自動で撃つ）
-    dspecial: { startup: 10, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'drone' },
+    dspecial: { startup: 10, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'drone', cd: 120 },
     // API呼び出し：ワイヤーで遠くの崖をつかんで復帰
     uspecial: {
       startup: 6,
@@ -573,7 +573,7 @@ const SPECIALS: Record<string, Specials> = {
 
 // 3B：下Bのジョブチェンジで、美容師（0）・バンドマン（1）・バーテンダー（2）の必殺技に切り替わる
 /** ジョブチェンジ（3つの仕事で共通）：くるっと回って着替える。回る瞬間に近くの相手へ軽い一撃 */
-const JOBCHANGE: MoveDef = { startup: 7, active: 6, end: 8, hitboxes: [{ x: 0, y: 0.95, r: 0.95 }], dmg: 3, base: 6, growth: 3, angle: 60, air: true, special: 'jobchange' };
+const JOBCHANGE: MoveDef = { cd: 75, startup: 7, active: 6, end: 8, hitboxes: [{ x: 0, y: 0.95, r: 0.95 }], dmg: 3, base: 6, growth: 3, angle: 60, air: true, special: 'jobchange' };
 const THREEB: Specials[] = [
   {
     // 美容師：シザーラッシュ（Bを連打すると続き、最後の一撃でふっとばす）
@@ -665,7 +665,7 @@ export const TETHER = { range: 6, speed: 18 };
 /** なりすまし：位置を入れ替えられる距離と、入れ替えられた相手が固まる時間 */
 export const SWAP = { range: 7, freeze: 20 };
 /** エージェント起動：ドローンがいる時間、撃つ間隔、狙える距離 */
-export const DRONE = { life: 300, interval: 40, range: 8 };
+export const DRONE = { life: 300, interval: 40, range: 8, cd: 120 };
 /** 通知爆撃：引き寄せる範囲と速さ */
 export const PULL = { range: 4.5, speed: 11 };
 /** ガチャの天井（外れがこの回数続くと次は必ず大当たり） */
