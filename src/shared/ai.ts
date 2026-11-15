@@ -70,15 +70,27 @@ export class CpuController {
       return this.rng.chance(0.5) ? { mx: 0, my: 0, buttons: BTN_JUMP } : { mx: 0, my: 1, buttons: 0 };
     }
 
-    // 場外：ステージへ戻る
+    // 場外：ステージへ戻る。左右の操作が逆になっている（酔い）ときは、強いCPUほど逆に入れて戻る
     const offStage = f.x < m.x1 - 0.1 || f.x > m.x2 + 0.1;
     if (offStage && !f.grounded) {
-      const toward = f.x < 0 ? 1 : -1;
+      const toward = (f.x < 0 ? 1 : -1) * (f.confused > 0 && lv >= 4 ? -1 : 1);
       if (f.state === 'helpless' || f.state === 'attack' || f.state === 'hitstun') return { mx: toward, my: 0, buttons: 0 };
       if (f.vy < 1 && f.y < m.top + 2 && f.jumpsLeft > 0) return { mx: toward, my: 0, buttons: BTN_JUMP };
       if (f.vy < 0 && f.jumpsLeft === 0 && f.y < m.top - 0.5) return { mx: toward * 0.4, my: 1, buttons: BTN_B };
       if (f.vy < -2 && f.jumpsLeft === 0 && Math.abs(f.x) - m.x2 > 4 && !f.sideBUsed) return { mx: toward, my: 0, buttons: BTN_B };
       return { mx: toward, my: 0, buttons: 0 };
+    }
+
+    // 自転車（配達員）：ボタンは押さずに走り続けて体当たりする。崖の手前で折り返し、後ろの相手には向きを変える
+    if (f.bike > 0) {
+      b.holdFrames = 0;
+      const t = this.target(sim, f);
+      const room = f.facing > 0 ? m.x2 - f.x : f.x - m.x1;
+      if (room < 2.2 + lv * 0.1) return { mx: -f.facing, my: 0, buttons: 0 };
+      if (t && Math.sign(t.x - f.x) !== f.facing && Math.abs(t.x - f.x) > 2.5) return { mx: -f.facing, my: 0, buttons: 0 };
+      // 相手が上にいて届かないときは、ジャンプで降りて追う
+      if (t && t.y - f.y > 2.5 && Math.abs(t.x - f.x) < 3) return { mx: f.facing, my: 0, buttons: BTN_JUMP };
+      return { mx: f.facing, my: 0, buttons: 0 };
     }
 
     // ボタンを押し続けている途中（溜めやガード）
@@ -219,12 +231,12 @@ export class CpuController {
         break;
       case 'threeb':
         // 3B：ときどき着替えて（早着替えで強くなる）、仕事ごとの得意技を使う
-        if (f.jobCd === 0 && f.jobBuff === 0 && adx < 3.5 && this.rng.chance(skill * 0.22)) return { mx: 0, my: -1, buttons: BTN_B };
+        if (f.jobCd === 0 && f.jobBuff === 0 && adx < 3.5 && this.rng.chance(skill * 0.12)) return { mx: 0, my: -1, buttons: BTN_B };
         if (f.job === 0) {
-          if (near && adx < 1.6 && this.rng.chance(skill * 0.35)) return { mx: 0, my: 0, buttons: BTN_B };
-          if (near && adx > 1.8 && adx < 3.8 && this.rng.chance(skill * 0.25)) return { mx: dir, my: 0, buttons: BTN_B };
+          if (near && adx < 1.6 && this.rng.chance(skill * 0.25)) return { mx: 0, my: 0, buttons: BTN_B };
+          if (near && adx > 1.8 && adx < 3.8 && this.rng.chance(skill * 0.18)) return { mx: dir, my: 0, buttons: BTN_B };
         } else if (f.job === 1) {
-          if (near && adx < 1.9 && this.rng.chance(skill * 0.3)) {
+          if (near && adx < 1.9 && this.rng.chance(skill * 0.22)) {
             b.hold = { mx: 0, my: 0, buttons: BTN_B };
             b.holdFrames = 8 + Math.round(this.rng.range(0, 25 + lv * 3));
             return b.hold;

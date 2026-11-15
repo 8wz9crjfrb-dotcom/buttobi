@@ -259,10 +259,10 @@ const SPECIALS: Record<string, Specials> = {
       air: true,
       special: 'shot',
       landLag: 10,
-      shots: [-3.5, 0, 3.5].map((vy) => ({ at: 0, kind: 'mail' as const, x: 0.8, y: 1.0, vx: 10, vy, life: 45, r: 0.35, dmg: 4, base: 4, growth: 5, angle: 35 })),
+      shots: [-3.5, 0, 3.5].map((vy) => ({ at: 0, kind: 'mail' as const, x: 0.8, y: 1.0, vx: 10, vy, life: 45, r: 0.35, dmg: 3.5, base: 4, growth: 5, angle: 35 })),
     },
     // キャッシュ：足元に罠を置く（1個まで）。触れると爆発
-    dspecial: { startup: 10, active: 1, end: 16, hitboxes: [], dmg: 10, base: 7, growth: 10, angle: 80, air: true, special: 'trap' },
+    dspecial: { startup: 10, active: 1, end: 16, hitboxes: [], dmg: 10, base: 7.5, growth: 12.5, angle: 80, air: true, special: 'trap' },
     // ポップアップ広告：足元に窓を出し、足場にして上昇
     uspecial: {
       startup: 4,
@@ -341,7 +341,7 @@ const SPECIALS: Record<string, Specials> = {
       angle: 0,
       air: true,
       special: 'shot',
-      shots: [{ at: 0, kind: 'coin', x: 0.7, y: 1.3, vx: 8, vy: 9, gravity: 28, life: 80, r: 0.3, dmg: 6, base: 5, growth: 5, angle: 45 }],
+      shots: [{ at: 0, kind: 'coin', x: 0.7, y: 1.3, vx: 10, vy: 9, gravity: 28, life: 80, r: 0.3, dmg: 6, base: 5, growth: 5, angle: 45 }],
     },
     // 切り抜き：少し先へ瞬間移動して斬る
     sspecial: { startup: 10, active: 4, end: 18, hitboxes: [{ x: 0.6, y: 0.9, r: 0.85 }], dmg: 10, base: 6.5, growth: 9, angle: 40, air: true, special: 'teleport', landLag: 10, cd: 60 },
@@ -408,7 +408,7 @@ const SPECIALS: Record<string, Specials> = {
   gacha: {
     // 10連ガチャ：毎回ランダム（大当たり〜大外れ）
     nspecial: { startup: 14, active: 1, end: 20, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'gacha10' },
-    // 単発ガチャ：5回に1回、超強力な一撃
+    // 単発ガチャ：4回に1回ほど、超強力な一撃（確率は GACHA1_CRIT）
     sspecial: {
       startup: 9,
       active: 4,
@@ -462,7 +462,7 @@ const SPECIALS: Record<string, Specials> = {
       shots: [{ at: 0, kind: 'bag', x: 0.8, y: 1.0, vx: 12, vy: 0, life: 110, r: 0.4, dmg: 6, base: 5, growth: 5, angle: 40, boomerang: 22 }],
     },
     // 自転車：乗ったまま走り回れる（ぶつかるとダメージ、ジャンプで降りる）
-    sspecial: { startup: 8, active: 1, end: 6, hitboxes: [], dmg: 7, base: 6, growth: 6, angle: 35, air: false, special: 'bike', cd: 60 },
+    sspecial: { startup: 8, active: 1, end: 6, hitboxes: [], dmg: 6, base: 6, growth: 6.5, angle: 35, air: false, special: 'bike', cd: 60 },
     // 置き配：拾うと回復する料理を置く（相手も拾える）
     dspecial: { startup: 12, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: false, special: 'food' },
     // 立ちこぎジャンプ：自転車ごと大ジャンプ
@@ -573,7 +573,7 @@ const SPECIALS: Record<string, Specials> = {
 
 // 3B：下Bのジョブチェンジで、美容師（0）・バンドマン（1）・バーテンダー（2）の必殺技に切り替わる
 /** ジョブチェンジ（3つの仕事で共通）：くるっと回って着替える。回る瞬間に近くの相手へ軽い一撃 */
-const JOBCHANGE: MoveDef = { startup: 8, active: 6, end: 12, hitboxes: [{ x: 0, y: 0.95, r: 0.95 }], dmg: 3, base: 6, growth: 3, angle: 60, air: true, special: 'jobchange' };
+const JOBCHANGE: MoveDef = { startup: 7, active: 6, end: 8, hitboxes: [{ x: 0, y: 0.95, r: 0.95 }], dmg: 3, base: 6, growth: 3, angle: 60, air: true, special: 'jobchange' };
 const THREEB: Specials[] = [
   {
     // 美容師：シザーラッシュ（Bを連打すると続き、最後の一撃でふっとばす）
@@ -586,7 +586,7 @@ const THREEB: Specials[] = [
   },
   {
     // バンドマン：爆音ソロ（Bを押し続けると溜まる。自分の周り全方向）
-    nspecial: { startup: 18, active: 5, end: 24, hitboxes: [{ x: 0, y: 1.0, r: 1.55 }], dmg: 10, base: 7.5, growth: 11, angle: 55, air: true, special: 'curl', landLag: 12 },
+    nspecial: { startup: 18, active: 5, end: 20, hitboxes: [{ x: 0, y: 1.0, r: 1.55 }], dmg: 10, base: 7.5, growth: 13.5, angle: 55, air: true, special: 'curl', landLag: 12 },
     // ステージダイブ：前へ飛び込んで体当たり。当たると相手を踏み台に跳ねる
     sspecial: { startup: 8, active: 22, end: 14, hitboxes: [{ x: 0.5, y: 0.8, r: 0.75 }], dmg: 9, base: 6.5, growth: 9, angle: 40, air: true, special: 'dive', landLag: 14, cd: 60 },
     dspecial: JOBCHANGE,
@@ -595,7 +595,7 @@ const THREEB: Specials[] = [
   },
   {
     // バーテンダー：フレアボトル（当たった相手は酔って左右の操作が逆になる）
-    nspecial: { startup: 9, active: 5, end: 16, hitboxes: [{ x: 1.0, y: 1.05, r: 0.65 }], dmg: 7, base: 5.5, growth: 7, angle: 40, air: true, special: 'bottle', confuse: 150, landLag: 8 },
+    nspecial: { startup: 9, active: 5, end: 16, hitboxes: [{ x: 1.0, y: 1.05, r: 0.65 }], dmg: 7.5, base: 6, growth: 9, angle: 40, air: true, special: 'bottle', confuse: 150, landLag: 8 },
     // スライド：低く滑り込む足払い（地上の相手を長くひるませる）
     sspecial: { startup: 8, active: 12, end: 18, hitboxes: [{ x: 0.75, y: 0.25, r: 0.6 }], dmg: 6, base: 6, growth: 4, angle: 15, air: false, special: 'slide', dashSpeed: 11, hitstunMul: 3.5, cd: 60 },
     dspecial: JOBCHANGE,
@@ -607,11 +607,13 @@ const THREEB: Specials[] = [
 /** 3B の仕事の数と名前 */
 export const JOBS = ['美容師', 'バンドマン', 'バーテンダー'];
 export const THREEB_RULES = {
+  /** シザーラッシュの最後の一撃（ダメージ・基礎ふっとばし・伸び） */
+  rushFinish: { dmg: 5, base: 7.5, growth: 11 },
   /** シザーラッシュを続けられる回数 */
   rushChain: 2,
   /** 早着替え：ジョブチェンジ後の攻撃力アップの時間と倍率 */
-  buff: 180,
-  buffMul: 1.2,
+  buff: 240,
+  buffMul: 1.25,
   /** ジョブチェンジの待ち時間 */
   cooldown: 60,
   /** ステージダイブで当てたあとに跳ね上がる速さ */
@@ -630,7 +632,8 @@ export function moveOf(charId: string, id: MoveId, job = 0): MoveDef {
 /** 罠（キャッシュ）の設定 */
 export const TRAP = { life: 600, r: 0.6, armDelay: 30 };
 /** 壁（物理ファイアウォール）の設定 */
-export const WALL = { life: 80, w: 0.35, h: 2.4, offset: 1.1 };
+/** 壁（物理ファイアウォール）の設定。hit は壁に触れた相手への一撃（1枚の壁につき1人1回） */
+export const WALL = { life: 80, w: 0.35, h: 2.4, offset: 1.1, hit: { dmg: 4, base: 8.5, growth: 4, angle: 28, hitstun: 1.4 } };
 /** 一時的な足場（ポップアップ広告）の設定 */
 export const POPUP = { life: 200, w: 2.4 };
 /** 倍速再生の効果時間（6秒）と、効果が切れてから次に使えるまでの時間（7秒）（フレーム） */
@@ -638,7 +641,21 @@ export const SPEEDUP = { duration: 360, cooldown: 420, speed: 1.35, frame: 0.75 
 /** 課金：増えるダメージ%、効果時間、攻撃力・ふっとばし力の倍率 */
 export const PAY = { cost: 8, duration: 360, dmg: 1.3, kb: 1.15 };
 /** 自転車：乗っていられる時間、速さ、ぶつかったときに同じ相手へ再び当たるまで */
-export const BIKE = { duration: 300, speed: 12.5, hitCooldown: 30 };
+export const BIKE = {
+  duration: 240,
+  speed: 12.5,
+  hitCooldown: 40,
+  /** ぶつかる判定の大きさ */
+  hitR: 0.85,
+  /** 自転車の耐久（%）：この分のダメージまでは、弱い攻撃を受けても降りない */
+  hp: 13,
+  /** これより強いふっとばしを受けたら、耐久が残っていても降ろされる */
+  armorLimit: 12,
+  /** 弱い攻撃を受けたときの減速 */
+  slow: 0.6,
+  /** 走り続けたときの体当たりのふっとばしの伸び（最大） */
+  speedKb: 0.15,
+};
 /** 置き配：回復量、置いていられる時間、置いた本人が拾えるまでの時間 */
 export const FOOD = { heal: 12, life: 600, selfDelay: 60, r: 0.6 };
 /** ハルシネーション：分身の時間、攻撃した相手が目を回す時間 */
@@ -646,13 +663,23 @@ export const DECOY = { life: 240, dizzy: 50 };
 /** API呼び出し：ワイヤーの届く距離と、引き寄せる速さ */
 export const TETHER = { range: 6, speed: 18 };
 /** なりすまし：位置を入れ替えられる距離と、入れ替えられた相手が固まる時間 */
-export const SWAP = { range: 7, freeze: 14 };
+export const SWAP = { range: 7, freeze: 20 };
 /** エージェント起動：ドローンがいる時間、撃つ間隔、狙える距離 */
 export const DRONE = { life: 300, interval: 40, range: 8 };
 /** 通知爆撃：引き寄せる範囲と速さ */
 export const PULL = { range: 4.5, speed: 11 };
 /** ガチャの天井（外れがこの回数続くと次は必ず大当たり） */
 export const PITY = 6;
+/** 10連ガチャの出る確率（SSR・SR・R・N・回復。残りが爆死） */
+export const GACHA_RATES = { ssr: 0.06, sr: 0.14, r: 0.25, n: 0.29, heal: 0.05 };
+/** 単発ガチャの大当たりの確率 */
+export const GACHA1_CRIT = 0.25;
+/** 無限スクロールの3回目（最後）の一撃：威力の倍率と、ふっとばし */
+export const SCROLL_FINISH = { dmg: 1.3, base: 7, growth: 11, angle: 40 };
+/** 眠っている相手（強制アップデートなど）が受けるふっとばしの倍率 */
+export const SLEEP_KB = 1.2;
+/** 学習（AIエンジニア）の構え中に直接殴られたら、相手をはじき返す */
+export const DEFLECT = { dmg: 3, base: 8.5, growth: 3, angle: 30, invuln: 12 };
 
 /** 溜め攻撃：溜められる最大フレームと、最大まで溜めたときの威力の倍率 */
 export const CHARGE = { max: 90, mul: 1.75 };
