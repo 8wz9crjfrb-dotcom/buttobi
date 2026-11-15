@@ -3461,11 +3461,26 @@ table.rec td:first-child {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
+/* 名前は必ず1行（画面の幅に合わせて文字を小さく、入りきらなければ「…」） */
+[data-pane='stage'] .stage-card .nm,
+[data-pane='stage'] .stage-card .who {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: normal;
+  overflow-wrap: normal;
+  letter-spacing: -0.04em;
+}
 [data-pane='stage'] .stage-card .nm {
-  font-size: 13px;
+  font-size: min(13px, 1.24vw);
 }
 [data-pane='stage'] .stage-card .who {
-  font-size: 10px;
+  font-size: min(10px, 1.12vw);
+}
+/* 2段がスクロールなしで収まるよう、画面の高さが低いときは絵を横長にする */
+[data-pane='stage'] .stage-card .thumb {
+  aspect-ratio: auto;
+  height: min(calc((100vw - 120px) / 6 * 9 / 16), calc((100dvh - 240px) / 2));
 }
 
 /* ロビー：準備OK */
