@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { SLEEP_MAX, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { CLOSE, SLEEP_MAX, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -100,7 +100,7 @@ const SNAPSHOT_KEYS = [
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHp', 'bikeHitCd', 'wallHit', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
-  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'goals',
+  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'goals', 'closeCall',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -191,6 +191,8 @@ export class Fighter {
   powerBuff = 0;
   /** 自転車に乗っている残り時間 */
   bike = 0;
+  /** ギリギリ耐えたふっとび中（1 = ひるみが終わったら「セーフ」を出す） */
+  closeCall = 0;
   /** 自転車の残りの耐久（%）。弱い攻撃はこの分まで受けても降りない */
   bikeHp = 0;
   /** 最後に一撃を受けた壁（物理ファイアウォール）の番号。同じ壁からは1回だけ */
@@ -931,6 +933,12 @@ export class Sim {
         if (f.hitstun <= 0) {
           f.tumble = false;
           this.setState(f, f.grounded ? 'idle' : 'air');
+          // ギリギリ耐えた：ふっとびが終わったところで踏んばって止まり、「セーフ」
+          if (f.closeCall) {
+            f.closeCall = 0;
+            this.closeBrake(f);
+            this.events.push({ k: 'safe', x: f.x, y: f.y + f.h / 2, s: f.slot });
+          }
         }
         break;
       case 'shieldbreak':
@@ -1325,7 +1333,7 @@ export class Sim {
     this.addEntity('item', -1, x, m.top + 9, ITEMS.life, kind);
   }
 
-  /** アイテムの効果（0=バグ修正パッチ：回復 1=エナドリ：倍速 2=サーバーダウン：ほかの人が止まる 3=ファイアウォール：無敵） */
+  /** アイテムの効果（0=おにぎり：回復 1=スニーカー：倍速 2=砂時計：ほかの人が止まる 3=お守り：無敵） */
   private useItem(f: Fighter, kind: number): void {
     switch (kind) {
       case 0:
@@ -2652,6 +2660,7 @@ export class Sim {
       // 耐久が尽きた：このまま降ろされて、ふつうにふっとぶ
     }
     v.bike = 0;
+    v.closeCall = 0;
     // プロテイン（トレーナー）：強いふっとばし以外ではひるまない（ダメージは少し減る）
     if (v.armor > 0 && speed < TRAINER.armorLimit && v.state !== 'grabbed') {
       v.damage = Math.max(0, v.damage - dmg * (1 - TRAINER.armorDamage));
@@ -2680,7 +2689,80 @@ export class Sim {
     v.lastHitFrame = this.frame;
     v.facing = -dir;
     this.setState(v, 'hitstun');
-    if (speed > 14 && this.willBeKO(v)) this.events.push({ k: 'finish', x: v.x, y: v.y + v.h / 2, s: v.slot });
+    if (this.closeCallCheck(v, speed)) {
+      v.closeCall = 1;
+      this.events.push({ k: 'close', x: v.x, y: v.y + v.h / 2, s: v.slot });
+    } else if (speed > 14 && this.willBeKO(v)) this.events.push({ k: 'finish', x: v.x, y: v.y + v.h / 2, s: v.slot });
+  }
+
+  /**
+   * ギリギリ耐える：そこまで強くない一撃（ふっとびの速さが CLOSE.strong 未満）で、わずかに場外まで届くだけなら、
+   * ふっとびを少しだけ弱めて（最大 1 - CLOSE.minScale）場外の線の手前で止まるようにする。
+   * もともと場外の線の近く（CLOSE.near 以内）まで飛ぶ場合も「ギリギリ」とする。ギリギリなら true
+   */
+  private closeCallCheck(v: Fighter, speed: number): boolean {
+    if (speed < CLOSE.minSpeed || this.setup.rules.horde) return false;
+    const m = this.flightMargin(v);
+    if (m >= CLOSE.near) return false;
+    if (m >= CLOSE.keep) return true;
+    if (speed >= CLOSE.strong) return false;
+    const vx = v.vx;
+    const vy = v.vy;
+    for (let s = 0.97; s >= CLOSE.minScale - 1e-9; s -= 0.03) {
+      v.vx = vx * s;
+      v.vy = vy * s;
+      if (this.flightMargin(v) >= CLOSE.keep) return true;
+    }
+    v.vx = vx;
+    v.vy = vy;
+    return false;
+  }
+
+  /** ギリギリ耐えたふっとびの終わり：場外へ向かう勢いを止める（何も操作しなくても場外へ流れていかない） */
+  private closeBrake(f: { x: number; vx: number; vy: number }): void {
+    if (f.vx * Math.sign(f.x) > 0) f.vx = Math.sign(f.vx) * Math.min(Math.abs(f.vx), CLOSE.brakeVx);
+    f.vy = Math.min(f.vy, CLOSE.brakeVy);
+  }
+
+  /**
+   * ふっとびの先読み：ひるみの間と、そのあと CLOSE.extra フレーム（ギリギリで踏んばったあと、何も操作しないとき）に、
+   * 場外の線へいちばん近づいたときの距離（m）。線を越えるならマイナス。台に落ちる・ぶつかるところで止める
+   */
+  private flightMargin(v: Fighter): number {
+    const b = this.stage.blast;
+    const m = this.stage.main;
+    const d = v.def;
+    let x = v.x;
+    let y = v.y;
+    let vx = v.vx;
+    let vy = v.vy;
+    let best = Infinity;
+    const frames = v.hitstun + CLOSE.extra;
+    for (let i = 0; i < frames; i++) {
+      if (i < v.hitstun) vx *= HITSTUN_DRAG;
+      else {
+        // ひるみが終わったら踏んばって止まり（closeBrake と同じ）、あとは何も操作しないときの空中の動き
+        if (i === v.hitstun) {
+          const p = { x, vx, vy };
+          this.closeBrake(p);
+          vx = p.vx;
+          vy = p.vy;
+        }
+        vx *= 0.97;
+      }
+      vy -= d.gravity * DT;
+      if (vy < -d.fallMax * (i < v.hitstun ? 2 : 1)) vy = -d.fallMax * (i < v.hitstun ? 2 : 1);
+      const px = x;
+      const py = y;
+      x += vx * DT;
+      y += vy * DT;
+      best = Math.min(best, x - b.left, b.right - x, b.top - (y + v.h), y - b.bottom);
+      if (best < 0) return best;
+      if (x >= m.x1 && x <= m.x2 && ((py >= m.top && y <= m.top) || (y < m.top && y + v.h > m.bottom))) break;
+      if (px < m.x1 !== x < m.x1 && y < m.top && y > m.bottom - v.h) break;
+      if (px > m.x2 !== x > m.x2 && y < m.top && y > m.bottom - v.h) break;
+    }
+    return best;
   }
 
   /**
@@ -2860,6 +2942,7 @@ export class Sim {
   private koFighter(f: Fighter, x: number, y: number): void {
     const by = f.lastHitBy >= 0 && f.lastHitBy !== f.slot && this.frame - f.lastHitFrame < KO_CREDIT_FRAMES ? f.lastHitBy : undefined;
     this.events.push(by === undefined ? { k: 'ko', x, y, s: f.slot } : { k: 'ko', x, y, s: f.slot, a: by });
+    f.closeCall = 0;
     f.falls++;
     if (f.lastHitBy >= 0 && this.frame - f.lastHitFrame < KO_CREDIT_FRAMES) {
       const k = this.fighter(f.lastHitBy);

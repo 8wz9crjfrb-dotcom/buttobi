@@ -430,7 +430,7 @@ function loop(t: number): void {
     }
   }
   // 待ち受け画面のCPU同士の試合では、撃墜確定のスロー演出はしない
-  if (session?.kind === 'demo') events = events.filter((e) => e.k !== 'finish');
+  if (session?.kind === 'demo') events = events.filter((e) => e.k !== 'finish' && e.k !== 'close');
   renderer.render(lastView, dt, events);
   // 画面の外にいるキャラを、画面の端に顔と矢印で出す
   if (session && session.kind !== 'demo' && lastView) hud.updateOffscreen(lastView, (x, y) => renderer.project(x, y));
@@ -491,6 +491,11 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'swap') sfx.swap();
     else if (e.k === 'pull') sfx.notify();
     else if (e.k === 'finish') sfx.finish();
+    else if (e.k === 'close') sfx.close();
+    else if (e.k === 'safe') {
+      sfx.safe();
+      hud.popText('ギリギリセーフ！', '#ffd23f', renderer.project(e.x, e.y + 1.6));
+    }
   }
   const c = view.countdown > 100 ? 3 : view.countdown > 50 ? 2 : view.countdown > 0 ? 1 : 0;
   if (c !== lastCountdownBeep) {
@@ -1746,6 +1751,7 @@ function showHowTo(): void {
        <p><b>ガード：</b>押している間ガード。ガード中にスティックをはじくと回避。空中で押すと空中回避。</p>
        <p><b>つかみ：</b>ガード中にAで目の前の相手をつかみます（ガードを崩せます）。つかんでいる間はAでつかみ攻撃、スティックを倒した方向（前・後ろ・上・下）へ投げます。つかまれたらボタン連打で早く抜けられます。</p>
        <p><b>アピール：</b>ガード中にスティックを上にはじくと、キャラごとの一言（SSR衣装なら特別なセリフ）。</p>
+       <p><b>ギリギリセーフ：</b>そこまで強くない攻撃なら、場外の線の手前でギリギリ踏んばって止まることがあります（「ギリギリセーフ！」と出ます）。止まったあとは自分で台へ戻りましょう。強い攻撃や、%がとても高いときはそのまま飛ばされます。</p>
        <p><b>ハメ防止：</b>攻撃を受け続けて、ほとんど動けない状態（少しだけ動けてもすぐまた当てられる状態を含む）が約1.5秒続くと、すぐに動けるようになり、少しの間（約0.75秒）無敵になって抜け出せます。また、突撃する技・引き寄せる技・入れ替える技・連射しやすい技には、使ったあと少しの待ち時間があります（キャラ選択で技を長押しすると確認できます）。</p>
        <p><b>エリアバトル：</b>エリアに自分（チーム）だけが立っている間ゲージが溜まり、先に満タンにするか、時間切れでゲージの多い人の勝ち。敵が1人でもエリアにいると止まります。味方が多いほど少し速く溜まります。ふっとばされても復活します。</p>
        <p><b>玉入れ：</b>赤と青の2チームに分かれ（参加した順に交互）、ボールを攻撃でふっとばして、相手チームのかご（赤は右、青は左）に上から入れると1点。先取点（3・5・7点）か、時間切れで点の多いチームの勝ち。ルールで「相手への攻撃：当たらない」にすると、攻撃はボールにだけ当たります。弱攻撃はかごまで4〜6mくらい、横攻撃は8〜12mくらいから入りやすいです。</p>

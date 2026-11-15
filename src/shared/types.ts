@@ -192,7 +192,10 @@ export type GameEvent =
   /** ステージギミックの予告（h = 種類、x/y = 位置、d = 向き） */
   | { k: 'warn'; h: string; x: number; y: number; d: number }
   /** 撃墜が確定するほどの一撃（演出：スロー＆ズーム） */
-  | { k: 'finish'; x: number; y: number; s: number };
+  | { k: 'finish'; x: number; y: number; s: number }
+  /** ギリギリ場外まで届かない一撃（演出：少しスローで寄る）／そのふっとびが終わった（「セーフ」） */
+  | { k: 'close'; x: number; y: number; s: number }
+  | { k: 'safe'; x: number; y: number; s: number };
 
 /** 描画用の選手の状態（ローカル対戦でもオンライン対戦でも同じ形） */
 export interface ViewFighter {

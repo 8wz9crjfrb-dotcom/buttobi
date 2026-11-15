@@ -680,6 +680,13 @@ export const SCROLL_FINISH = { dmg: 1.3, base: 7, growth: 11, angle: 40 };
 export const SLEEP_KB = 1.2;
 /** 強制アップデートで眠らせる最長の時間（フレーム） */
 export const SLEEP_MAX = 100;
+/**
+ * ギリギリ耐える：ふっとびの速さが strong 未満の一撃で、わずかに場外まで届くだけなら、
+ * ふっとびを最大 (1 - minScale) まで弱めて、場外の線の keep m 手前で止まるようにする。
+ * near m 以内まで近づくふっとびも「ギリギリ」として演出する（minSpeed 未満の弱いふっとびは対象外）。
+ * extra = ひるみが終わったあと何フレーム先まで見るか。brakeVx/brakeVy = 耐えたあと踏んばって止まるときの、外向き・上向きの最大の速さ
+ */
+export const CLOSE = { strong: 42, minScale: 0.85, keep: 0.5, near: 2.2, minSpeed: 12, extra: 30, brakeVx: 2, brakeVy: 4 };
 /** 学習（AIエンジニア）の構え中に直接殴られたら、相手をはじき返す */
 export const DEFLECT = { dmg: 3, base: 8.5, growth: 3, angle: 30, invuln: 12 };
 
@@ -689,7 +696,7 @@ export const CHARGE = { max: 90, mul: 1.75 };
 /** つかみ：つかんでいられる時間（基本＋相手の%に比例、上限）、もがいたときに減る時間、つかみ攻撃の間隔 */
 export const GRAB = { base: 50, perDamage: 0.5, max: 150, mash: 3, pummelGap: 6 };
 
-/** アイテム：出る間隔、同時に出る最大数、置いてある時間、種類（0=バグ修正パッチ 1=エナドリ 2=サーバーダウン 3=ファイアウォール） */
+/** アイテム：出る間隔、同時に出る最大数、置いてある時間、種類（0=おにぎり 1=スニーカー 2=砂時計 3=お守り） */
 export const ITEMS = { interval: 600, max: 2, life: 900, kinds: 4, heal: 20, freeze: 60, invuln: 240 };
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };

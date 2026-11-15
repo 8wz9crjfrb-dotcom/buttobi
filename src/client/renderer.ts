@@ -22,6 +22,9 @@ export type Quality = 'low' | 'high';
 const CAM_RAISE: Record<string, number> = { rooftop: 1.0 };
 const FINISH_SLOW = 0.5;
 const FINISH_BACK = 0.3;
+/** ギリギリ耐えるふっとび：撃墜確定より軽いスロー（倍率と時間） */
+const CLOSE_SLOW = 0.35;
+const CLOSE_RATE = 0.35;
 
 interface Particle {
   mesh: THREE.Mesh;
@@ -767,16 +770,19 @@ export class GameRenderer {
 
   // ---------------------------------------------------------------- 撃墜確定の一撃：スロー＆ズーム
   /** 演出中か・始まってからの時間・ズームする相手・ふっとび始めた時間（-1 = まだヒットストップ中） */
-  private finish = { on: false, t: 0, slot: -1, x: 0, y: 0, sx: 0, sy: 0, flyAt: -1 };
+  private finish = { on: false, t: 0, slot: -1, x: 0, y: 0, sx: 0, sy: 0, flyAt: -1, close: false };
   /** スローの倍率（1 = 通常）。main.ts がCPU戦の進み方に使う */
   get timeScale(): number {
     const fi = this.finish;
     if (!fi.on) return 1;
     // 当たった瞬間の止まり（ヒットストップ）は半分の速さ → ふっとび始めたらゆっくり → 元の速さへ
-    if (fi.flyAt < 0) return 0.5;
+    // ギリギリ耐えるふっとびは、撃墜確定より軽いスロー
+    const slow = fi.close ? CLOSE_SLOW : FINISH_SLOW;
+    const rate = fi.close ? CLOSE_RATE : 0.15;
+    if (fi.flyAt < 0) return fi.close ? 0.7 : 0.5;
     const e = fi.t - fi.flyAt;
-    if (e < FINISH_SLOW) return 0.15;
-    return Math.min(1, 0.15 + ((e - FINISH_SLOW) / FINISH_BACK) * 0.85);
+    if (e < slow) return rate;
+    return Math.min(1, rate + ((e - slow) / FINISH_BACK) * (1 - rate));
   }
 
   private dust(x: number, y: number, n: number, spread: number): void {
@@ -922,11 +928,28 @@ export class GameRenderer {
     if (e.k === 'finish') {
       // 撃墜確定：スローにして寄る。白い閃光と、光る輪
       const v = view.fighters.find((f) => f.slot === e.s);
-      this.finish = { on: true, t: 0, slot: e.s, x: e.x, y: e.y, sx: v?.x ?? e.x, sy: v?.y ?? e.y, flyAt: -1 };
+      this.finish = { on: true, t: 0, slot: e.s, x: e.x, y: e.y, sx: v?.x ?? e.x, sy: v?.y ?? e.y, flyAt: -1, close: false };
       this.spawn(this.sparkGeo, 0xffffff, e.x, e.y, 0, 0, 1.2, 10, 0.3, true);
       this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.6, 22, 0.16, true);
       this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.4, 26, 0.1, true);
       this.shake = Math.max(this.shake, 0.9);
+      return;
+    }
+    if (e.k === 'close') {
+      // ギリギリ場外まで届かない一撃：撃墜かも…と思わせる軽いスローと寄り（白い閃光はなし）
+      const v = view.fighters.find((f) => f.slot === e.s);
+      if (!this.finish.on) this.finish = { on: true, t: 0, slot: e.s, x: e.x, y: e.y, sx: v?.x ?? e.x, sy: v?.y ?? e.y, flyAt: -1, close: true };
+      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.5, 20, 0.12, true);
+      this.shake = Math.max(this.shake, 0.5);
+      return;
+    }
+    if (e.k === 'safe') {
+      // ふっとびが止まった：光の粒（「ギリギリセーフ！」の文字は、画面からはみ出さないよう HUD に出す）
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        this.spawn(this.sparkGeo, i % 2 ? 0xffd23f : 0x7ef0d0, e.x, e.y, Math.cos(a) * 4, Math.sin(a) * 4, 0.2, 20, 0.006);
+      }
+      if (this.finish.on && this.finish.close && this.finish.slot === e.s) this.finish.on = false;
       return;
     }
     if (e.k === 'swap') {
@@ -1414,7 +1437,7 @@ export class GameRenderer {
       fi.t += dt;
       // 1秒たっても動かなければ（ヒットストップが長いなど）、ふっとび始めたことにする
       if (fi.flyAt < 0 && fi.t > 1) fi.flyAt = fi.t;
-      if (fi.flyAt >= 0 && fi.t - fi.flyAt > FINISH_SLOW + FINISH_BACK) fi.on = false;
+      if (fi.flyAt >= 0 && fi.t - fi.flyAt > (fi.close ? CLOSE_SLOW : FINISH_SLOW) + FINISH_BACK) fi.on = false;
     }
     for (const p of this.particles) {
       p.life -= steps;
@@ -1457,7 +1480,7 @@ export class GameRenderer {
         if (this.finish.flyAt < 0 && Math.hypot(v.x - this.finish.sx, v.y - this.finish.sy) > 0.05) this.finish.flyAt = this.finish.t;
       }
       // 元の速さへ戻す間に、いつものカメラへ戻す
-      const back = this.finish.flyAt < 0 ? 0 : this.finish.t - this.finish.flyAt - FINISH_SLOW;
+      const back = this.finish.flyAt < 0 ? 0 : this.finish.t - this.finish.flyAt - (this.finish.close ? CLOSE_SLOW : FINISH_SLOW);
       const w = back <= 0 ? 1 : Math.max(0, 1 - back / FINISH_BACK);
       const tx = this.finish.x;
       const ty = this.finish.y;
@@ -1466,7 +1489,8 @@ export class GameRenderer {
       this.camLook.y += (ty - this.camLook.y) * kk * w;
       this.camPos.x += (tx - this.camPos.x) * kk * w;
       this.camPos.y += (ty + 0.8 - this.camPos.y) * kk * w;
-      this.camPos.z += (10 - this.camPos.z) * kk * w;
+      // ギリギリのときは、撃墜確定ほどは寄らない
+      this.camPos.z += ((this.finish.close ? 13 : 10) - this.camPos.z) * kk * w;
       if (w >= 1) {
         this.shake *= Math.pow(0.02, dt);
         const sx = (Math.random() - 0.5) * this.shake * 0.5;

@@ -284,32 +284,60 @@ export class PropRenderer {
         g.add(body);
         const toon = (c: number) => new THREE.MeshToonMaterial({ color: c });
         if (k === 0) {
-          // バグ修正パッチ：緑の十字の箱
-          body.add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), toon(0xffffff)));
-          for (const [sx, sy] of [[0.3, 0.09], [0.09, 0.3]]) {
-            const cr = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, 0.44), basic(0x2fbf71));
-            body.add(cr);
-          }
+          // おにぎり：角の丸い白い三角に、のりを巻く
+          // 三角柱（横から見ると三角）。とがったほうを上に向ける
+          const rice = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.2, 3, 1), toon(0xfaf7ee));
+          rice.rotation.x = Math.PI / 2;
+          rice.rotation.y = Math.PI;
+          body.add(rice);
+          const nori = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.2, 0.22), toon(0x1f3a2a));
+          nori.position.y = -0.1;
+          body.add(nori);
         } else if (k === 1) {
-          // エナドリの缶
-          body.add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.48, 14), toon(0xb6ff3a)));
-          const band = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.12, 14), toon(0x1a1a28));
-          body.add(band);
+          // スニーカー：白い底と、色のついた甲、つま先（少し大きめに）
+          body.scale.setScalar(1.25);
+          const sole = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.08, 0.24), toon(0xffffff));
+          sole.position.y = -0.16;
+          body.add(sole);
+          const upper = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.22), toon(0x9be22d));
+          upper.position.set(-0.08, -0.03, 0);
+          body.add(upper);
+          const toe = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), toon(0x9be22d));
+          toe.scale.set(1.2, 0.8, 0.95);
+          toe.position.set(0.15, -0.08, 0);
+          body.add(toe);
+          const lace = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.03, 0.23), basic(0xffffff));
+          lace.position.set(0.0, 0.03, 0);
+          body.add(lace);
         } else if (k === 2) {
-          // サーバーダウン：赤い×のついたサーバー
-          body.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.3), toon(0x2a2c36)));
-          for (const r of [0.7, -0.7]) {
-            const x = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 0.32), basic(0xff3b3b));
-            x.rotation.z = r;
-            body.add(x);
+          // 砂時計：上下の木の板と、ガラスの中の赤い砂
+          for (const y of [0.24, -0.24]) {
+            const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 16), toon(0x8a5a32));
+            plate.position.y = y;
+            body.add(plate);
           }
+          for (const [y, flip] of [[0.11, 1], [-0.11, -1]]) {
+            const glass = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.22, 16, 1, true), new THREE.MeshToonMaterial({ color: 0xdff4ff, transparent: true, opacity: 0.55, side: THREE.DoubleSide }));
+            glass.position.y = y;
+            glass.rotation.x = flip > 0 ? Math.PI : 0;
+            body.add(glass);
+          }
+          const sand = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.1, 14), toon(0xff5a5a));
+          sand.position.y = -0.17;
+          body.add(sand);
         } else {
-          // ファイアウォール：盾
-          const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.2, 0.1, 6), toon(0x4f9dff));
-          sh.rotation.x = Math.PI / 2;
-          body.add(sh);
-          const em = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.12), basic(0xffd23f));
-          body.add(em);
+          // お守り：紺色の袋に金の縁取りと、上のひも
+          const bag = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, 0.08), toon(0x2d4fb3));
+          body.add(bag);
+          const trim = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.26, 0.09), toon(0xffd23f));
+          trim.position.y = -0.02;
+          body.add(trim);
+          const inner = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.095), toon(0x2d4fb3));
+          inner.position.y = -0.02;
+          body.add(inner);
+          const knot = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.02, 6, 14), basic(0xffd23f));
+          knot.position.y = 0.27;
+          body.add(knot);
         }
         // 上に効果の短い説明（回復・スピードアップ など）
         const text = ITEM_INFO[k].short;

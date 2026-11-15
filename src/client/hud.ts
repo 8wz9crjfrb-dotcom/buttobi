@@ -292,6 +292,20 @@ export class Hud {
    * 画面の外にいるキャラを、画面の端に顔と矢印で出す。遠いほど小さくする。
    * project は試合の中の位置を画面のピクセルに変える関数
    */
+  /** 画面の上に大きな文字を出す（キャラの近く。画面の端からはみ出さないように内側へ寄せる） */
+  popText(text: string, color: string, at: { x: number; y: number }): void {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const el = document.createElement('div');
+    el.className = 'pop-text';
+    el.textContent = text;
+    el.style.color = color;
+    el.style.left = `${Math.max(130, Math.min(W - 130, at.x))}px`;
+    el.style.top = `${Math.max(80, Math.min(H * 0.55, at.y))}px`;
+    this.el.appendChild(el);
+    setTimeout(() => el.remove(), 1400);
+  }
+
   updateOffscreen(v: ViewState, project: (x: number, y: number) => { x: number; y: number }): void {
     const W = window.innerWidth;
     const H = window.innerHeight;

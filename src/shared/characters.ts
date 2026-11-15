@@ -176,7 +176,7 @@ export const CHARACTERS: CharacterDef[] = [
     gravity: 34,
     fallMax: 14,
     weight: 1.08,
-    dmgMul: 1.16,
+    dmgMul: 1.13,
     kbMul: 1.06,
     frameMul: 1.0,
     scale: 1.0,
@@ -420,7 +420,7 @@ export const TAUNT_LINES: Record<string, { lines: string[]; ssr: string }> = {
 };
 
 /** アイテムの名前（種類の番号順） */
-export const ITEM_NAMES = ['バグ修正パッチ', 'エナドリ', 'サーバーダウン', 'ファイアウォール'];
+export const ITEM_NAMES = ['おにぎり', 'スニーカー', '砂時計', 'お守り'];
 /** アイテムの効果（short = 落ちているアイテムの上に出す短い説明、effect = 拾ったときに大きく出す説明。数値は moves.ts の設定どおり） */
 export const ITEM_INFO = [
   { short: '回復', effect: `${ITEMS.heal}%回復！` },

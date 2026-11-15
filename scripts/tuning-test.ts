@@ -1,7 +1,8 @@
 // 技の最適化（2026年11月）で変えた動きが、意図どおりかを確かめる
 import { Sim, COUNTDOWN_FRAMES } from '../src/shared/sim';
-import { BIKE, DEFLECT, WALL } from '../src/shared/moves';
+import { BIKE, CLOSE, DEFLECT, WALL } from '../src/shared/moves';
 import { BTN_A, BTN_B, type InputState } from '../src/shared/types';
+import { CpuController } from '../src/shared/ai';
 
 let fail = 0;
 function check(name: string, ok: boolean, info = '') {
@@ -132,5 +133,43 @@ function run(sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   const first = flight(0);
   const last = flight(2);
   check('無限スクロールの3回目は1回目より大きくふっとばす', last > first * 1.3, `1回目${first.toFixed(2)}m / 3回目${last.toFixed(2)}m`);
+}
+// ---- ギリギリ耐える：わずかに届くだけの一撃は、場外の線の手前で止まる。強い一撃はそのまま撃墜
+{
+  type Knock = (v: unknown, dir: number, dmg: number, base: number, growth: number, angle: number, kbMul: number, from: number) => void;
+  /** 台の右はしに立つ相手を、横スマッシュ相当で右へ飛ばす（damage = 相手の%）。撃墜されたか・出た合図を返す */
+  const launch = (damage: number) => {
+    const sim = make('guard', 'thief');
+    const v = sim.fighters[1];
+    v.x = sim.stage.main.x2 - 0.5;
+    v.damage = damage;
+    (sim as unknown as { knock: Knock }).knock.call(sim, v, 1, 15, 7, 17, 40, 1, 0);
+    const kinds: string[] = [];
+    for (const e of sim.events) kinds.push(e.k);
+    let ko = false;
+    // 相手は強いCPUのように崖へ戻ろうとする（何もしないと下へ落ちてしまうため）
+    const ai = new CpuController(1);
+    for (let i = 0; i < 240 && !ko; i++) {
+      sim.step(new Map([[1, ai.think(sim, v, 9)]]));
+      for (const e of sim.events) {
+        kinds.push(e.k);
+        // ふっとびのまま右・上の場外の線を越えた撃墜だけを数える（戻りそこねて下へ落ちたのは別）
+        if (e.k === 'ko' && (e.x >= sim.stage.blast.right - 1 || e.y >= sim.stage.blast.top - 1)) ko = true;
+      }
+    }
+    return { ko, kinds };
+  };
+  // ギリギリ耐える仕組みを止めて、撃墜されはじめる%を探す
+  const saved = CLOSE.minScale;
+  (CLOSE as { minScale: number }).minScale = 1.01;
+  let edge = -1;
+  for (let d = 40; d <= 300 && edge < 0; d += 2) if (launch(d).ko) edge = d;
+  (CLOSE as { minScale: number }).minScale = saved;
+  const r = launch(edge);
+  check('わずかに場外まで届く一撃では、ギリギリ耐える', edge > 0 && !r.ko && r.kinds.includes('close'), `仕組みなしなら${edge}%で撃墜 → ${r.ko ? '撃墜' : '耐えた'}`);
+  check('耐えたら「セーフ」の合図が出る', r.kinds.includes('safe'));
+  let strongKo = -1;
+  for (let d = edge; d <= 400 && strongKo < 0; d += 5) if (launch(d).ko) strongKo = d;
+  check('もっと強い一撃（高い%）なら撃墜される', strongKo > edge && strongKo - edge < 60, `${strongKo}%で撃墜（耐える幅 ${strongKo - edge}%）`);
 }
 process.exit(fail ? 1 : 0);
