@@ -263,6 +263,11 @@ export class Hud {
     }
   }
 
+  /** オンライン：通信が切れた・抜けた人（CPU が代わりに操作中） */
+  setAway(slots: Set<number>): void {
+    for (const [slot, p] of this.panels) p.root.classList.toggle('away', slots.has(slot));
+  }
+
   /** 必殺技の待ち時間（0〜1、B・横B・下B・上B の順）。null なら出さない */
   setCooldowns(frac: number[] | null): void {
     const r = this.cdRow;

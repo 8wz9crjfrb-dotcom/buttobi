@@ -215,6 +215,21 @@ export class Room extends DurableObject<Env> {
     }
   }
 
+  /** 1つの接続を除いて全員に送る（戻ってきた本人には送らない） */
+  private broadcastExcept(except: WebSocket, msg: ServerMsg): void {
+    const data = JSON.stringify(msg);
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === except) continue;
+      const a = ws.deserializeAttachment() as Attachment | null;
+      if (!a || (a.slot < 0 && a.slot !== SPECTATOR)) continue;
+      try {
+        ws.send(data);
+      } catch {
+        /* 切断済み */
+      }
+    }
+  }
+
   private connectedSlots(): Set<number> {
     const s = new Set<number>();
     for (const ws of this.ctx.getWebSockets()) {
@@ -290,7 +305,8 @@ export class Room extends DurableObject<Env> {
       if (msg.rejoin && this.lobby) {
         const r = msg.rejoin;
         const h = this.lobby.humans.find((x) => x.slot === r.slot && x.token === r.token);
-        if (h && !connected.has(h.slot) && (h.goneAt === 0 || Date.now() - h.goneAt < REJOIN_GRACE)) {
+        // 対戦中は、試合が終わるまでいつでも戻れる（アプリを閉じた・自分で抜けた人も）
+        if (h && !connected.has(h.slot) && (h.goneAt === 0 || !!this.sim || Date.now() - h.goneAt < REJOIN_GRACE)) {
           h.goneAt = 0;
           ws.serializeAttachment({ slot: h.slot, code: this.lobby.code });
           if (this.sim) {
@@ -303,8 +319,12 @@ export class Room extends DurableObject<Env> {
           this.send(ws, { t: 'lobby', lobby: this.lobbyInfo() });
           if (this.sim && this.setup) this.send(ws, { t: 'start', setup: this.setup });
           this.pushLobby();
+          this.broadcastExcept(ws, { t: 'notice', msg: `${h.name} さんが戻ってきました` });
           return;
         }
+        // 戻れなかった（試合が終わってルームから外れた、時間が過ぎた など）
+        this.send(ws, { t: 'error', code: 'notfound', msg: '前の対戦には戻れませんでした（対戦が終わったか、時間が過ぎました）。' });
+        return ws.close(1000, 'notfound');
       }
       const active = this.lobby && this.lobby.humans.some((h) => connected.has(h.slot));
       // 観戦：満員でも対戦中でも、見るだけなら入れる
@@ -517,9 +537,15 @@ export class Room extends DurableObject<Env> {
     const h = l.humans.find((x) => x.slot === slot);
     if (voluntary || !h) {
       if (!this.sim) l.humans = l.humans.filter((x) => x.slot !== slot);
-      else if (h) h.token = makeToken(); // 抜けた人は戻れない
+      // 対戦中に自分で抜けた人も、試合が終わるまでは戻れる（CPU が代わりに操作する）
+      else if (h) h.goneAt = Date.now();
     } else {
       h.goneAt = Date.now();
+    }
+    // ほかの人に知らせる
+    if (h) {
+      const what = voluntary ? '抜けました' : '通信が切れました';
+      this.broadcast({ t: 'notice', msg: `${h.name} さんが${what}${this.sim ? '（戻るまで CPU が代わりに操作します）' : ''}` });
     }
     const remaining = l.humans.filter((x) => connected.has(x.slot));
     if (remaining.length === 0) {

@@ -22,6 +22,45 @@ export interface NetHandlers {
   onReconnecting(attempt: number): void;
   /** つなぎ直せた */
   onReconnected(): void;
+  /** ほかの人のお知らせ（抜けた・通信が切れた・戻ってきた） */
+  onNotice(msg: string): void;
+}
+
+/** 対戦中のルームに戻るための情報（アプリを閉じても残す。30分で使えなくなる） */
+export interface RejoinInfo {
+  baseUrl: string;
+  code: string;
+  slot: number;
+  token: string;
+  name: string;
+  charId: string;
+  costume?: string;
+  at: number;
+}
+const REJOIN_KEY = 'buttobi-rejoin-v1';
+const REJOIN_TTL = 30 * 60 * 1000;
+export function loadRejoin(): RejoinInfo | null {
+  try {
+    const r = JSON.parse(localStorage.getItem(REJOIN_KEY) ?? 'null') as RejoinInfo | null;
+    if (r && r.token && Date.now() - r.at < REJOIN_TTL) return r;
+  } catch {
+    // 読めない
+  }
+  return null;
+}
+export function clearRejoin(): void {
+  try {
+    localStorage.removeItem(REJOIN_KEY);
+  } catch {
+    // 保存領域が使えない
+  }
+}
+function saveRejoin(r: RejoinInfo): void {
+  try {
+    localStorage.setItem(REJOIN_KEY, JSON.stringify(r));
+  } catch {
+    // 保存領域が使えない
+  }
 }
 
 /** つなぎ直す間隔（ms）。これを全部試してだめならあきらめる（合計 約45秒） */
@@ -69,6 +108,19 @@ export class NetClient {
   private errored = false;
 
   constructor(private handlers: NetHandlers) {}
+
+  /** 覚えておいた情報で、前のルームの同じ枠に戻る */
+  rejoin(r: RejoinInfo): void {
+    this.close();
+    this.closedByUser = false;
+    this.errored = false;
+    this.params = { baseUrl: r.baseUrl, code: r.code, name: r.name, charId: r.charId, costume: r.costume };
+    this.slot = r.slot;
+    this.token = r.token;
+    this.reconnecting = true;
+    this.attempt = 0;
+    this.open(false);
+  }
 
   connect(baseUrl: string, code: string, create: boolean, name: string, charId: string, costume?: string, spectate = false): void {
     this.close();
@@ -133,6 +185,9 @@ export class NetClient {
         const wasReconnecting = this.reconnecting;
         this.slot = m.slot;
         this.token = m.token;
+        // アプリを閉じても戻れるように、ルームと合言葉を覚えておく（観戦は除く）
+        const p = this.params;
+        if (p && m.slot >= 0 && m.token) saveRejoin({ baseUrl: p.baseUrl, code: p.code, slot: m.slot, token: m.token, name: p.name, charId: p.charId, costume: p.costume, at: Date.now() });
         this.attempt = 0;
         this.reconnecting = false;
         if (wasReconnecting) this.handlers.onReconnected();
@@ -165,6 +220,9 @@ export class NetClient {
       }
       case 'end':
         this.handlers.onEnd(m.results);
+        break;
+      case 'notice':
+        this.handlers.onNotice(m.msg);
         break;
       case 'pong':
         this.rtt = performance.now() - m.c;

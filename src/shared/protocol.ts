@@ -12,7 +12,7 @@ import {
   type ViewState,
 } from './types';
 
-export const PROTOCOL_VERSION = 16;
+export const PROTOCOL_VERSION = 17;
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -66,6 +66,8 @@ export type ServerMsg =
   /** me = 受け取った人の選手について、処理済みの入力番号(a)と完全な状態(st) */
   | { t: 'snap'; s: EncodedState; me?: { a: number; st: FighterSnapshot } }
   | { t: 'end'; results: ResultEntry[] }
+  /** ほかの人のお知らせ（抜けた・通信が切れた・戻ってきた） */
+  | { t: 'notice'; msg: string }
   | { t: 'pong'; c: number }
   | { t: 'error'; code: 'full' | 'taken' | 'notfound' | 'inmatch' | 'version' | 'bad'; msg: string };
 

@@ -15,7 +15,7 @@ import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
 import { SocialClient } from './social';
-import { NetClient } from './net';
+import { clearRejoin, loadRejoin, NetClient } from './net';
 import { Predictor } from './predictor';
 import {
   canInstall,
@@ -340,7 +340,11 @@ function startDemo(): void {
 
 function endToMenu(): void {
   void keepAwake(false);
+  // 対戦の途中で抜けたときは、あとで戻れるように覚えておく（試合が終わってから抜けたときは忘れる）
+  const midMatch = session?.kind === 'net' && !!lobby?.inMatch && !resultsShown;
   net.close();
+  if (!midMatch) clearRejoin();
+  else toast('試合が終わるまでは、「みんなで」から戻れます', 4000);
   social.shareRoom(null);
   startDemo();
   showMenu();
@@ -607,6 +611,29 @@ function showFriends(): void {
         }),
       );
       root.querySelectorAll<HTMLElement>('[data-join]').forEach((b) => b.addEventListener('click', () => joinRoom(b.dataset.join!, showFriends)));
+    },
+  );
+}
+
+/** 前のルームの対戦に戻る */
+function rejoinRoom(): void {
+  const r = loadRejoin();
+  if (!r) return showMenu('multi');
+  showScreen(`<h2>ルーム ${esc(r.code)} に戻っています…</h2>`, 'overlay');
+  net.rejoin(r);
+}
+
+/** はじめるを押したとき：前に対戦の途中で抜けたルームに戻るか */
+function showRejoinPrompt(): void {
+  const r = loadRejoin()!;
+  showScreen(
+    `<h2>対戦の途中で抜けたルームがあります</h2>
+     <p class="help">ルーム ${esc(r.code)} の対戦がまだ続いていれば、続きから戻れます（抜けている間は CPU が代わりに操作しています）。</p>
+     <div class="footer"><button class="btn" id="no">メニューへ</button><button class="btn primary" id="yes">戻る</button></div>`,
+    'overlay',
+    (root) => {
+      root.querySelector('#yes')!.addEventListener('click', rejoinRoom);
+      root.querySelector('#no')!.addEventListener('click', () => showMenu());
     },
   );
 }
@@ -1010,6 +1037,8 @@ function showTitle(): void {
           joinRoom(room, () => showMenu());
           return;
         }
+        // 前に対戦の途中で抜けたルームがあれば、戻るかたずねる
+        if (loadRejoin() && settings.serverUrl) return showRejoinPrompt();
         if (!progress.tutorialDone && !progress.tutorialAsked) {
           progress.tutorialAsked = true;
           saveProgress(progress);
@@ -1043,7 +1072,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
   // アイコンの台の色（ボタンごと）
   const tile: Record<string, string> = {
     solo: '#ff8a3d', multi: '#3d8bff', gacha: '#ff4fa3', records: '#e0a800',
-    cpu: '#ff8a3d', horde: '#e5484d', training: '#2fbf71', create: '#3d8bff', join: '#8a5cff', invite: '#2fbf71', friends: '#ff8a3d',
+    cpu: '#ff8a3d', horde: '#e5484d', training: '#2fbf71', create: '#3d8bff', join: '#8a5cff', invite: '#2fbf71', friends: '#ff8a3d', rejoin: '#e5484d',
   };
   const big = (id: string, _icon: string, title: string, desc: string, extra = '', cls = '') =>
     `<button class="m-btn ${cls}" id="${id}">${iconTile(id, tile[id] ?? '#555')}<span class="m-tx"><b>${title}</b><small>${desc}</small></span>${extra}</button>`;
@@ -1055,6 +1084,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
          ${big('training', '🥊', '練習モード', '技やコンボを試す')}`
       : sub === 'multi'
         ? `<div class="m-subhead"><button class="btn small" id="m-back">‹ もどる</button><b>みんなで</b></div>
+           ${online && loadRejoin() ? big('rejoin', '↩', `ルーム ${loadRejoin()!.code} の対戦に戻る`, '途中で抜けた対戦の続きに入る', '', 'primary') : ''}
            ${big('create', '🏠', 'ルームを作る', online ? '友達とオンライン対戦' : 'サーバーが設定されていません', '', online ? 'primary' : 'off')}
            ${big('join', '🔢', 'コードで参加', online ? '4桁の合言葉を入力' : 'サーバーが設定されていません', '', online ? '' : 'off')}
            ${big('friends', '👥', 'フレンド', online ? (social.connected ? `オンライン ${social.onlineCount}人・公開ルームに参加` : 'フレンドの追加・オンラインの確認') : 'サーバーが設定されていません', dot(social.state.inbox.length > 0), online ? '' : 'off')}
@@ -1094,6 +1124,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
         on('join', () => toast('オンライン対戦のサーバーが設定されていません（設定画面で指定できます）'));
       }
       on('invite', showGameUrl);
+      on('rejoin', rejoinRoom);
       on('friends', () => (online ? showFriends() : toast('オンライン対戦のサーバーが設定されていません（設定画面で指定できます）')));
       on('gacha', showGacha);
       on('records', () => showRecords('missions'));
@@ -1165,7 +1196,7 @@ document.addEventListener('installable', () => {
   if (screensEl.querySelector('.menu-screen')) showMenu();
 });
 
-/** CPU戦のキャラ選択。fromRules = ルール画面の「キャラ選択へ」から来た（もどるでルール画面に戻る） */
+/** CPU戦のキャラ選択。fromRules = ルール画面の「キャラを変える」から来た（もどるでルール画面に戻る） */
 function showLocalSetup(fromRules = false): void {
   showCharSelect({
     title: 'CPUと対戦：キャラを選ぶ',
@@ -1192,7 +1223,7 @@ function showLocalRules(): void {
        ${ruleControls(rules)}
      </div>
      <div class="team-pick" data-team></div>
-     <div class="footer"><button class="btn" id="back">キャラ選択へ</button><button class="btn primary" id="start">対戦開始！</button></div>`,
+     <div class="footer"><button class="btn" id="to-menu">もどる</button><button class="btn" id="back">キャラを変える</button><button class="btn primary" id="start">対戦開始！</button></div>`,
     'overlay',
     (root) => {
       // チーム分け（タップでチームが変わる）
@@ -1223,6 +1254,12 @@ function showLocalRules(): void {
         settings.rules = { ...rules };
         saveSettings(settings);
         showLocalSetup(true);
+      });
+      // もどる：設定を覚えたまま「ひとりで」のメニューへ
+      root.querySelector('#to-menu')!.addEventListener('click', () => {
+        settings.rules = { ...rules };
+        saveSettings(settings);
+        showMenu('solo');
       });
       root.querySelector('#start')!.addEventListener('click', () => {
         settings.rules = { ...rules };
@@ -2358,12 +2395,16 @@ function showTrainingSetup(): void {
      <div class="seg wrap" data-seg="dummy">${chips}</div>
      <div class="opt-label">練習相手の動き（対戦中も II ボタンで変えられます）</div>
      ${seg('mode', DUMMY_MODES, training.mode)}
-     <div class="footer"><button class="btn" id="back">キャラ選択へ</button><button class="btn primary" id="start">練習開始！</button></div>`,
+     <div class="footer"><button class="btn" id="to-menu">もどる</button><button class="btn" id="back">キャラを変える</button><button class="btn primary" id="start">練習開始！</button></div>`,
     'overlay',
     (root) => {
       bindStages(root, (v) => (settings.stageId = v));
       bindSeg(root, 'dummy', (v) => (training.dummyChar = v));
       bindSeg(root, 'mode', (v) => (training.mode = v as DummyMode));
+      root.querySelector('#to-menu')!.addEventListener('click', () => {
+        saveSettings(settings);
+        showMenu('solo');
+      });
       // キャラ選択から「もどる」で、この画面に戻る
       root.querySelector('#back')!.addEventListener('click', () =>
         showCharSelect({ title: '練習モード：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: '決定', onBack: () => showTrainingSetup(), onNext: () => showTrainingSetup() }),
@@ -2647,6 +2688,8 @@ const net = new NetClient({
     lobby = l;
     updateAgainInfo();
     updateRoomShare();
+    // 対戦中：通信が切れた・抜けた人の枠に「CPUが操作中」を出す
+    if (session?.kind === 'net') hud.setAway(new Set(l.players.filter((p) => !p.cpu && !p.connected).map((p) => p.slot)));
     // ロビーからキャラ選択を開いている間は画面を切り替えない（戻ったときに最新の内容を出す）
     if (screensEl.querySelector('[data-charsel]')) return;
     if (screensEl.querySelector('[data-lobby]')) showLobby();
@@ -2663,6 +2706,7 @@ const net = new NetClient({
   },
   onError(code, msg) {
     social.shareRoom(null);
+    if (code === 'notfound') clearRejoin();
     if (code === 'taken' && creating && createAttempts < 6) {
       createRoom(createAttempts + 1);
       return;
@@ -2702,6 +2746,9 @@ const net = new NetClient({
         showLobby();
       }
     }, 600);
+  },
+  onNotice(msg) {
+    toast(msg, 4000);
   },
   onClose() {
     toast('サーバーとの接続が切れました', 3500);
@@ -2878,6 +2925,7 @@ function showLobby(): void {
       );
       root.querySelector('#leave')!.addEventListener('click', () => {
         net.close();
+        clearRejoin();
         social.shareRoom(null);
         lobby = null;
         showMenu();

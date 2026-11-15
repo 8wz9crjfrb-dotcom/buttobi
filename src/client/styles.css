@@ -3197,3 +3197,22 @@ table.rec td:first-child {
 .hud-p {
   position: relative;
 }
+
+/* HUD：通信が切れた・抜けた人（CPU が代わりに操作中） */
+.hud-p.away {
+  opacity: 0.75;
+}
+.hud-p.away::before {
+  content: 'CPUが操作中';
+  position: absolute;
+  top: -16px;
+  left: 62%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 900;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #ff8a3d;
+  color: #1b1b28;
+  white-space: nowrap;
+}

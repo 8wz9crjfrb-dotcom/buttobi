@@ -81,6 +81,8 @@ export const ICONS: Record<string, string> = {
      <path d="M25 40v-4a8 8 0 0 1 16 0v4z" fill="currentColor" stroke="none" opacity=".75"/>
      <path d="M36 4.5c-1.6-1.8-4.4-.6-4.2 1.7.1 1.6 2.4 3 4.2 4.6 1.8-1.6 4.1-3 4.2-4.6.2-2.3-2.6-3.5-4.2-1.7z" fill="currentColor" stroke="none"/>`,
   ),
+  // 対戦に戻る：くるっと戻る矢印
+  rejoin: svg(`<path d="M14 18h17a9 9 0 0 1 0 18H18"/><path d="M20 10l-8 8 8 8"/>`),
   // 友達にゲームを教える：くさりのリンク
   invite: svg(
     `<path d="M20 28l8-8"/>
