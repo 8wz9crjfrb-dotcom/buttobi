@@ -3680,7 +3680,10 @@ table.rec td:first-child {
 }
 .pc-pic {
   flex: none;
-  width: min(150px, 26vw);
+  /* カードの幅に合わせる（狭い画面で右側がつぶれないように） */
+  width: 30%;
+  max-width: 150px;
+  align-self: center;
   aspect-ratio: 4 / 5;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.22);
@@ -3703,13 +3706,14 @@ table.rec td:first-child {
 .pc-r {
   position: relative;
   z-index: 1;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
 }
 .pc-nm {
-  font-size: 24px;
+  font-size: clamp(16px, 2.9vw, 24px);
   font-weight: 900;
   line-height: 1.1;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
@@ -3728,8 +3732,14 @@ table.rec td:first-child {
 }
 .pc-cos,
 .pc-code {
-  font-size: 11px;
+  font-size: clamp(10px, 1.45vw, 11px);
   opacity: 0.9;
+}
+.pc-cos {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .pc-bub {
   align-self: flex-start;
@@ -3742,24 +3752,32 @@ table.rec td:first-child {
 }
 .pc-stats {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   margin-top: auto;
 }
+/* 数字の箱は1列に並べ、カードが狭いときは箱を縮める */
 .pc-st {
-  min-width: 56px;
-  padding: 4px 7px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 76px;
+  padding: 4px 2px;
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.28);
   text-align: center;
 }
 .pc-st b {
   display: block;
-  font-size: 15px;
+  font-size: clamp(12px, 1.9vw, 15px);
+  white-space: nowrap;
 }
 .pc-st small {
+  display: block;
   font-size: 9px;
+  letter-spacing: -0.05em;
   opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* フレンド画面：左に一覧、右に名刺カード */
@@ -3770,7 +3788,7 @@ table.rec td:first-child {
   gap: 14px;
 }
 .fr-left {
-  width: min(250px, 34vw);
+  width: min(240px, 30vw);
   flex: none;
   overflow-y: auto;
   display: flex;
@@ -3863,7 +3881,7 @@ table.rec td:first-child {
   align-items: flex-start;
 }
 .pe-card {
-  flex: 1.1;
+  flex: 1.4;
   min-width: 0;
   display: flex;
   justify-content: center;
