@@ -1877,9 +1877,9 @@ function playGachaOpening(res: PullResult[]): void {
     sfx.gachaFlip(res[i].rarity);
     if (flipped >= res.length) {
       phase = 'shown';
-      at(ssr ? 600 : 300, () => sfx.gacha(ssr ? 5 : best >= 4 ? 4 : 3));
-      // 出た衣装をしばらく見せてから結果へ（SSR は長めに）
-      at((ten ? 1800 : 1700) + (ur ? 1500 : ssr ? 900 : 0), finish);
+      at((ssr ? 600 : 300) + 400, () => sfx.gacha(ssr ? 5 : best >= 4 ? 4 : 3));
+      // めくり終わって（0.75秒）から、出た衣装をしばらく見せて結果へ（SSR は長めに）
+      at(750 + (ten ? 1800 : 1700) + (ur ? 1500 : ssr ? 900 : 0), finish);
     }
   };
   /** カードを並べて、gap ごとに1枚ずつめくる */
@@ -1895,7 +1895,8 @@ function playGachaOpening(res: PullResult[]): void {
         return `<div class="gx-card r${r.rarity}"><div class="in"><div class="back"></div><div class="front"><b>${rarityName(r.rarity)}</b><div class="n">${c.name}</div><div class="c">${getCharacter(c.charId).name}</div>${r.dup ? '' : '<i class="new">NEW</i>'}${r.rarity === 6 ? URSP : ''}</div></div></div>`;
       })
       .join('');
-    flipRest(ten ? 140 : 0, 150);
+    // まず裏のまま並べて見せてから、1枚ずつゆっくりめくる
+    flipRest(ten ? 260 : 0, ten ? 600 : 700);
   };
   const open = () => {
     phase = 'open';
