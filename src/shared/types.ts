@@ -195,7 +195,11 @@ export type GameEvent =
   | { k: 'finish'; x: number; y: number; s: number }
   /** ギリギリ場外まで届かない一撃（演出：少しスローで寄る）／そのふっとびが終わった（「セーフ」） */
   | { k: 'close'; x: number; y: number; s: number }
-  | { k: 'safe'; x: number; y: number; s: number };
+  | { k: 'safe'; x: number; y: number; s: number }
+  /** 深夜の金庫室：これから飛んでくるレーザーの通り道（i = 何本目か） */
+  | { k: 'aim'; x: number; y: number; vx: number; vy: number; i: number }
+  /** ガチャ会場：ルーレットが止まった（マスごとに 1 = 当たり、-1 = ハズレ、0 = なし） */
+  | { k: 'roulette'; t: number[] };
 
 /** 描画用の選手の状態（ローカル対戦でもオンライン対戦でも同じ形） */
 export interface ViewFighter {
@@ -228,6 +232,9 @@ export const FX_CONFUSED = 8;
 export const FX_CHARGED = 16;
 /** プロテイン（トレーナー）でひるまない */
 export const FX_ARMOR = 128;
+/** 配信スタジオの視聴者リクエストで、でっかい・ちっちゃい */
+export const FX_BIG = 1024;
+export const FX_SMALL = 2048;
 /** 3B の仕事（0〜2）を入れるビットの位置（256〜512） */
 export const FX_JOB_SHIFT = 8;
 export const fxJob = (fx: number) => (fx >> FX_JOB_SHIFT) & 3;

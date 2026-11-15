@@ -93,6 +93,29 @@ export class CpuController {
       return { mx: f.facing, my: 0, buttons: 0 };
     }
 
+    // ガチャ会場のルーレット：ハズレのマスに立っていたら、近い当たり（なければ何もないマス）へ移る
+    const tiles = f.grounded && f.groundRef === -1 && lv >= 3 ? sim.rouletteShown() : null;
+    if (tiles) {
+      const tw = (m.x2 - m.x1) / tiles.length;
+      const mine = Math.max(0, Math.min(tiles.length - 1, Math.floor((f.x - m.x1) / tw)));
+      if (tiles[mine] < 0 || (lv >= 6 && tiles[mine] === 0)) {
+        let best = -1;
+        let bestD = Infinity;
+        tiles.forEach((r, i) => {
+          if (r < 0 || (lv >= 6 && r === 0 && tiles.some((x) => x > 0))) return;
+          const d = Math.abs(m.x1 + tw * (i + 0.5) - f.x) - (r > 0 ? 1.5 : 0);
+          if (d < bestD) {
+            bestD = d;
+            best = i;
+          }
+        });
+        if (best >= 0) {
+          b.holdFrames = 0;
+          return { mx: Math.sign(m.x1 + tw * (best + 0.5) - f.x), my: 0, buttons: 0 };
+        }
+      }
+    }
+
     // ボタンを押し続けている途中（溜めやガード）
     if (b.holdFrames > 0) {
       b.holdFrames--;

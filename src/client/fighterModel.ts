@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import { threebDef, type CharacterDef } from '../shared/characters';
 import type { Accessory, Costume, CostumeFx } from '../shared/costumes';
 import { moveOf } from '../shared/moves';
-import { FX_ARMOR, FX_BIKE, FX_CHARGED, FX_POWER, FX_SPEED, fxJob, type ViewFighter } from '../shared/types';
+import { FX_ARMOR, FX_BIG, FX_BIKE, FX_CHARGED, FX_POWER, FX_SMALL, FX_SPEED, fxJob, type ViewFighter } from '../shared/types';
+import { SIZE_REQ } from '../shared/sim';
 
 const FWD = -Math.PI / 2; // 腕・脚を前に向ける回転（x軸まわり）
 const UP = -Math.PI;
@@ -2168,6 +2169,9 @@ export class FighterModel {
     this.jobParts.forEach((list, k) => list.forEach((o) => (o.visible = k === j)));
   }
 
+  /** 見た目の大きさの倍率（視聴者リクエスト） */
+  private sizeK = 1;
+
   // ---------------------------------------------------------------- 毎フレームの更新
   update(v: ViewFighter, def: CharacterDef, time: number, dt: number): void {
     // 3B：仕事に合わせて見た目と性能（技の速さ）を切り替える
@@ -2181,7 +2185,10 @@ export class FighterModel {
     this.root.visible = visible;
     if (!visible) return;
     this.root.position.set(v.x, v.y, 0);
-    this.root.scale.setScalar(this.appear);
+    // 配信スタジオの視聴者リクエスト：でっかく・ちっちゃく（なめらかに変える）
+    const sizeTarget = v.fx & FX_BIG ? SIZE_REQ.big : v.fx & FX_SMALL ? SIZE_REQ.small : 1;
+    this.sizeK += (sizeTarget - this.sizeK) * Math.min(1, dt * 8);
+    this.root.scale.setScalar(this.appear * this.sizeK);
 
     // 向き：少しカメラ側を向かせる
     const target = this.victory ? 0 : this.previewTurn ?? v.facing * (Math.PI / 2 - 0.45);

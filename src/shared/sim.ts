@@ -14,6 +14,8 @@ import {
   EMPTY_INPUT,
   FX_BIKE,
   FX_ARMOR,
+  FX_BIG,
+  FX_SMALL,
   FX_CHARGED,
   FX_JOB_SHIFT,
   FX_CONFUSED,
@@ -100,7 +102,7 @@ const SNAPSHOT_KEYS = [
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHp', 'bikeHitCd', 'wallHit', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
-  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'goals', 'closeCall',
+  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'goals', 'closeCall', 'size', 'warpCd',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -193,6 +195,10 @@ export class Fighter {
   bike = 0;
   /** ギリギリ耐えたふっとび中（1 = ひるみが終わったら「セーフ」を出す） */
   closeCall = 0;
+  /** 体の大きさ（配信スタジオの視聴者リクエスト）：0 = ふつう、1 = でっかい、2 = ちっちゃい */
+  size = 0;
+  /** ワープホール（電脳空間）を続けてくぐれないようにする待ち時間 */
+  warpCd = 0;
   /** 自転車の残りの耐久（%）。弱い攻撃はこの分まで受けても降りない */
   bikeHp = 0;
   /** 最後に一撃を受けた壁（物理ファイアウォール）の番号。同じ壁からは1回だけ */
@@ -266,8 +272,8 @@ export class Fighter {
       self[k] = Array.isArray(v) ? [...v] : v;
     }
     this.moveHit = new Set(s.moveHit ?? []);
-    // 3B は仕事によって体の性能が変わる
-    if (this.def.id === 'threeb') this.def = threebDef(this.job);
+    // 3B は仕事によって、配信スタジオでは大きさによって体の性能が変わる
+    applySize(this);
   }
 
   /** ガードの最大値（警備員の特性「巡回中」は1.5倍） */
@@ -382,11 +388,58 @@ export const GYM_SLIP = 300;
 export const GYM_GRIP = 0.12;
 /** 24時間ジムの清掃タイム中（床がすべる）か。試合の経過フレームだけで決まる（先行表示・画面の演出でも同じ） */
 export function isSlippery(frame: number, gimmicks: boolean, kind: string): boolean {
-  if (!gimmicks || kind !== 'gym') return false;
-  const t = frame - COUNTDOWN_FRAMES - 300;
-  if (t < 0) return false;
-  const at = (t % GIMMICK.interval) - GIMMICK.warn;
+  const at = gimmickAt(frame, gimmicks, kind, 'gym');
   return at >= 0 && at < GYM_SLIP;
+}
+/**
+ * ステージギミックが本番になってから何フレームたったか（予告中・ギミックなし・別のステージなら -1）。
+ * 試合の経過フレームだけで決まるので、先行表示や画面の演出でも同じ値になる
+ */
+export function gimmickAt(frame: number, gimmicks: boolean, kind: string, want: string): number {
+  const ph = gimmickPhase(frame, gimmicks, kind, want);
+  return ph >= GIMMICK.warn ? ph - GIMMICK.warn : -1;
+}
+/** ステージギミックの1周の中の位置（0 = 予告の始まり。予告は GIMMICK.warn フレーム）。ギミックなしなら -1 */
+export function gimmickPhase(frame: number, gimmicks: boolean, kind: string, want: string): number {
+  if (!gimmicks || kind !== want) return -1;
+  const t = frame - COUNTDOWN_FRAMES - 300;
+  return t < 0 ? -1 : t % GIMMICK.interval;
+}
+/** 電脳空間のワープホール：出ている時間、台の端からの位置、床からの高さ、大きさ、続けてくぐれない時間 */
+export const WARP = { time: 300, inset: 1.1, y: 0.95, r: 0.85, cd: 40 };
+/** ガチャ会場の当たり床ルーレット：マスの数、当たり・ハズレの数、当たりの回復量、ルーレットが止まるタイミング（予告の何フレーム目か） */
+export const ROULETTE = { tiles: 6, win: 2, lose: 2, heal: 10, stopAt: 45 };
+/** 配信スタジオの視聴者リクエスト：大きさが変わる時間、でっかい・ちっちゃいの倍率 */
+export const SIZE_REQ = { time: 300, big: 1.45, small: 0.62 };
+/** 深夜の金庫室：レーザーの本数、撃つ間隔、速さ、角度の幅（度） */
+export const VAULT_LASER = { count: 3, gap: 22, speed: 15, angle: 28 };
+
+/** 大きさを変えた体の性能（でっかい：重くて強いが遅い／ちっちゃい：軽くて弱いが速い） */
+const sizedDefs = new Map<string, CharacterDef>();
+function sizedDef(base: CharacterDef, size: number): CharacterDef {
+  if (!size) return base;
+  const key = `${base.id}:${base.walkSpeed}:${base.weight}:${size}`;
+  let d = sizedDefs.get(key);
+  if (!d) {
+    const big = size === 1;
+    const k = big ? SIZE_REQ.big : SIZE_REQ.small;
+    d = {
+      ...base,
+      scale: base.scale * k,
+      weight: base.weight * (big ? 1.3 : 0.78),
+      dmgMul: base.dmgMul * (big ? 1.15 : 0.85),
+      kbMul: base.kbMul * (big ? 1.1 : 0.9),
+      walkSpeed: base.walkSpeed * (big ? 0.9 : 1.12),
+      runSpeed: base.runSpeed * (big ? 0.9 : 1.12),
+    };
+    sizedDefs.set(key, d);
+  }
+  return d;
+}
+/** 仕事（3B）と大きさ（視聴者リクエスト）に合わせて、体の性能を入れ直す */
+function applySize(f: Fighter): void {
+  const base = f.def.id === 'threeb' ? threebDef(f.job) : getCharacter(f.def.id);
+  f.def = sizedDef(base, f.size);
 }
 
 export class Sim {
@@ -858,6 +911,7 @@ export class Sim {
     if (f.armor > 0) f.armor--;
     if (f.jobBuff > 0) f.jobBuff--;
     if (f.jobCd > 0) f.jobCd--;
+    if (f.warpCd > 0) f.warpCd--;
     // 必殺技の待ち時間は、その技を出し終わってから減り始める
     for (const id of ['nspecial', 'sspecial', 'dspecial', 'uspecial'] as const) {
       const k = SPECIAL_CD[id];
@@ -922,6 +976,12 @@ export class Sim {
       const dv = f.vx - vxBefore;
       if (vxBefore !== 0 && Math.sign(dv) !== Math.sign(vxBefore)) f.vx = vxBefore + dv * GYM_GRIP;
     }
+  }
+
+  /** ガチャ会場のルーレットが止まってから本番までの間だけ、当たり・ハズレのマスを返す（CPUがよけるため） */
+  rouletteShown(): number[] | null {
+    const ph = gimmickPhase(this.frame, !!this.setup.rules.gimmicks, this.stage.theme.kind, 'gacha');
+    return ph >= ROULETTE.stopAt && ph < GIMMICK.warn ? this.gimmickTiles : null;
   }
 
   /** 24時間ジムの清掃タイム中（床がすべる）か */
@@ -1383,6 +1443,10 @@ export class Sim {
   // ------------------------------------------------------------------ ステージギミック（ルールでオン・オフ）
   private gimmickDir = 1;
   private gimmickX = 0;
+  /** ガチャ会場のルーレットの結果（マスごとに 1 = 当たり、-1 = ハズレ、0 = なし） */
+  private gimmickTiles: number[] = [];
+  /** 深夜の金庫室：これから撃つレーザー（出る位置と向き） */
+  private gimmickLasers: { x: number; y: number; vx: number; vy: number }[] = [];
   private updateGimmick(): void {
     if (!this.setup.rules.gimmicks) return;
     const kind = this.stage.theme.kind;
@@ -1399,10 +1463,40 @@ export class Sim {
       const alive = this.fighters.filter((f) => f.alive);
       const target = alive[Math.floor(this.rng.next() * alive.length)];
       this.gimmickX = kind === 'lab' && target ? target.x : cx;
-      const y = kind === 'vault' || kind === 'arcade' || kind === 'gym' ? m.top + 0.6 : kind === 'studio' ? m.top + 2.2 : m.top + 8;
+      const y = kind === 'arcade' || kind === 'gym' ? m.top + 0.6 : m.top + 8;
       this.events.push({ k: 'warn', h: kind, x: this.gimmickX, y, d: this.gimmickDir });
+      if (kind === 'gacha') {
+        // 当たり床ルーレット：当たり・ハズレのマスを決めておく（ルーレットが止まったら見せる）
+        const order = Array.from({ length: ROULETTE.tiles }, (_, i) => i);
+        for (let i = order.length - 1; i > 0; i--) {
+          const j = Math.floor(this.rng.next() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        this.gimmickTiles = Array(ROULETTE.tiles).fill(0);
+        order.slice(0, ROULETTE.win).forEach((i) => (this.gimmickTiles[i] = 1));
+        order.slice(ROULETTE.win, ROULETTE.win + ROULETTE.lose).forEach((i) => (this.gimmickTiles[i] = -1));
+      }
+      if (kind === 'vault') {
+        // レーザー：左右どちらかの外から、ばらばらの高さと角度で飛んでくる。通り道を先に見せる
+        this.gimmickLasers = [];
+        for (let i = 0; i < VAULT_LASER.count; i++) {
+          const side = this.rng.next() < 0.5 ? -1 : 1;
+          const x = side < 0 ? m.x1 - 5 : m.x2 + 5;
+          // 上から下へ・下から上へ斜めに。台の真ん中の上（高さ0.5〜4m）を必ず通るように、出る高さを決める
+          const ang = ((this.rng.next() * 2 - 1) * VAULT_LASER.angle * Math.PI) / 180;
+          const dir = -side;
+          const vx = Math.cos(ang) * VAULT_LASER.speed * dir;
+          const vy = Math.sin(ang) * VAULT_LASER.speed;
+          const yc = m.top + 0.5 + this.rng.next() * 3.5;
+          const y0 = yc - (vy / vx) * (cx - x);
+          this.gimmickLasers.push({ x, y: y0, vx, vy });
+          this.events.push({ k: 'aim', x, y: y0, vx, vy, i });
+        }
+      }
       return;
     }
+    // ルーレットが止まった：当たり・ハズレのマスを見せる（本番まで少し動ける時間がある）
+    if (kind === 'gacha' && ph === ROULETTE.stopAt) this.events.push({ k: 'roulette', t: [...this.gimmickTiles] });
     if (ph < GIMMICK.warn) return;
     const shot = (kind2: ShotKind, x: number, y: number, vx: number, vy: number, gravity: number, life: number, r: number, dmg: number, base: number, growth: number, angle: number, pierce: boolean) => {
       this.projectiles.push({
@@ -1423,28 +1517,70 @@ export class Sim {
         }
         break;
       case 'vault':
-        // 床の近くを横切るレーザー（ジャンプでよける）
-        if (at === 0) shot('laser', d > 0 ? m.x1 - 6 : m.x2 + 6, m.top + 0.55, d * 15, 0, 0, 160, 0.35, 8, 6, 6, 70, true);
+        // レーザー：予告した通り道を、少しずつ間をあけて飛んでくる
+        if (at % VAULT_LASER.gap === 0 && at / VAULT_LASER.gap < this.gimmickLasers.length) {
+          const l = this.gimmickLasers[at / VAULT_LASER.gap];
+          shot('laser', l.x, l.y, l.vx, l.vy, 0, 200, 0.42, 8, 6, 6, 70, true);
+        }
         break;
       case 'arcade':
         // 床を走り抜けるスクーター
         if (at === 0) shot('scooter', d > 0 ? m.x1 - 6 : m.x2 + 6, m.top + 0.55, d * 17, 0, 0, 160, 0.6, 10, 7, 8, 45, true);
         break;
       case 'studio':
-        // 横切るコメントの弾幕（2本）
-        if (at === 0) {
-          shot('comment', d > 0 ? m.x1 - 6 : m.x2 + 6, m.top + 2.2, d * 11, 0, 0, 220, 0.45, 5, 5, 4, 40, true);
-          shot('comment', d > 0 ? m.x1 - 12 : m.x2 + 12, m.top + 0.7, d * 11, 0, 0, 260, 0.45, 5, 5, 4, 40, true);
+        // 視聴者リクエスト：5秒間、全員の大きさが変わる（予告の向き d：1 = でっかく、-1 = ちっちゃく）
+        if (at === 0 || at === SIZE_REQ.time) {
+          for (const f of this.fighters) {
+            f.size = at === 0 ? (d > 0 ? 1 : 2) : 0;
+            applySize(f);
+          }
+          this.events.push({ k: 'poof', x: cx, y: m.top + 1 });
         }
         break;
       case 'cyber':
-      case 'timeline':
+        // ワープホール：台の左右の端に出入口。くぐると反対側の出入口から出てくる（勢いはそのまま）
+        if (at < WARP.time) {
+          for (const f of this.fighters) {
+            if (!f.alive || f.warpCd > 0 || f.state === 'grabbed' || f.state === 'ledge' || f.grabbing >= 0) continue;
+            for (const side of [-1, 1]) {
+              const px = side < 0 ? m.x1 + WARP.inset : m.x2 - WARP.inset;
+              const py = m.top + WARP.y;
+              if (Math.hypot(f.x - px, f.y + f.h / 2 - py) > WARP.r) continue;
+              const ox = side < 0 ? m.x2 - WARP.inset : m.x1 + WARP.inset;
+              this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot });
+              f.x = ox + (f.x - px);
+              f.warpCd = WARP.cd;
+              this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot });
+              break;
+            }
+          }
+        }
+        break;
       case 'gacha':
-        // 上から降ってくる（データ・通知・カプセル）
+        // 当たり床ルーレット：止まったときに台の床に立っている人は、当たりなら回復、ハズレなら小爆発
+        if (at === 0) {
+          const tw = w / ROULETTE.tiles;
+          for (const f of this.fighters) {
+            if (!f.alive || !f.grounded || f.groundRef !== -1) continue;
+            const i = Math.max(0, Math.min(ROULETTE.tiles - 1, Math.floor((f.x - m.x1) / tw)));
+            const r = this.gimmickTiles[i] ?? 0;
+            if (r > 0) {
+              f.damage = Math.max(0, f.damage - ROULETTE.heal);
+              this.events.push({ k: 'heal', x: f.x, y: f.y + f.h, s: f.slot });
+            } else if (r < 0 && f.invuln <= 0) {
+              this.knock(f, 0, 9, 8, 7, 90, 1, -1);
+              f.hitlag = 6;
+              this.events.push({ k: 'boom', x: f.x, y: f.y + 0.3 });
+              this.events.push({ k: 'hit', x: f.x, y: f.y + 0.3, p: 9, s: f.slot });
+            }
+          }
+        }
+        break;
+      case 'timeline':
+        // 上から降ってくる通知
         if (at % 12 === 0 && at < 72) {
           const x = m.x1 + this.rng.next() * w;
-          const k: ShotKind = kind === 'cyber' ? 'packet' : kind === 'timeline' ? 'notif' : 'capsule';
-          shot(k, x, m.top + 14, 0, -6, kind === 'gacha' ? 14 : 0, 200, 0.4, 5, 4, 4, 80, false);
+          shot('notif', x, m.top + 14, 0, -6, 0, 200, 0.4, 5, 4, 4, 80, false);
         }
         break;
       case 'livebar':
@@ -1717,7 +1853,7 @@ export class Sim {
           // ジョブチェンジ：美容師 → バンドマン → バーテンダー の順に着替える
           if (f.jobCd <= 0) {
             f.job = (f.job + 1) % 3;
-            f.def = threebDef(f.job);
+            applySize(f);
             f.jobBuff = THREEB_RULES.buff;
             f.jobCd = THREEB_RULES.cooldown;
             this.events.push({ k: 'poof', x: f.x, y: f.y + 0.9 * sc });
@@ -3121,6 +3257,7 @@ export class Sim {
           (f.confused > 0 ? FX_CONFUSED : 0) |
           (f.absorbCharge ? FX_CHARGED : 0) |
           (f.armor > 0 ? FX_ARMOR : 0) |
+          (f.size === 1 ? FX_BIG : f.size === 2 ? FX_SMALL : 0) |
           (f.job << FX_JOB_SHIFT) |
           (f.buzz << 5),
       })),

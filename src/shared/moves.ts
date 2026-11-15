@@ -573,7 +573,7 @@ const SPECIALS: Record<string, Specials> = {
 
 // 3B：下Bのジョブチェンジで、美容師（0）・バンドマン（1）・バーテンダー（2）の必殺技に切り替わる
 /** ジョブチェンジ（3つの仕事で共通）：くるっと回って着替える。回る瞬間に近くの相手へ軽い一撃 */
-const JOBCHANGE: MoveDef = { cd: 75, startup: 7, active: 6, end: 8, hitboxes: [{ x: 0, y: 0.95, r: 0.95 }], dmg: 3, base: 6, growth: 3, angle: 60, air: true, special: 'jobchange' };
+const JOBCHANGE: MoveDef = { cd: 57, startup: 7, active: 6, end: 8, hitboxes: [{ x: 0, y: 0.95, r: 0.95 }], dmg: 3, base: 6, growth: 3, angle: 60, air: true, special: 'jobchange' };
 const THREEB: Specials[] = [
   {
     // 美容師：シザーラッシュ（Bを連打すると続き、最後の一撃でふっとばす）

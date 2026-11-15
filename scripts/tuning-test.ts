@@ -1,7 +1,7 @@
 // 技の最適化（2026年11月）で変えた動きが、意図どおりかを確かめる
-import { Sim, COUNTDOWN_FRAMES, GYM_SLIP } from '../src/shared/sim';
+import { Sim, COUNTDOWN_FRAMES, GYM_SLIP, ROULETTE, SIZE_REQ, VAULT_LASER, WARP } from '../src/shared/sim';
 import { BIKE, CLOSE, DEFLECT, DRONE, GIMMICK, WALL } from '../src/shared/moves';
-import { BTN_A, BTN_B, type InputState } from '../src/shared/types';
+import { BTN_A, BTN_B, type GameEvent, type InputState } from '../src/shared/types';
 import { CpuController } from '../src/shared/ai';
 
 let fail = 0;
@@ -247,5 +247,81 @@ function run(sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
     for (const p of sim.projectiles) reach = Math.max(reach, p.x - x0);
   }
   check('配達バッグが約5m先まで届く', reach > 4.6, `${reach.toFixed(2)}m`);
+}
+// ---- ステージギミック（作り直したもの）
+/** ギミックありの試合を、ギミックの予告の始まりの直前まで進める */
+function gimmickSim(stageId: string, a = 'guard', b = 'thief'): Sim {
+  const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: a, cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: b, cpu: false, cpuLevel: 1 }], stageId, rules: { mode: 'stock', stocks: 3, timeLimit: 300, gimmicks: true }, seed: 3 });
+  // 予告が出るステップ（経過フレームが COUNTDOWN_FRAMES + 300 になるステップ）の直前で止める
+  while (sim.frame < COUNTDOWN_FRAMES + 299) sim.step(new Map());
+  return sim;
+}
+// 電脳空間：ワープホール
+{
+  const sim = gimmickSim('cyber');
+  const m = sim.stage.main;
+  run(sim, GIMMICK.warn + 5);
+  const f = sim.fighters[0];
+  sim.fighters[1].x = 0;
+  f.x = m.x2 - WARP.inset - 2.5;
+  let warped = false;
+  for (let i = 0; i < 90 && !warped; i++) {
+    run(sim, 1, () => ({ mx: 1, my: 0, buttons: 0 }));
+    if (f.x < 0) warped = true;
+  }
+  check('電脳空間：右のワープホールに入ると、左から出てくる', warped, `x=${f.x.toFixed(2)}`);
+  run(sim, WARP.time);
+  const x0 = f.x;
+  f.x = m.x2 - WARP.inset;
+  run(sim, 3);
+  check('電脳空間：ワープホールが消えたあとは、くぐれない', f.x > 0, `x=${f.x.toFixed(2)}（前 ${x0.toFixed(2)}）`);
+}
+// ガチャ会場：当たり床ルーレット
+{
+  const sim = gimmickSim('gacha');
+  const m = sim.stage.main;
+  const tw = (m.x2 - m.x1) / ROULETTE.tiles;
+  run(sim, ROULETTE.stopAt + 1);
+  const tiles = sim.rouletteShown();
+  check('ガチャ会場：ルーレットが止まると、当たりとハズレのマスが決まる', !!tiles && tiles.filter((x) => x > 0).length === ROULETTE.win && tiles.filter((x) => x < 0).length === ROULETTE.lose);
+  const win = tiles!.indexOf(1);
+  const lose = tiles!.indexOf(-1);
+  const [a, b] = sim.fighters;
+  a.x = m.x1 + tw * (win + 0.5);
+  b.x = m.x1 + tw * (lose + 0.5);
+  a.damage = 30;
+  b.damage = 30;
+  run(sim, GIMMICK.warn - ROULETTE.stopAt + 2);
+  check('当たりのマスにいると回復する', a.damage < 30, `${a.damage}%`);
+  check('ハズレのマスにいると小爆発で飛ばされる', b.damage > 30 && !b.grounded, `${b.damage.toFixed(1)}%`);
+}
+// 配信スタジオ：視聴者リクエスト（大きさが変わり、時間がたつと戻る）
+{
+  const sim = gimmickSim('studio');
+  const f = sim.fighters[0];
+  const h0 = f.h;
+  run(sim, GIMMICK.warn + 2);
+  const big = f.size === 1;
+  check('配信スタジオ：全員の大きさが変わる', f.size !== 0 && sim.fighters[1].size === f.size && (big ? f.h > h0 * 1.3 : f.h < h0 * 0.7), `${big ? 'でっかく' : 'ちっちゃく'}：高さ ${h0.toFixed(2)} → ${f.h.toFixed(2)}`);
+  const snap = f.serialize();
+  const g = new Sim({ players: [{ slot: 0, name: 'a', charId: 'guard', cpu: false, cpuLevel: 1 }], stageId: 'studio', rules: { mode: 'stock', stocks: 3, timeLimit: 300 }, seed: 1 }).fighters[0];
+  g.restore(snap);
+  check('大きさは状態の書き出し・読み込みでも戻る（通信の照合）', g.h === f.h);
+  run(sim, SIZE_REQ.time + 2);
+  check('時間がたつと元の大きさに戻る', f.size === 0 && Math.abs(f.h - h0) < 1e-9);
+}
+// 深夜の金庫室：ばらばらの高さ・角度のレーザー
+{
+  const sim = gimmickSim('vault');
+  const aims: GameEvent[] = [];
+  for (let i = 0; i < 5; i++) {
+    sim.step(new Map());
+    aims.push(...sim.events.filter((e) => e.k === 'aim'));
+  }
+  run(sim, GIMMICK.warn + VAULT_LASER.gap * VAULT_LASER.count);
+  const ys = new Set(aims.map((e) => (e.k === 'aim' ? e.y.toFixed(1) : '')));
+  const angled = aims.some((e) => e.k === 'aim' && Math.abs(e.vy) > 1);
+  check('金庫室：レーザーの通り道を先に見せる（3本）', aims.length === VAULT_LASER.count);
+  check('金庫室：レーザーは高さと角度がばらばら', ys.size >= 2 && angled);
 }
 process.exit(fail ? 1 : 0);

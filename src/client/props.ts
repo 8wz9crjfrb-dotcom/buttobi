@@ -207,8 +207,13 @@ export class PropRenderer {
         g.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), basic(0x39ff88)));
         return g;
       }
-      case 'laser':
-        return new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.12, 0.12), basic(0xff2a3a));
+      case 'laser': {
+        // 赤い光の棒（進む向きに傾ける）。芯は白っぽく
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.16, 0.16), basic(0xff2a3a)));
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 0.18), basic(0xffd0d0)));
+        return g;
+      }
       case 'beam':
         return new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.05, 16, 1, true), basic(0x2fe8ff, { transparent: true, opacity: 0.75, side: THREE.DoubleSide }));
       case 'comment': {
@@ -495,7 +500,15 @@ export class PropRenderer {
       else if (p.kind === 'orb') o.scale.setScalar(1 + Math.sin(time * 20) * 0.1);
       else if (p.kind === 'spark') o.scale.setScalar(1 + Math.sin(time * 40) * 0.2);
       else if (p.kind === 'packet' || p.kind === 'capsule') o.rotation.set(time * 3, time * 4, 0);
-      else if (p.kind === 'laser') (o as THREE.Mesh).scale.y = 1 + Math.sin(time * 50) * 0.3;
+      else if (p.kind === 'laser') {
+        // 進む向きに傾ける（前のフレームの位置と比べる）
+        const px = o.userData.px as number | undefined;
+        const py = o.userData.py as number | undefined;
+        if (px !== undefined && py !== undefined && Math.hypot(p.x - px, p.y - py) > 0.01) o.rotation.z = Math.atan2(p.y - py, p.x - px);
+        o.userData.px = p.x;
+        o.userData.py = p.y;
+        o.scale.y = 1 + Math.sin(time * 50) * 0.3;
+      }
       else if (p.kind === 'scooter' || p.kind === 'comment') {
         // 進む向きに合わせる（前のフレームの位置と比べる）
         const px = o.userData.px as number | undefined;

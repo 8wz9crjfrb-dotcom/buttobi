@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import { areaColor, getCharacter, ITEM_COLORS, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES, TEAM_COLORS } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
-import { BALL, ballBaskets, COUNTDOWN_FRAMES, isSlippery } from '../shared/sim';
+import { BALL, ballBaskets, COUNTDOWN_FRAMES, gimmickAt, gimmickPhase, isSlippery, ROULETTE, WARP } from '../shared/sim';
+import { GIMMICK } from '../shared/moves';
 import { FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
 import { getCostume } from '../shared/costumes';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -270,9 +271,107 @@ export class GameRenderer {
       this.stageGroup.add(wet);
       this.wetFloor = wet;
     }
+    const m = stage.main;
+    // 電脳空間：台の左右の端にワープホール（ふだんは見えない）
+    this.portals = [];
+    if (th.kind === 'cyber') {
+      for (const side of [-1, 1]) {
+        const g = new THREE.Group();
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(WARP.r, 0.09, 10, 36), new THREE.MeshBasicMaterial({ color: side < 0 ? 0x39ff88 : 0xc77dff, transparent: true }));
+        const core = new THREE.Mesh(new THREE.CircleGeometry(WARP.r * 0.92, 32), new THREE.MeshBasicMaterial({ color: side < 0 ? 0x0f5a34 : 0x3a1a5a, transparent: true, opacity: 0.6 }));
+        g.add(core, ring);
+        g.position.set(side < 0 ? m.x1 + WARP.inset : m.x2 - WARP.inset, m.top + WARP.y, 0.1);
+        g.visible = false;
+        this.stageGroup.add(g);
+        this.portals.push(g);
+      }
+    }
+    // ガチャ会場：台の床を当たり床ルーレットのマスに分ける（ふだんは見えない）
+    this.rouletteTiles = [];
+    this.rouletteResult = null;
+    if (th.kind === 'gacha') {
+      const tw = (m.x2 - m.x1) / ROULETTE.tiles;
+      for (let i = 0; i < ROULETTE.tiles; i++) {
+        const tile = new THREE.Mesh(new THREE.PlaneGeometry(tw - 0.12, 3.2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
+        tile.rotation.x = -Math.PI / 2;
+        tile.position.set(m.x1 + tw * (i + 0.5), m.top + 0.035, 0);
+        tile.renderOrder = 2;
+        this.stageGroup.add(tile);
+        this.rouletteTiles.push(tile);
+      }
+    }
   }
+  /** ワープホール・ルーレットのマス・レーザーの予告線（試合の経過フレームに合わせる） */
+  private updateGimmickVisuals(view: ViewState, dt: number): void {
+    const st = this.stage!;
+    const on = !!this.setup!.rules.gimmicks;
+    const kind = st.theme.kind;
+    // ワープホール：出ている間だけ、回りながら光る
+    if (this.portals.length) {
+      const at = gimmickAt(view.frame, on, kind, 'cyber');
+      const show = at >= 0 && at < WARP.time;
+      for (const [i, g] of this.portals.entries()) {
+        g.visible = show;
+        if (!show) continue;
+        const grow = Math.min(1, at / 15, (WARP.time - at) / 15);
+        g.scale.setScalar(Math.max(0.01, grow));
+        g.rotation.z = this.time * (i ? -2 : 2);
+      }
+    }
+    // ルーレット：予告の前半は光が回り、止まったら当たり（緑）・ハズレ（赤）を見せる。本番のあと1秒で消える
+    if (this.rouletteTiles.length) {
+      const ph = gimmickPhase(view.frame, on, kind, 'gacha');
+      const n = this.rouletteTiles.length;
+      const spinning = ph >= 0 && ph < ROULETTE.stopAt;
+      const showing = ph >= ROULETTE.stopAt && ph < GIMMICK.warn + 60 && !!this.rouletteResult;
+      const lit = Math.floor(this.time * 14) % n;
+      this.rouletteTiles.forEach((t, i) => {
+        const mat = t.material as THREE.MeshBasicMaterial;
+        let target = 0;
+        if (spinning) {
+          mat.color.setHex(i === lit ? 0xffd23f : 0xffffff);
+          target = i === lit ? 0.6 : 0.12;
+        } else if (showing) {
+          const r = this.rouletteResult![i] ?? 0;
+          mat.color.setHex(r > 0 ? 0x3cff8a : r < 0 ? 0xff3b3b : 0x888899);
+          target = r !== 0 ? 0.5 + Math.sin(this.time * 10) * 0.15 : 0.08;
+        }
+        mat.opacity += (target - mat.opacity) * Math.min(1, dt * 12);
+      });
+      // 止まった瞬間：マスの上に「当たり」「ハズレ」（1回だけ）
+      if (showing && this.rouletteShownAt !== view.frame - ph) {
+        this.rouletteShownAt = view.frame - ph;
+        const m = st.main;
+        const tw = (m.x2 - m.x1) / n;
+        this.rouletteResult!.forEach((r, i) => {
+          if (r) this.props.showText(r > 0 ? '当たり' : 'ハズレ', r > 0 ? '#3cff8a' : '#ff5a5a', m.x1 + tw * (i + 0.5), m.top + 1.2, false, 100);
+        });
+      }
+    }
+    // レーザーの予告線：点滅させて、時間がたったら消す
+    this.aimLines = this.aimLines.filter((l) => {
+      if (this.time > l.until || this.preview) {
+        this.scene.remove(l.mesh);
+        l.mesh.geometry.dispose();
+        (l.mesh.material as THREE.Material).dispose();
+        return false;
+      }
+      (l.mesh.material as THREE.MeshBasicMaterial).opacity = 0.25 + Math.abs(Math.sin((this.time - l.from) * 9)) * 0.45;
+      return true;
+    });
+  }
+  /** ルーレットの「当たり・ハズレ」の文字を出した回（予告の始まりのフレーム） */
+  private rouletteShownAt = -1;
+
   /** 清掃タイムの、ぬれた床（24時間ジムだけ） */
   private wetFloor: THREE.Mesh | null = null;
+  /** 電脳空間のワープホール（左右の2つ） */
+  private portals: THREE.Group[] = [];
+  /** ガチャ会場の当たり床ルーレットのマスと、止まった結果 */
+  private rouletteTiles: THREE.Mesh[] = [];
+  private rouletteResult: number[] | null = null;
+  /** 深夜の金庫室：レーザーの通り道の予告線（消える時刻つき） */
+  private aimLines: { mesh: THREE.Mesh; until: number; from: number }[] = [];
 
   // ---------------------------------------------------------------- キャラ選択の3D表示
   /** キャラ選択画面で、選んでいるキャラを左側に大きく表示する */
@@ -513,6 +612,7 @@ export class GameRenderer {
       this.renderPreview(dt);
       return;
     }
+    if (view && this.stage && this.setup) this.updateGimmickVisuals(view, dt);
     if (view && this.stage && this.wetFloor && this.setup) {
       // 清掃タイム中は床がぬれて光り、きらきらする
       const on = isSlippery(view.frame, !!this.setup.rules.gimmicks, this.stage.theme.kind);
@@ -956,6 +1056,31 @@ export class GameRenderer {
       return;
     }
     // ギリギリ耐えたふっとび（close / safe）は演出なし
+    if (e.k === 'aim') {
+      // 金庫室のレーザー：飛んでくる通り道に、赤い線を点滅させて見せる
+      const len = 60;
+      const ang = Math.atan2(e.vy, e.vx);
+      // 背景の赤いレーザー模様と見分けがつくよう、黄色の太い線にする
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.28), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.5, depthWrite: false }));
+      mesh.position.set(e.x + Math.cos(ang) * (len / 2), e.y + Math.sin(ang) * (len / 2), 0.15);
+      mesh.rotation.z = ang;
+      mesh.renderOrder = 8;
+      this.scene.add(mesh);
+      // 飛んでくる側の、台の端あたりに「！」
+      const st = this.stage;
+      if (st) {
+        const ex = e.vx > 0 ? st.main.x1 - 0.6 : st.main.x2 + 0.6;
+        const ey = e.y + (e.vy / e.vx) * (ex - e.x);
+        this.props.showText('！', '#ffd23f', ex, ey + 0.3, true, Math.round(GIMMICK.warn + e.i * 22));
+      }
+      // 予告（GIMMICK.warn）が終わって、その線のレーザーが通り過ぎるまで
+      this.aimLines.push({ mesh, from: this.time, until: this.time + (GIMMICK.warn + e.i * 22) / 60 + 0.6 });
+      return;
+    }
+    if (e.k === 'roulette') {
+      this.rouletteResult = e.t;
+      return;
+    }
     if (e.k === 'swap') {
       // なりすまし：入れ替わった2か所に紫の煙
       for (const [x, y] of [[e.x, e.y], [e.x2, e.y2]]) {
@@ -1022,12 +1147,12 @@ export class GameRenderer {
     const m = st.main;
     const labels: Record<string, string> = {
       rooftop: e.d > 0 ? '強風注意 →→' : '←← 強風注意',
-      vault: '警報！レーザー（ジャンプでよけろ）',
+      vault: 'レーザー警報！（黄色い線からにげろ）',
       arcade: 'スクーターが来る！（ジャンプでよけろ）',
-      studio: 'コメントの弾幕！',
-      cyber: 'データが降ってくる！',
+      studio: e.d > 0 ? '視聴者リクエスト：全員でっかくなれ！' : '視聴者リクエスト：全員ちっちゃくなれ！',
+      cyber: 'ワープホール出現！（左右の端がつながる）',
       timeline: '通知の嵐！',
-      gacha: 'カプセルの雨！',
+      gacha: '当たり床ルーレット！',
       lab: 'AIの光線が来る！',
       gym: '清掃タイム！床がすべる',
       livebar: '照明が落ちる！',
@@ -1037,7 +1162,7 @@ export class GameRenderer {
     if (e.h === 'lab') {
       // 光線が落ちる場所に赤い印
       for (let i = 0; i < 3; i++) this.spawn(this.ringGeo, 0xff3b3b, e.x, m.top + 0.1, 0, 0, 0.9, 40 + i * 25, -0.004);
-    } else if (e.h === 'vault' || e.h === 'arcade' || e.h === 'studio') {
+    } else if (e.h === 'arcade') {
       // 来る側の端に「！」
       const x = e.d > 0 ? m.x1 - 0.5 : m.x2 + 0.5;
       this.props.showText('！', '#ff5a5a', x, e.y + 0.6, true, 110);
