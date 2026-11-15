@@ -15,6 +15,7 @@ import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
 import { SocialClient } from './social';
+import { PROFILE_COLORS, PROFILE_COMMENTS, type Profile } from '../shared/social';
 import { clearRejoin, loadRejoin, NetClient } from './net';
 import { Predictor } from './predictor';
 import {
@@ -558,28 +559,85 @@ function showScreen(html: string, cls = '', bind?: (root: HTMLElement) => void):
 
 // ---------------------------------------------------------------------------
 // フレンド：自分のフレンドコード・追加・届いた申請・フレンド一覧（オンライン・公開ルームへ参加）
+/** フレンド画面で右に出している人（'me' = 自分、それ以外はフレンドコード） */
+let friendPick = 'me';
+
+/** 持っているガチャの衣装の数 */
+const ownedCostumeCount = () => new Set(wallet.owned).size;
+
+/** 自分のプロフィール（設定から組み立てる。数字は今の記録） */
+function myProfile(): Profile {
+  const p = settings.profile;
+  const charId = p && CHARACTERS.some((c) => c.id === p.charId) ? p.charId : settings.charId;
+  let costume = p ? p.costume : (myCostume(charId) ?? '');
+  const c = COSTUMES.find((x) => x.id === costume && x.charId === charId);
+  // 持っていない衣装（引き継ぎ前など）は、ふつうの衣装にする
+  if (!c || (c.rarity >= 4 && !wallet.owned.includes(c.id))) costume = getCostume(undefined, charId).id;
+  const titleNames = progress.titles.map((id) => TITLES.find((t) => t.id === id)?.name ?? '').filter(Boolean);
+  const title = p?.title && titleNames.includes(p.title) ? p.title : '';
+  return {
+    charId,
+    costume,
+    title,
+    comment: p?.comment ?? 0,
+    color: p?.color ?? 0,
+    wins: progress.totals.wins,
+    horde: progress.hordeBest?.kos ?? 0,
+    costumes: ownedCostumeCount(),
+  };
+}
+
+/** 名刺カード（案A）。p がなければ「未設定」のカード。together はフレンドのときだけ */
+function profileCard(name: string, code: string, p: Profile | undefined, together?: number): string {
+  const [c1, c2] = PROFILE_COLORS[p?.color ?? 6] ?? PROFILE_COLORS[0];
+  if (!p) {
+    return `<div class="pcard" style="--c1:${c1};--c2:${c2}">
+      <div class="pc-pic empty">？</div>
+      <div class="pc-r"><div class="pc-nm">${esc(name)}</div>
+        <div class="pc-cos">まだプロフィールを設定していません</div>
+        <div class="pc-code">フレンドコード ${esc(code)}</div>
+        ${together !== undefined ? `<div class="pc-stats"><div class="pc-st"><b>${together}回</b><small>一緒に戦った</small></div></div>` : ''}
+      </div></div>`;
+  }
+  const cos = getCostume(p.costume, p.charId);
+  const rar = rarityName(cos.rarity);
+  const st = (v: string, label: string) => `<div class="pc-st"><b>${v}</b><small>${label}</small></div>`;
+  return `<div class="pcard ${cos.rarity >= 6 ? 'ur' : ''}" style="--c1:${c1};--c2:${c2}">
+    <div class="pc-pic"><img alt="" src="${renderer.fullBody(p.charId, p.costume)}"/></div>
+    <div class="pc-r">
+      <div class="pc-nm">${esc(name)}</div>
+      ${p.title ? `<div><span class="pc-title">称号：${esc(p.title)}</span></div>` : ''}
+      <div class="pc-cos">お気に入り：${getCharacter(p.charId).name}「${esc(cos.name)}」${rar ? `（${rar}）` : ''}</div>
+      <div class="pc-bub">💬 ${esc(PROFILE_COMMENTS[p.comment] ?? '')}</div>
+      <div class="pc-code">フレンドコード ${esc(code)}</div>
+      <div class="pc-stats">${st(String(p.wins), '通算勝利')}${st(`${p.horde}人`, '100人組手')}${st(String(p.costumes), '衣装')}${together !== undefined ? st(`${together}回`, '一緒に戦った') : ''}</div>
+    </div></div>`;
+}
+
+/** フレンド一覧の顔（プロフィールのキャラ。未設定なら名前の頭文字） */
+function friendFace(name: string, p: Profile | undefined): string {
+  return p ? `<img class="fr-face" alt="" src="${renderer.portrait(p.charId, p.costume)}"/>` : `<span class="fr-face none">${esc([...name][0] ?? '？')}</span>`;
+}
+
 function showFriends(): void {
   const st = social.state;
-  const y = screensEl.querySelector<HTMLElement>('.screen-body')?.scrollTop ?? 0;
+  const left = screensEl.querySelector<HTMLElement>('.fr-left');
+  const y = left?.scrollTop ?? 0;
   const typed = screensEl.querySelector<HTMLInputElement>('#fr-code')?.value ?? '';
+  const me = myProfile();
+  social.setProfile(me);
   // 並び順：オンライン（ルーム公開中を含む）の人が先、その中で一緒に戦った回数が多い順。同じなら名前順
   const on = (f: (typeof st.friends)[number]) => Number(f.online || !!f.room);
   const sorted = [...st.friends].sort((a, b) => on(b) - on(a) || social.together(b.code) - social.together(a.code) || a.name.localeCompare(b.name));
-  const friendRows = sorted.length
-    ? sorted
-        .map((f) => {
-          const status = f.room
-            ? `<span class="fr-room">ルーム公開中（${f.room.n}/${f.room.max}人${f.room.match ? '・対戦中' : ''}）</span>`
-            : f.online
-              ? '<span class="fr-on">オンライン</span>'
-              : '<span class="muted">オフライン</span>';
-          return `<div class="fr-row"><span class="fr-dot ${f.online || f.room ? 'on' : ''}"></span>
-            <div class="grow"><b>${esc(f.name)}</b> <small class="muted">${f.code}</small><br/>${status}<span class="fr-count">一緒に戦った ${social.together(f.code)}回</span></div>
-            ${f.room ? `<button class="btn small primary" data-join="${f.room.code}">参加</button>` : ''}
-            <button class="btn small" data-remove="${f.code}" data-name="${esc(f.name)}">外す</button></div>`;
-        })
-        .join('')
-    : '<p class="muted">まだフレンドがいません。フレンドコードを教え合って追加しましょう。</p>';
+  if (friendPick !== 'me' && !sorted.some((f) => f.code === friendPick)) friendPick = 'me';
+  const rows = sorted
+    .map((f) => {
+      const status = f.room ? `<span class="fr-room">ルーム公開中 ${f.room.n}/${f.room.max}</span>` : f.online ? '<span class="fr-on">オンライン</span>' : '<span class="muted">オフライン</span>';
+      return `<button type="button" class="fr-item ${friendPick === f.code ? 'on' : ''}" data-pick="${f.code}">
+        <span class="fr-dot ${f.online || f.room ? 'on' : ''}"></span>${friendFace(f.name, f.prof)}
+        <span class="fr-txt"><b>${esc(f.name)}</b><small>${status}・一緒に戦った ${social.together(f.code)}回</small></span></button>`;
+    })
+    .join('');
   const inbox = st.inbox.length
     ? `<div class="opt-label">届いた申請</div>${st.inbox
         .map((r) => `<div class="fr-row"><div class="grow"><b>${esc(r.name)}</b> <small class="muted">${r.code}</small></div><button class="btn small primary" data-accept="${r.code}">承認</button><button class="btn small" data-decline="${r.code}">断る</button></div>`)
@@ -590,26 +648,44 @@ function showFriends(): void {
         .map((r) => `<div class="fr-row"><div class="grow">${esc(r.name)} <small class="muted">${r.code}</small></div><button class="btn small" data-cancel="${r.code}">取り消す</button></div>`)
         .join('')}`
     : '';
+  // 右：選んでいる人の名刺カード
+  const pick = st.friends.find((f) => f.code === friendPick);
+  const card = pick
+    ? `${profileCard(pick.name, pick.code, pick.prof, social.together(pick.code))}
+       <div class="fr-acts">${pick.room ? `<button class="btn small primary" data-join="${pick.room.code}">ルームに参加</button>` : ''}<button class="btn small" data-remove="${pick.code}" data-name="${esc(pick.name)}">フレンドから外す</button></div>`
+    : `${profileCard(settings.name || 'あなた', social.code || '…', me)}
+       <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
   showScreen(
     `<h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2>
-     <div class="screen-body" data-friends>
-       <div class="fr-me">あなたのフレンドコード：<b class="fr-code">${social.code || '…'}</b>
-         <button class="btn small" id="fr-copy" ${social.code ? '' : 'disabled'}>コピー</button>
-         <span class="muted">${settings.hideOnline ? '（オンライン状態は隠しています）' : ''}</span></div>
-       <div class="row fr-add"><input type="text" id="fr-code" maxlength="9" placeholder="フレンドのコード（例 ABCD-EFGH）" value="${esc(typed)}" autocomplete="off" autocapitalize="characters"/>
-         <button class="btn primary" id="fr-send">申請</button></div>
-       ${inbox}
-       <div class="opt-label">フレンド（${st.friends.length}人）</div>
-       ${friendRows}
-       ${sent}
-       <p class="muted small-note">フレンドがルームを「フレンドに公開」にすると、ここに「参加」が出て、ルームコードを教えてもらわなくても入れます。オンライン状態は設定画面で隠せます（隠していても、自分で公開したルームはフレンドに見えます）。</p>
+     <div class="fr-wrap">
+       <div class="fr-left">
+         <button type="button" class="fr-item me ${friendPick === 'me' ? 'on' : ''}" data-pick="me">${friendFace(settings.name || 'あなた', me)}<span class="fr-txt"><b>自分のプロフィール</b><small>見る・編集する</small></span></button>
+         <div class="opt-label">フレンド（${st.friends.length}人）</div>
+         ${rows || '<p class="muted">まだフレンドがいません。フレンドコードを教え合って追加しましょう。</p>'}
+         ${inbox}
+         <div class="opt-label">フレンドを追加</div>
+         <div class="fr-me">あなたのコード：<b class="fr-code">${social.code || '…'}</b> <button class="btn small" id="fr-copy" ${social.code ? '' : 'disabled'}>コピー</button></div>
+         <div class="row fr-add"><input type="text" id="fr-code" maxlength="9" placeholder="相手のコード（例 ABCD-EFGH）" value="${esc(typed)}" autocomplete="off" autocapitalize="characters"/>
+           <button class="btn primary" id="fr-send">申請</button></div>
+         ${sent}
+         <p class="muted small-note">フレンドがルームを「フレンドに公開」にすると「ルームに参加」が出ます。${settings.hideOnline ? 'あなたのオンライン状態は隠しています。' : 'オンライン状態は設定画面で隠せます。'}</p>
+       </div>
+       <div class="fr-right">${card}</div>
      </div>
      <div class="footer"><button class="btn" id="back">もどる</button></div>`,
-    'overlay',
+    'overlay friends-screen',
     (root) => {
-      const body = root.querySelector<HTMLElement>('.screen-body');
-      if (body) body.scrollTop = y;
+      const l = root.querySelector<HTMLElement>('.fr-left');
+      if (l) l.scrollTop = y;
       root.querySelector('#back')!.addEventListener('click', () => showMenu('multi'));
+      root.querySelectorAll<HTMLElement>('[data-pick]').forEach((b) =>
+        b.addEventListener('click', () => {
+          friendPick = b.dataset.pick!;
+          sfx.click();
+          showFriends();
+        }),
+      );
+      root.querySelector('#pf-edit')?.addEventListener('click', () => showProfileEdit());
       root.querySelector('#fr-copy')?.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(social.code);
@@ -639,6 +715,71 @@ function showFriends(): void {
       root.querySelectorAll<HTMLElement>('[data-join]').forEach((b) => b.addEventListener('click', () => joinRoom(b.dataset.join!, showFriends)));
     },
   );
+}
+
+/** プロフィールの編集（左に名刺カードの見本、右で選ぶ） */
+function showProfileEdit(): void {
+  const cur = myProfile();
+  const draft = { charId: cur.charId, costume: cur.costume, title: cur.title, comment: cur.comment, color: cur.color };
+  const titleNames = progress.titles.map((id) => TITLES.find((t) => t.id === id)?.name ?? '').filter(Boolean);
+  let scroll = 0;
+  const draw = () => {
+    const p: Profile = { ...cur, ...draft };
+    const owned = COSTUMES.filter((c) => c.charId === draft.charId && (c.rarity < 4 || wallet.owned.includes(c.id)));
+    const chip = (attr: string, val: string | number, label: string, on: boolean, cls = '') => `<button type="button" class="pe-chip ${cls} ${on ? 'on' : ''}" data-${attr}="${val}">${label}</button>`;
+    showScreen(
+      `<h2>プロフィールの編集 <small class="h2-sub">フレンドに見えます</small></h2>
+       <div class="pe-wrap">
+         <div class="pe-card">${profileCard(settings.name || 'あなた', social.code || '…', p)}</div>
+         <div class="pe-opts">
+           <div class="opt-label">お気に入りのキャラ</div>
+           <div class="pe-chips">${CHARACTERS.map((c) => chip('char', c.id, esc(c.name), c.id === draft.charId)).join('')}</div>
+           <div class="opt-label">衣装（持っている衣装から）</div>
+           <div class="pe-chips">${owned.map((c) => chip('cos', c.id, `${rarityName(c.rarity) ? `<b>${rarityName(c.rarity)}</b> ` : ''}${esc(c.name)}`, c.id === draft.costume, `r${c.rarity}`)).join('')}</div>
+           <div class="opt-label">見せる称号</div>
+           <div class="pe-chips">${chip('title', '', 'なし', !draft.title)}${titleNames.map((t) => chip('title', esc(t), esc(t), t === draft.title)).join('')}</div>
+           <div class="opt-label">ひとこと</div>
+           <div class="pe-chips">${PROFILE_COMMENTS.map((t, i) => chip('cm', i, esc(t), i === draft.comment)).join('')}</div>
+           <div class="opt-label">カードの色</div>
+           <div class="pe-chips">${PROFILE_COLORS.map(([a, b], i) => `<button type="button" class="pe-color ${i === draft.color ? 'on' : ''}" data-color="${i}" style="background:linear-gradient(135deg,${a},${b})" aria-label="色${i + 1}"></button>`).join('')}</div>
+         </div>
+       </div>
+       <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="save">保存する</button></div>`,
+      'overlay profile-screen',
+      (root) => {
+        const opts = root.querySelector<HTMLElement>('.pe-opts')!;
+        opts.scrollTop = scroll;
+        const on = (sel: string, f: (el: HTMLElement) => void) =>
+          root.querySelectorAll<HTMLElement>(sel).forEach((b) =>
+            b.addEventListener('click', () => {
+              scroll = opts.scrollTop;
+              f(b);
+              sfx.click();
+              draw();
+            }),
+          );
+        on('[data-char]', (b) => {
+          draft.charId = b.dataset.char!;
+          // キャラを変えたら、そのキャラで今着ている衣装（なければふつうの衣装）
+          draft.costume = myCostume(draft.charId) ?? getCostume(undefined, draft.charId).id;
+        });
+        on('[data-cos]', (b) => (draft.costume = b.dataset.cos!));
+        on('[data-title]', (b) => (draft.title = b.dataset.title ?? ''));
+        on('[data-cm]', (b) => (draft.comment = Number(b.dataset.cm)));
+        on('[data-color]', (b) => (draft.color = Number(b.dataset.color)));
+        root.querySelector('#back')!.addEventListener('click', () => showFriends());
+        root.querySelector('#save')!.addEventListener('click', () => {
+          settings.profile = { ...draft };
+          saveSettings(settings);
+          social.setProfile(myProfile());
+          toast('プロフィールを保存しました');
+          friendPick = 'me';
+          showFriends();
+        });
+      },
+    );
+  };
+  draw();
 }
 
 /** 前のルームの対戦に戻る */
@@ -2928,12 +3069,13 @@ const social = new SocialClient();
 social.onNotice = (msg) => toast(msg, 3000);
 social.onChange = () => {
   // フレンド画面を開いていれば描き直す。メニューの印も更新する
-  if (screensEl.querySelector('[data-friends]')) showFriends();
+  if (screensEl.querySelector('.friends-screen')) showFriends();
   const dotEl = screensEl.querySelector<HTMLElement>('#friends .m-dot, #multi .m-dot');
   if (dotEl) dotEl.classList.toggle('hidden', social.state.inbox.length === 0);
 };
 function startSocial(): void {
   social.start(settings.serverUrl, settings.name || 'プレイヤー', settings.hideOnline);
+  social.setProfile(myProfile());
 }
 
 const net = new NetClient({

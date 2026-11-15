@@ -545,6 +545,55 @@ export class GameRenderer {
     return url;
   }
 
+  private bodies = new Map<string, string>();
+  /** プロフィールの名刺カード用：キャラの全身を描いた画像（衣装ごとに使い回す） */
+  fullBody(charId: string, costumeId?: string): string {
+    const key = `${charId}/${costumeId ?? ''}`;
+    const hit = this.bodies.get(key);
+    if (hit) return hit;
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x556070, 1.8));
+    const key2 = new THREE.DirectionalLight(0xffffff, 2);
+    key2.position.set(1, 3, 5);
+    scene.add(key2);
+    const def = getCharacter(charId);
+    const model = new FighterModel(def, getCostume(costumeId, charId), 0xffffff);
+    model.previewTurn = 0.45;
+    model.showMarker = false;
+    scene.add(model.root);
+    const fake: ViewFighter = {
+      slot: 0, x: 0, y: 0, facing: 1, state: 'idle', stateTime: 0, move: null, moveFrame: 0,
+      damage: 0, stocks: 0, invuln: false, shield: 1, charge: 0, kos: 0, falls: 0, out: false, poison: false, fx: 0,
+    };
+    model.update(fake, def, 0.5, 1);
+    const cam = new THREE.PerspectiveCamera(30, 0.8, 0.1, 50);
+    const hy = 1.05 * def.scale;
+    cam.position.set(0.3, hy + 0.15, 5.4 * def.scale);
+    cam.lookAt(0, hy, 0);
+    const W = 192;
+    const H = 240;
+    const pr = this.renderer.getPixelRatio();
+    const size = this.renderer.getSize(new THREE.Vector2());
+    const prevClear = this.renderer.getClearAlpha();
+    this.renderer.setClearAlpha(0);
+    this.renderer.setViewport(0, 0, W, H);
+    this.renderer.setScissor(0, 0, W, H);
+    this.renderer.setScissorTest(true);
+    this.renderer.render(scene, cam);
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const gl = this.renderer.domElement;
+    c.getContext('2d')!.drawImage(gl, 0, gl.height - H * pr, W * pr, H * pr, 0, 0, W, H);
+    this.renderer.setScissorTest(false);
+    this.renderer.setViewport(0, 0, size.x, size.y);
+    this.renderer.setClearAlpha(prevClear);
+    model.dispose();
+    const url = c.toDataURL('image/png');
+    this.bodies.set(key, url);
+    return url;
+  }
+
   /** ステージ選択用の小さな画像（実際のステージを描いて作る。一度作ったら使い回す） */
   /** 作り済みのステージの画像（まだなら null） */
   cachedThumbnail(id: string): string | null {

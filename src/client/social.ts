@@ -2,7 +2,7 @@
 // 人に見せない番号（id）はこの端末に保存する（データ引き継ぎで別の端末へ移せる）。
 
 import { httpBase } from './transfer';
-import { friendHash, SOCIAL_VERSION, type FriendInfo, type SharedRoom, type SocialClientMsg, type SocialServerMsg } from '../shared/social';
+import { friendHash, SOCIAL_VERSION, type FriendInfo, type Profile, type SharedRoom, type SocialClientMsg, type SocialServerMsg } from '../shared/social';
 
 export const SOCIAL_KEY = 'buttobi-social-v1';
 
@@ -51,6 +51,8 @@ export class SocialClient {
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** 公開中のルーム（つなぎ直したときに送り直す） */
   private room: SharedRoom | null = null;
+  /** 自分のプロフィール（つなぎ直したときに送り直す） */
+  private profile: Profile | null = null;
   id = loadId();
   /** 自分のフレンドコード（つながるまでは空） */
   code = '';
@@ -94,6 +96,7 @@ export class SocialClient {
       this.connected = true;
       this.send({ t: 'hi', v: SOCIAL_VERSION, id: this.id, name: this.name, hidden: this.hidden });
       if (this.room) this.send({ t: 'room', room: this.room });
+      if (this.profile) this.send({ t: 'profile', p: this.profile });
     };
     ws.onmessage = (e) => {
       let m: SocialServerMsg;
@@ -159,6 +162,13 @@ export class SocialClient {
     if (JSON.stringify(room) === JSON.stringify(this.room)) return;
     this.room = room;
     this.send({ t: 'room', room });
+  }
+
+  /** 自分のプロフィールをフレンドに見せる（同じ内容なら送らない） */
+  setProfile(p: Profile): void {
+    if (JSON.stringify(p) === JSON.stringify(this.profile)) return;
+    this.profile = p;
+    this.send({ t: 'profile', p });
   }
 
   /** そのフレンドと一緒に戦った回数 */

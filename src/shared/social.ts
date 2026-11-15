@@ -20,11 +20,62 @@ export interface SharedRoom {
   match: boolean;
 }
 
+/** プロフィールの「ひとこと」（定型文から選ぶ） */
+export const PROFILE_COMMENTS = ['よろしく！', 'いっしょに遊ぼう', 'ガチ勢です', 'まったり勢です', 'フレンド募集中', 'UR集めてます', 'CPU戦で修行中', 'チーム戦が好き'];
+/** 名刺カードの色（左上 → 右下のグラデーション） */
+export const PROFILE_COLORS: [string, string][] = [
+  ['#ff7eb6', '#b05cff'],
+  ['#4f9dff', '#2fc6b8'],
+  ['#ffb347', '#ff5a5a'],
+  ['#4fd18b', '#2a8a5a'],
+  ['#5a6bff', '#2a2f7a'],
+  ['#ffd23f', '#ff8a3d'],
+  ['#3a3f52', '#14161f'],
+];
+
+/** プロフィール（フレンドに見せる名刺カード） */
+export interface Profile {
+  /** お気に入りのキャラと衣装 */
+  charId: string;
+  costume: string;
+  /** 見せる称号（なしなら空） */
+  title: string;
+  /** ひとこと（PROFILE_COMMENTS の番号） */
+  comment: number;
+  /** カードの色（PROFILE_COLORS の番号） */
+  color: number;
+  /** 通算勝利・100人組手の自己ベスト・持っている衣装の数 */
+  wins: number;
+  horde: number;
+  costumes: number;
+}
+
+const int = (v: unknown, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v)) || 0));
+/** 受け取ったプロフィールを安全な形にそろえる（キャラが分からなければ null） */
+export function sanitizeProfile(raw: unknown, charIds: string[]): Profile | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.charId !== 'string' || !charIds.includes(r.charId)) return null;
+  const clean = (v: unknown, n: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f<>]/g, '').slice(0, n) : '');
+  return {
+    charId: r.charId,
+    costume: clean(r.costume, 40),
+    title: clean(r.title, 20),
+    comment: int(r.comment, PROFILE_COMMENTS.length - 1),
+    color: int(r.color, PROFILE_COLORS.length - 1),
+    wins: int(r.wins, 999999),
+    horde: int(r.horde, 100),
+    costumes: int(r.costumes, 9999),
+  };
+}
+
 export interface FriendInfo {
   code: string;
   name: string;
   online: boolean;
   room?: SharedRoom;
+  /** プロフィール（まだ設定していない人はなし） */
+  prof?: Profile;
 }
 
 /** 端末 → サーバー */
@@ -40,7 +91,9 @@ export type SocialClientMsg =
   | { t: 'hidden'; on: boolean }
   | { t: 'name'; name: string }
   /** 自分のルームをフレンドに公開する（null で取り消す） */
-  | { t: 'room'; room: SharedRoom | null };
+  | { t: 'room'; room: SharedRoom | null }
+  /** 自分のプロフィールを送る（つないだときと、変えたとき） */
+  | { t: 'profile'; p: Profile };
 
 /** サーバー → 端末 */
 export type SocialServerMsg =

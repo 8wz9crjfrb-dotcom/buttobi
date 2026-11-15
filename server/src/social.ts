@@ -14,12 +14,17 @@ import {
   SOCIAL_VERSION,
   isSocialId,
   normalizeFriendCode,
+  sanitizeProfile,
   type FriendInfo,
+  type Profile,
   type SharedRoom,
   type SocialClientMsg,
   type SocialServerMsg,
 } from '../../src/shared/social';
 import { isRoomCode, MAX_PLAYERS } from '../../src/shared/protocol';
+import { CHARACTERS } from '../../src/shared/characters';
+
+const CHAR_IDS = CHARACTERS.map((c) => c.id);
 
 interface User {
   code: string;
@@ -30,6 +35,8 @@ interface User {
   /** 送った申請（送った相手の id） */
   sent: string[];
   hidden: boolean;
+  /** フレンドに見せるプロフィール */
+  profile?: Profile;
 }
 
 interface Attachment {
@@ -118,7 +125,7 @@ export class Social extends DurableObject {
       const on = online.has(fid);
       const room = this.roomOf(online.get(fid));
       // 隠していればオフラインに見える。ただし、自分から公開したルームは見せる
-      friends.push({ code: f.code, name: f.name, online: on && !f.hidden, ...(room ? { room } : {}) });
+      friends.push({ code: f.code, name: f.name, online: on && !f.hidden, ...(room ? { room } : {}), ...(f.profile ? { prof: f.profile } : {}) });
     }
     const names = async (ids: string[]) => {
       const out: { code: string; name: string }[] = [];
@@ -247,6 +254,14 @@ export class Social extends DurableObject {
         await this.save(id, me);
         await this.pushAround(id);
         return;
+      case 'profile': {
+        const p = sanitizeProfile(msg.p, CHAR_IDS);
+        if (!p) return;
+        me.profile = p;
+        await this.save(id, me);
+        await this.pushAround(id);
+        return;
+      }
       case 'room': {
         const r = msg.room;
         const room: SharedRoom | undefined =
