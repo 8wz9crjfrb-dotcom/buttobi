@@ -1164,13 +1164,14 @@ document.addEventListener('installable', () => {
   if (screensEl.querySelector('.menu-screen')) showMenu();
 });
 
-function showLocalSetup(): void {
+/** CPU戦のキャラ選択。fromRules = ルール画面の「キャラ選択へ」から来た（もどるでルール画面に戻る） */
+function showLocalSetup(fromRules = false): void {
   showCharSelect({
     title: 'CPUと対戦：キャラを選ぶ',
     slot: 0,
     current: settings.charId,
-    nextLabel: 'つぎへ',
-    onBack: () => showMenu('solo'),
+    nextLabel: fromRules ? '決定' : 'つぎへ',
+    onBack: fromRules ? () => showLocalRules() : () => showMenu('solo'),
     onNext: () => showLocalRules(),
   });
 }
@@ -1220,7 +1221,7 @@ function showLocalRules(): void {
       root.querySelector('#back')!.addEventListener('click', () => {
         settings.rules = { ...rules };
         saveSettings(settings);
-        showLocalSetup();
+        showLocalSetup(true);
       });
       root.querySelector('#start')!.addEventListener('click', () => {
         settings.rules = { ...rules };
@@ -2362,8 +2363,9 @@ function showTrainingSetup(): void {
       bindStages(root, (v) => (settings.stageId = v));
       bindSeg(root, 'dummy', (v) => (training.dummyChar = v));
       bindSeg(root, 'mode', (v) => (training.mode = v as DummyMode));
+      // キャラ選択から「もどる」で、この画面に戻る
       root.querySelector('#back')!.addEventListener('click', () =>
-        showCharSelect({ title: '練習モード：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'つぎへ', onBack: showMenu, onNext: () => showTrainingSetup() }),
+        showCharSelect({ title: '練習モード：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: '決定', onBack: () => showTrainingSetup(), onNext: () => showTrainingSetup() }),
       );
       root.querySelector('#start')!.addEventListener('click', () => {
         saveSettings(settings);
