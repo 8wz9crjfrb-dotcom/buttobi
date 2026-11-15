@@ -2,6 +2,7 @@
 // 何秒続けて動けないか（ひるみ・つかまれ・眠り・ガード割れ）を、全キャラ・全必殺技・連打の速さごとに測る。
 // 使い方：npx tsx scripts/lock-scan.ts [しきい値の秒数（既定 2.5）] [キャラid...]
 import { Sim, COUNTDOWN_FRAMES, type Fighter } from '../src/shared/sim';
+import { CpuController } from '../src/shared/ai';
 import { threebDef } from '../src/shared/characters';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type InputState } from '../src/shared/types';
 
@@ -13,29 +14,44 @@ const N: InputState = { mx: 0, my: 0, buttons: 0 };
 /** 動けない状態か */
 export function stuck(f: Fighter): boolean {
   // ガード割れは、ガードを押し続けた本人のせいなので数えない
-  return f.hitlag > 0 || f.state === 'hitstun' || f.state === 'grabbed' || f.state === 'sleep' || (f.state === 'land' && f.stun > 12);
+  return (f.hitlag > 0 && f.state !== 'attack') || f.state === 'hitstun' || f.state === 'grabbed' || f.state === 'sleep' || (f.state === 'land' && f.stun > 12);
 }
 
-type Move = { name: string; btn: number; dir: (a: Fighter, v: Fighter) => [number, number]; setup?: 'drone' | 'buff' | 'protein' | 'speed' };
+type Step = { btn: number; dir: (a: Fighter, v: Fighter) => [number, number] };
+/** 連打する技。steps が2つ以上なら、押すたびに順番に切り替える（例：B と横B を交互に） */
+type Move = { name: string; steps: Step[]; setup?: 'drone' | 'buff' | 'protein' | 'speed' };
 const toward = (a: Fighter, v: Fighter) => Math.sign(v.x - a.x) || 1;
-const MOVES: Move[] = [
-  { name: '弱(A)', btn: BTN_A, dir: () => [0, 0] },
-  { name: 'B', btn: BTN_B, dir: () => [0, 0] },
-  { name: '横B', btn: BTN_B, dir: (a, v) => [toward(a, v), 0] },
-  { name: '下B', btn: BTN_B, dir: () => [0, -1] },
-  { name: '上B', btn: BTN_B, dir: () => [0, 1] },
-  { name: 'ドローン+B', btn: BTN_B, dir: () => [0, 0], setup: 'drone' },
-  { name: 'ドローン+弱', btn: BTN_A, dir: () => [0, 0], setup: 'drone' },
+const BASIC: Record<string, Step> = {
+  弱: { btn: BTN_A, dir: () => [0, 0] },
+  B: { btn: BTN_B, dir: () => [0, 0] },
+  横B: { btn: BTN_B, dir: (a, v) => [toward(a, v), 0] },
+  下B: { btn: BTN_B, dir: () => [0, -1] },
+  上B: { btn: BTN_B, dir: () => [0, 1] },
+};
+const one = (k: string, setup?: Move['setup']): Move => ({ name: k === '弱' ? '弱(A)' : k, steps: [BASIC[k]], setup });
+const KEYS = Object.keys(BASIC);
+/** 2つの技の交互連打（弱とB系、B系どうし） */
+const PAIRS: Move[] = [];
+for (let i = 0; i < KEYS.length; i++)
+  for (let j = i + 1; j < KEYS.length; j++) PAIRS.push({ name: `${KEYS[i]}＋${KEYS[j]}`, steps: [BASIC[KEYS[i]], BASIC[KEYS[j]]] });
+export const MOVES: Move[] = [
+  ...KEYS.map((k) => one(k)),
+  ...PAIRS,
+  { name: 'B＋横B＋下B', steps: [BASIC.B, BASIC.横B, BASIC.下B] },
+  { name: '弱＋B＋横B', steps: [BASIC.弱, BASIC.B, BASIC.横B] },
+  { name: 'ドローン+B', steps: [BASIC.B], setup: 'drone' },
+  { name: 'ドローン+弱', steps: [BASIC.弱], setup: 'drone' },
+  { name: 'ドローン+B＋横B', steps: [BASIC.B, BASIC.横B], setup: 'drone' },
 ];
 
 /** 相手の動き：逃げる（動けるようになったらジャンプして離れる）／ガードし続ける／その場で反撃 */
 type Victim = 'escape' | 'shield' | 'fight';
 
-export function scan(charId: string, job: number, mv: Move, every: number, victim: Victim, dist: number, frames = 600) {
+export function scan(charId: string, job: number, mv: Move, every: number, victim: Victim, dist: number, frames = 600, victimId = 'guard', victimDamage = 40) {
   const sim = new Sim({
     players: [
       { slot: 0, name: 'a', charId, cpu: false, cpuLevel: 1 },
-      { slot: 1, name: 'b', charId: 'guard', cpu: false, cpuLevel: 1 },
+      { slot: 1, name: 'b', charId: victimId, cpu: false, cpuLevel: 1 },
     ],
     stageId: 'plain',
     rules: { mode: 'stock', stocks: 3, timeLimit: 300 },
@@ -52,7 +68,7 @@ export function scan(charId: string, job: number, mv: Move, every: number, victi
   v.x = dist / 2;
   a.facing = 1;
   v.facing = -1;
-  v.damage = 40;
+  v.damage = victimDamage;
   let pre = 0;
   if (mv.setup === 'drone') {
     if (charId !== 'ai') return null;
@@ -72,12 +88,14 @@ export function scan(charId: string, job: number, mv: Move, every: number, victi
   const stocks0 = v.stocks;
   for (let i = 0; i < frames; i++) {
     // 攻撃側：every フレームごとに技のボタン。間は相手に近づく（離れすぎないように）
-    const [dx, dy] = mv.dir(a, v);
+    const step = mv.steps[Math.floor(i / every) % mv.steps.length];
+    const [dx, dy] = step.dir(a, v);
     const far = Math.abs(v.x - a.x) > 2.2;
-    const pa: InputState = i % every === 0 ? { mx: dx, my: dy, buttons: mv.btn } : { mx: far ? toward(a, v) : 0, my: 0, buttons: 0 };
+    const pa: InputState = i % every === 0 ? { mx: dx, my: dy, buttons: step.btn } : { mx: far ? toward(a, v) : 0, my: 0, buttons: 0 };
     // 相手側
     let pv: InputState = N;
-    const away = -toward(a, v) || 1;
+    // 攻撃側から離れる向き（相手から見て、攻撃側と反対）
+    const away = toward(a, v);
     // スティックは逃げる向きに倒しっぱなし。ボタンは動けるようになって REACT フレームたってから
     if (victim === 'escape') pv = { mx: away, my: 0, buttons: 0 };
     if (!stuck(v) && free >= REACT) {
@@ -98,6 +116,50 @@ export function scan(charId: string, job: number, mv: Move, every: number, victi
   return { worst, ratio: stuckTotal / frames, dmg: v.damage - d0, pre };
 }
 
+/**
+ * 相手を本物のCPUにして測る：攻撃側は every フレームごとに steps の必殺技を順番に出し、CPU（強さ lv）が
+ * 何秒続けて動けないか（短いすき間をはさんでも続いているとみなす）。人がCPU相手に試したときに近い
+ */
+export function cpuScan(charId: string, steps: [number, number][], every: number, lv: number, victimId: string, seed: number, frames = 1200) {
+  const sim = new Sim({
+    players: [
+      { slot: 0, name: 'a', charId, cpu: false, cpuLevel: 1 },
+      { slot: 1, name: 'b', charId: victimId, cpu: true, cpuLevel: lv },
+    ],
+    stageId: 'plain',
+    rules: { mode: 'stock', stocks: 3, timeLimit: 300 },
+    seed,
+  });
+  while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+  const ai = new CpuController(seed);
+  const a = sim.fighters[0];
+  const v = sim.fighters[1];
+  a.x = -2;
+  v.x = 2;
+  v.damage = 30;
+  const GAP = 22;
+  let run = 0;
+  let free = GAP;
+  let worst = 0;
+  let k = 0;
+  for (let i = 0; i < frames; i++) {
+    const dir = Math.sign(v.x - a.x) || 1;
+    let pa: InputState = Math.abs(v.x - a.x) > 6 ? { mx: dir, my: 0, buttons: 0 } : N;
+    if (i % every === 0) {
+      const [mx, my] = steps[k++ % steps.length];
+      pa = { mx: mx * dir, my, buttons: BTN_B };
+    }
+    sim.step(new Map([[0, pa], [1, ai.think(sim, v, lv)]]));
+    if (!v.alive) v.damage = 30;
+    if (stuck(v)) {
+      run = free < GAP ? run + free + 1 : 1;
+      free = 0;
+      worst = Math.max(worst, run);
+    } else free++;
+  }
+  return worst;
+}
+
 if (process.argv[1]?.endsWith('lock-scan.ts')) {
   const rows: string[] = [];
   for (const c of only.length ? only : CHARS) {
@@ -107,11 +169,11 @@ if (process.argv[1]?.endsWith('lock-scan.ts')) {
         let worst = { worst: 0, every: 0, victim: '', dist: 0, dmg: 0, ratio: 0 };
         for (const every of [2, 4, 6, 9, 13, 18])
           for (const dist of [1.0, 2.5, 5]) {
-            // 相手は逃げ・ガード・反撃のうち、いちばん抜け出しやすい動きをとったとして数える
+            // 相手が逃げ・ガード・反撃のどれをとっても抜け出せるべきなので、いちばん長く動けなかった動きで数える
             let best: (ReturnType<typeof scan> & { victim: string }) | null = null;
             for (const victim of ['escape', 'shield', 'fight'] as Victim[]) {
               const r = scan(c, job, mv, every, victim, dist);
-              if (r && (!best || r.worst < best.worst)) best = { ...r, victim };
+              if (r && (!best || r.worst > best.worst)) best = { ...r, victim };
             }
             if (best && best.worst > worst.worst) worst = { worst: best.worst, every, victim: best.victim, dist, dmg: best.dmg, ratio: best.ratio };
           }

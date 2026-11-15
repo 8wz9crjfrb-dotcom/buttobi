@@ -2,7 +2,7 @@
 import { Sim, COUNTDOWN_FRAMES, ANTILOCK } from '../src/shared/sim';
 import { BTN_B, type InputState } from '../src/shared/types';
 import { moveOf } from '../src/shared/moves';
-import { scan } from './lock-scan';
+import { cpuScan, MOVES as ALL_MOVES, scan } from './lock-scan';
 
 let fail = 0;
 function check(name: string, ok: boolean, info = '') {
@@ -111,7 +111,7 @@ for (const [c, name] of [['hacker', 'ハッカー'], ['ai', 'AIエンジニア']
     s2.step(new Map());
     frames++;
   }
-  check('ハメ防止：すき間なく動けないままでも、約3秒で抜け出せる', frames <= ANTILOCK.cut + 2, `${frames}フレーム`);
+  check('ハメ防止：すき間なく動けないままでも、約2.5秒までに抜け出せる', frames <= ANTILOCK.cut + 2, `${frames}フレーム`);
   const s3 = make('guard');
   const u = s3.fighters[1];
   // ふつうの攻防（ひるみのあと、十分動ける時間がある）では発動しない
@@ -127,14 +127,10 @@ for (const [c, name] of [['hacker', 'ハッカー'], ['ai', 'AIエンジニア']
   check('ハメ防止：ふつうの攻防（ひるんだあと十分動ける）では発動しない', !fired);
 }
 
-// ---- 全キャラ：同じ技の連打で、相手が2秒以上抜け出せないことがない
+// ---- 全キャラ：同じ技の連打・2〜3つの技の交互連打で、相手が2秒以上抜け出せないことがない
 {
-  const MOVES = [
-    { name: 'B', btn: BTN_B, dir: () => [0, 0] as [number, number] },
-    { name: '横B', btn: BTN_B, dir: (a: { x: number }, v: { x: number }) => [Math.sign(v.x - a.x) || 1, 0] as [number, number] },
-    { name: '下B', btn: BTN_B, dir: () => [0, -1] as [number, number] },
-    { name: 'ドローン+B', btn: BTN_B, dir: () => [0, 0] as [number, number], setup: 'drone' as const },
-  ];
+  // 弱だけの連打は対象外（弱は3段で止まり、相手は抜けられる。lock-scan で別に確認）
+  const MOVES = ALL_MOVES;
   const bad: string[] = [];
   let worst = 0;
   for (const c of ['guard', 'hacker', 'thief', 'streamer', 'dopa', 'gacha', 'courier', 'ai', 'trainer', 'threeb'])
@@ -142,15 +138,36 @@ for (const [c, name] of [['hacker', 'ハッカー'], ['ai', 'AIエンジニア']
       for (const mv of MOVES)
         for (const every of [2, 6, 13])
           for (const dist of [1, 2.5, 5]) {
-            let best = Infinity;
+            // 相手が逃げ・ガード・反撃のどれをとっても抜け出せること（いちばん長く動けなかった動きで数える）
+            let best = -1;
             for (const victim of ['escape', 'shield', 'fight'] as const) {
               const r = scan(c, job, mv, every, victim, dist, 480);
-              if (r) best = Math.min(best, r.worst);
+              if (r) best = Math.max(best, r.worst);
             }
-            if (best === Infinity) continue;
+            if (best < 0) continue;
             worst = Math.max(worst, best);
             if (best >= 120) bad.push(`${c}${job ? job : ''} ${mv.name} ${every}f ${dist}m ${(best / 60).toFixed(1)}秒`);
           }
-  check('全キャラ：同じ必殺技の連打で、相手が2秒以上抜け出せない組み合わせがない', bad.length === 0, bad.length ? bad.slice(0, 5).join(' / ') : `いちばん長くて${(worst / 60).toFixed(1)}秒`);
+  check('全キャラ：必殺技の連打・交互連打で、相手が2秒以上抜け出せない組み合わせがない', bad.length === 0, bad.length ? bad.slice(0, 5).join(' / ') : `いちばん長くて${(worst / 60).toFixed(1)}秒`);
+}
+// ---- 全キャラ：本物のCPUを相手に、必殺技の連打・交互連打（例：ハッカーのB＋横B）で2秒以上動けなくならない
+{
+  const K: Record<string, [number, number]> = { B: [0, 0], 横B: [1, 0], 下B: [0, -1], 上B: [0, 1] };
+  const combos = [['B'], ['横B'], ['下B'], ['B', '横B'], ['B', '下B'], ['横B', '下B'], ['横B', '上B'], ['B', '横B', '下B']];
+  const bad: string[] = [];
+  let worst = 0;
+  for (const c of ['guard', 'hacker', 'thief', 'streamer', 'dopa', 'gacha', 'courier', 'ai', 'trainer', 'threeb'])
+    for (const combo of combos) {
+      // 警備員の下B（クレーム対応）は構えるだけの技。CPUが自分から殴りかかって返されるのはハメではないので除く
+      if (c === 'guard' && combo.includes('下B')) continue;
+      for (const lv of [3, 9])
+        for (const every of [6, 12, 20])
+          for (const vid of ['guard', 'thief']) {
+            const w = cpuScan(c, combo.map((k) => K[k]), every, lv, vid, 1);
+            worst = Math.max(worst, w);
+            if (w >= 120) bad.push(`${c} ${combo.join('＋')} ${every}f CPU${lv} ${vid} ${(w / 60).toFixed(1)}秒`);
+          }
+    }
+  check('全キャラ：CPUを相手に必殺技を連打・交互連打しても、2秒以上動けなくならない', bad.length === 0, bad.length ? bad.slice(0, 5).join(' / ') : `いちばん長くて${(worst / 60).toFixed(1)}秒`);
 }
 process.exit(fail ? 1 : 0);

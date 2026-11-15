@@ -207,11 +207,11 @@ const SPECIALS: Record<string, Specials> = {
       growth: 0,
       angle: 0,
       air: true,
-      special: 'shot',
-      shots: [{ at: 0, kind: 'text', x: 0.9, y: 1.0, vx: 4.5, vy: 0, life: 120, r: 0.55, dmg: 7, base: 4, growth: 4, angle: 20, hitstunMul: 2.2 }],
+      special: 'shot', cd: 40,
+      shots: [{ at: 0, kind: 'text', x: 0.9, y: 1.0, vx: 4.5, vy: 0, life: 120, r: 0.55, dmg: 7, base: 4, growth: 4, angle: 20, hitstunMul: 1.9 }],
     },
     // 物理ファイアウォール：前に壁を出す（飛び道具を消し、相手を押し返す）
-    sspecial: { startup: 8, active: 4, end: 18, hitboxes: [{ x: 1.0, y: 0.9, r: 0.7 }], dmg: 4, base: 7, growth: 4, angle: 30, air: true, special: 'wall', landLag: 10 },
+    sspecial: { startup: 8, active: 4, end: 18, hitboxes: [{ x: 1.0, y: 0.9, r: 0.7 }], dmg: 4, base: 7, growth: 4, angle: 30, air: true, special: 'wall', landLag: 10, cd: 50 },
     // クレーム対応：構えている間に攻撃されたら1.3倍で返す
     dspecial: { startup: 4, active: 30, end: 24, hitboxes: [], dmg: 0, base: 7, growth: 10, angle: 40, air: true, special: 'counter' },
     // 非常口ダッシュ：斜め上へ突進して復帰
@@ -257,7 +257,7 @@ const SPECIALS: Record<string, Specials> = {
       growth: 0,
       angle: 0,
       air: true,
-      special: 'shot',
+      special: 'shot', cd: 40,
       landLag: 10,
       shots: [-3.5, 0, 3.5].map((vy) => ({ at: 0, kind: 'mail' as const, x: 0.8, y: 1.0, vx: 10, vy, life: 45, r: 0.35, dmg: 3.5, base: 4, growth: 5, angle: 35 })),
     },
@@ -346,7 +346,7 @@ const SPECIALS: Record<string, Specials> = {
     // 切り抜き：少し先へ瞬間移動して斬る
     sspecial: { startup: 10, active: 4, end: 18, hitboxes: [{ x: 0.6, y: 0.9, r: 0.85 }], dmg: 10, base: 6.5, growth: 9, angle: 40, air: true, special: 'teleport', landLag: 10, cd: 60 },
     // 強制アップデート：近くの相手をしばらく動けなくする
-    dspecial: { startup: 10, active: 4, end: 24, hitboxes: [{ x: 0, y: 0.9, r: 1.6 }], dmg: 2, base: 0, growth: 0, angle: 0, air: true, special: 'sleep' },
+    dspecial: { startup: 10, active: 4, end: 24, hitboxes: [{ x: 0, y: 0.9, r: 1.6 }], dmg: 2, base: 0, growth: 0, angle: 0, air: true, special: 'sleep', cd: 150 },
     // スパチャ読み：上昇しながら周りにお礼の文字を飛ばす
     uspecial: {
       startup: 4,
@@ -577,7 +577,7 @@ const JOBCHANGE: MoveDef = { startup: 7, active: 6, end: 8, hitboxes: [{ x: 0, y
 const THREEB: Specials[] = [
   {
     // 美容師：シザーラッシュ（Bを連打すると続き、最後の一撃でふっとばす）
-    nspecial: { startup: 5, active: 15, end: 14, hitboxes: [{ x: 0.85, y: 1.0, r: 0.62 }], dmg: 1.6, base: 1.2, growth: 0, angle: 0, air: true, special: 'rush', rehit: 4, hitstunMul: 1.6, landLag: 8, cd: 30 },
+    nspecial: { startup: 5, active: 15, end: 14, hitboxes: [{ x: 0.85, y: 1.0, r: 0.62 }], dmg: 1.6, base: 1.2, growth: 0, angle: 0, air: true, special: 'rush', rehit: 4, hitstunMul: 1.35, landLag: 8, cd: 60 },
     // ブローアップ：熱風を当てながら踏み込む連続ヒット
     sspecial: { startup: 7, active: 16, end: 16, hitboxes: [{ x: 0.9, y: 0.95, r: 0.7 }], dmg: 1.8, base: 3, growth: 1, angle: 10, air: true, special: 'dash', dashSpeed: 7, rehit: 4, landLag: 10, cd: 60 },
     dspecial: JOBCHANGE,
@@ -633,7 +633,7 @@ export function moveOf(charId: string, id: MoveId, job = 0): MoveDef {
 export const TRAP = { life: 600, r: 0.6, armDelay: 30 };
 /** 壁（物理ファイアウォール）の設定 */
 /** 壁（物理ファイアウォール）の設定。hit は壁に触れた相手への一撃（1枚の壁につき1人1回） */
-export const WALL = { life: 80, w: 0.35, h: 2.4, offset: 1.1, hit: { dmg: 4, base: 8.5, growth: 4, angle: 28, hitstun: 1.4 } };
+export const WALL = { life: 80, w: 0.35, h: 2.4, offset: 1.1, hit: { dmg: 4, base: 8.5, growth: 4, angle: 28, hitstun: 1.1 } };
 /** 一時的な足場（ポップアップ広告）の設定 */
 export const POPUP = { life: 200, w: 2.4 };
 /** 倍速再生の効果時間（6秒）と、効果が切れてから次に使えるまでの時間（7秒）（フレーム） */
@@ -678,6 +678,8 @@ export const GACHA1_CRIT = 0.25;
 export const SCROLL_FINISH = { dmg: 1.3, base: 7, growth: 11, angle: 40 };
 /** 眠っている相手（強制アップデートなど）が受けるふっとばしの倍率 */
 export const SLEEP_KB = 1.2;
+/** 強制アップデートで眠らせる最長の時間（フレーム） */
+export const SLEEP_MAX = 100;
 /** 学習（AIエンジニア）の構え中に直接殴られたら、相手をはじき返す */
 export const DEFLECT = { dmg: 3, base: 8.5, growth: 3, angle: 30, invuln: 12 };
 

@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { SLEEP_MAX, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -312,12 +312,12 @@ const STAMINA_KB_CAP = 50;
 
 /**
  * ハメ防止：ひるみ・眠り・固まり（ヒットストップ）で動けない間は1フレームに1溜まる。
- * 動けるようになっても、grace フレーム（人が反応して逃げるには短すぎる時間）のうちにまた動けなくなったら減らない。
- * それより長く動ければ、1フレームに decay ずつ減る。
- * limit まで溜まったら（約2秒、短いすき間しかなく動けない状態が続いた）、動けるようになった瞬間に invuln フレーム無敵になる。
- * cut まで溜まっても動けないままなら、ひるみを打ち切る（すき間なしのハメも抜けられる）
+ * 動けるようになっても grace フレーム（人が反応して逃げるには短すぎる時間）のうちは、すき間も「ハメの途中」として溜まり続ける
+ * （ひるむ→少しだけ動ける→またひるむ、を繰り返す交互連打も数える）。それより長く動ければ、1フレームに decay ずつ減る。
+ * limit まで溜まったら（約1.5秒、短いすき間しかなく動けない状態が続いた）、動けるようになった瞬間に invuln フレーム無敵になる。
+ * limit を超えてもまだひるんでいたら、残りのひるみを rest フレームまでに縮める。cut まで溜まったら打ち切る（すき間なしのハメも抜けられる）
  */
-export const ANTILOCK = { limit: 120, cut: 180, invuln: 45, grace: 20, decay: 4 };
+export const ANTILOCK = { limit: 90, cut: 150, invuln: 45, grace: 24, decay: 4, rest: 15 };
 /** 必殺技の再使用の待ち時間を入れる場所 */
 const SPECIAL_CD = { nspecial: 'cdN', sspecial: 'cdS', dspecial: 'cdD', uspecial: 'cdU' } as const;
 
@@ -779,14 +779,16 @@ export class Sim {
       f.lockFree = 0;
       return;
     }
-    const stuck = f.hitlag > 0 || f.state === 'hitstun' || f.state === 'sleep';
+    // 動けない：ひるみ・眠り・固まり・つかまれ・着地の硬直（自分の攻撃が当たったときの固まりは除く）
+    const stuck = (f.hitlag > 0 && f.state !== 'attack') || f.state === 'hitstun' || f.state === 'sleep' || f.state === 'grabbed' || (f.state === 'land' && f.stun > 12);
     if (stuck) {
       f.lockFree = 0;
       f.lockMeter++;
-      // すき間なく動けないまま長く続いたら、ひるみ・眠りを打ち切る
-      if (f.lockMeter >= ANTILOCK.cut) {
-        if (f.state === 'hitstun') f.hitstun = Math.min(f.hitstun, 1);
-        if (f.state === 'sleep') f.stun = Math.min(f.stun, 1);
+      // 溜まりきったら、残りのひるみ・眠りを短くする（すぐ抜け出せるように）。さらに続いたら打ち切る
+      if (f.lockMeter >= ANTILOCK.limit) {
+        const rest = f.lockMeter >= ANTILOCK.cut ? 1 : ANTILOCK.rest;
+        if (f.state === 'hitstun') f.hitstun = Math.min(f.hitstun, rest);
+        if (f.state === 'sleep') f.stun = Math.min(f.stun, rest);
       }
       return;
     }
@@ -798,7 +800,10 @@ export class Sim {
       return;
     }
     f.lockFree++;
-    if (f.lockFree > ANTILOCK.grace) f.lockMeter = Math.max(0, f.lockMeter - ANTILOCK.decay);
+    // 短いすき間はハメの途中として数える。長く動ければ減っていく
+    if (f.lockFree <= ANTILOCK.grace) {
+      if (f.lockMeter > 0) f.lockMeter++;
+    } else f.lockMeter = Math.max(0, f.lockMeter - ANTILOCK.decay);
   }
 
   private readInput(f: Fighter, inp: InputState): void {
@@ -2518,7 +2523,7 @@ export class Sim {
       if (v.grounded) {
         v.move = null;
         v.vx = 0;
-        v.stun = Math.min(150, Math.round(40 + v.damage * 0.6));
+        v.stun = Math.min(SLEEP_MAX, Math.round(40 + v.damage * 0.5));
         this.setState(v, 'sleep');
         this.events.push({ k: 'sleep', x: v.x, y: v.y + v.h, s: v.slot });
       } else {
