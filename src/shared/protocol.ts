@@ -17,8 +17,26 @@ export const PROTOCOL_VERSION = 27;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
-/** 勝敗予想が当たったときのコイン */
+/** 勝敗予想が当たったときのコイン（オッズ1倍のとき） */
 export const PREDICT_REWARD = 15;
+/** オッズの上限 */
+export const PREDICT_MAX_ODDS = 5;
+
+/**
+ * 勝敗予想のオッズ（当たったときの倍率）。票が少ない選手ほど高い。
+ * みんなの票を分け合う形（合計の票 ÷ その選手の票）に、選手ごとに1票ずつ足して、
+ * 予想した人が少なくても極端にならないようにする。0.1 刻み・1〜5倍
+ */
+export function predictOdds(votes: number[], pick: number, candidates: number[]): number {
+  const total = votes.length + candidates.length;
+  const mine = votes.filter((v) => v === pick).length + 1;
+  return Math.max(1, Math.min(PREDICT_MAX_ODDS, Math.floor((total / mine) * 10) / 10));
+}
+
+/** オッズを掛けたコイン */
+export function predictCoins(odds: number): number {
+  return Math.round(PREDICT_REWARD * odds);
+}
 
 /** 定型文のスタンプ（文字を打たずに気持ちを伝える。自由な文は送れない） */
 export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って'];

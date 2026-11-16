@@ -4187,3 +4187,23 @@ table.rec td:first-child {
 .predict-res {
   text-align: center;
 }
+.predict-mark {
+  width: 2.1em;
+  height: 1.4em;
+  vertical-align: -0.38em;
+  margin-right: 6px;
+}
+.predict-res .predict-mark {
+  width: 2.6em;
+  height: 1.73em;
+  vertical-align: -0.55em;
+}
+.pick-btn .pick-odds {
+  font-size: 12px;
+  font-weight: 900;
+  color: #ffd84a;
+  margin-top: 1px;
+}
+.pick-btn.on .pick-odds {
+  color: #1b1f3b;
+}

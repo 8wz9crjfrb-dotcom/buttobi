@@ -3,7 +3,7 @@
 import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, getCharacter, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
-import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
+import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { roundName } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
@@ -11,7 +11,7 @@ import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
 import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
-import { ICONS, iconTile } from './icons';
+import { ICONS, iconTile, predictMark } from './icons';
 import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
@@ -1758,7 +1758,7 @@ let predicts: { n: string; p: number }[] = [];
 /** 自分の予想（-1 = していない） */
 let myPick = -1;
 /** 終わった試合の予想の結果（結果画面に出す） */
-let predictResult: { pick: number; hit: boolean; list: { n: string; p: number }[] } | null = null;
+let predictResult: { pick: number; hit: boolean; odds: number; coins: number; list: { n: string; p: number }[] } | null = null;
 const predictEl = document.createElement('div');
 predictEl.id = 'predict';
 predictEl.className = 'hidden';
@@ -1785,13 +1785,19 @@ function predictCount(slot: number): number {
 
 /** 選手を選ぶボタン（試合中のパネル・トーナメントの合間で使う） */
 function pickButtons(players: { slot: number; name: string; charId: string }[], open: boolean): string {
+  const cands = players.map((p) => p.slot);
+  const votes = predicts.map((x) => x.p);
   return players
     .map((p) => {
       const n = predictCount(p.slot);
-      return `<button type="button" class="pick-btn ${myPick === p.slot ? 'on' : ''}" data-pick="${p.slot}" ${open ? '' : 'disabled'} style="--pc:${hex(SLOT_COLORS[p.slot % SLOT_COLORS.length])}"><b>${esc(p.name)}</b><small>${getCharacter(p.charId).name}</small>${n ? `<span class="pick-n">${n}票</span>` : ''}</button>`;
+      // 今のオッズ（票が少ないほど高い。締め切りまで変わる）
+      const odds = predictOdds(votes, p.slot, cands);
+      return `<button type="button" class="pick-btn ${myPick === p.slot ? 'on' : ''}" data-pick="${p.slot}" ${open ? '' : 'disabled'} style="--pc:${hex(SLOT_COLORS[p.slot % SLOT_COLORS.length])}"><b>${esc(p.name)}</b><small>${getCharacter(p.charId).name}</small><span class="pick-odds">×${odds.toFixed(1)}</span>${n ? `<span class="pick-n">${n}票</span>` : ''}</button>`;
     })
     .join('');
 }
+/** 予想の説明（オッズのしくみ） */
+const PREDICT_NOTE = `当たると ${PREDICT_REWARD}コイン×オッズ（票が少ない人ほど高い）`;
 
 function bindPickButtons(root: HTMLElement): void {
   root.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((b) =>
@@ -1822,7 +1828,7 @@ function renderPredict(): void {
     predictEl.innerHTML = `<div class="pr-mini">あなたの予想：<b>${esc(p?.name ?? '？')}</b>${p ? `（${getCharacter(p.charId).name}）` : ''}</div>`;
     return;
   }
-  predictEl.innerHTML = `<div class="pr-title">勝つのはだれ？ 予想しよう<small>当たると +${PREDICT_REWARD} コイン</small></div><div class="pr-btns">${pickButtons(setup.players, true)}</div>`;
+  predictEl.innerHTML = `<div class="pr-title">${predictMark(true)}勝つのはだれ？ 予想しよう<small>${PREDICT_NOTE}</small></div><div class="pr-btns">${pickButtons(setup.players, true)}</div>`;
   bindPickButtons(predictEl);
 }
 
@@ -1844,15 +1850,20 @@ function onPredictStart(setup: MatchSetup): void {
 function onPredictEnd(results: ResultEntry[]): void {
   const list = predicts.slice();
   predictResult = null;
+  // オッズは締め切った時点（＝試合が終わったとき）の票で決める
+  const cands = predictSetup?.players.map((p) => p.slot) ?? results.map((r) => r.slot);
+  const votes = list.map((x) => x.p);
   if (myPick >= 0) {
     const hit = results.find((r) => r.slot === myPick)?.rank === 1;
+    const odds = predictOdds(votes, myPick, cands);
+    const coins = hit ? predictCoins(odds) : 0;
     if (hit) {
-      wallet.coins += PREDICT_REWARD;
+      wallet.coins += coins;
       saveWallet(wallet);
     }
-    predictResult = { pick: myPick, hit, list };
+    predictResult = { pick: myPick, hit, odds, coins, list };
   } else if (list.length) {
-    predictResult = { pick: -1, hit: false, list };
+    predictResult = { pick: -1, hit: false, odds: 0, coins: 0, list };
   }
   myPick = -1;
   hidePredict();
@@ -1869,7 +1880,12 @@ function predictLines(results: ResultEntry[], setup: MatchSetup): string {
   };
   const hits = pr.list.filter((x) => winners.has(x.p)).map((x) => esc(x.n));
   const lines: string[] = [];
-  if (pr.pick >= 0) lines.push(pr.hit ? `🔮 予想的中！（${nameOf(pr.pick)}） +${PREDICT_REWARD} コイン` : `🔮 予想はハズレ…（${nameOf(pr.pick)}）`);
+  if (pr.pick >= 0)
+    lines.push(
+      pr.hit
+        ? `${predictMark(true)}<b>予想的中！</b>（${nameOf(pr.pick)}） オッズ×${pr.odds.toFixed(1)} → <b>+${pr.coins} コイン</b>`
+        : `${predictMark(false)}予想はハズレ…（${nameOf(pr.pick)}・オッズ×${pr.odds.toFixed(1)}）`,
+    );
   if (pr.list.length) lines.push(hits.length ? `予想が当たった人：${hits.join('、')}` : `予想が当たった人：なし（${pr.list.length}人が予想）`);
   return `<div class="reward-sub predict-res">${lines.map((l) => `<div>${l}</div>`).join('')}</div>`;
 }
@@ -1922,7 +1938,7 @@ function tourStatus(t: TourInfo): string {
       const mine = m.a === net.slot || m.b === net.slot;
       // 自分が出ない試合は、勝敗を予想できる
       const ents = [m.a, m.b].map((slot) => t.entrants.find((x) => x.slot === slot)!).filter(Boolean);
-      const pick = mine ? '' : `<div class="pr-btns tour-pick"><span class="muted">勝つのはだれ？（当たると +${PREDICT_REWARD}）</span>${pickButtons(ents, true)}</div>`;
+      const pick = mine ? '' : `<div class="pr-btns tour-pick"><span class="muted">${predictMark(true)}勝つのはだれ？（${PREDICT_NOTE}）</span>${pickButtons(ents, true)}</div>`;
       return `<div class="tour-status ${mine ? 'mine' : ''}">次の試合（${roundName(r, t.rounds.length)}）：${nm(m.a)} vs ${nm(m.b)}${mine ? '　← あなたの出番！' : ''}<span class="tour-left" data-tour-left>${left ? `あと${left}秒で開始` : ''}</span></div>${pick}`;
     }
   }

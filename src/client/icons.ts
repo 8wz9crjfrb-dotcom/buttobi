@@ -93,6 +93,14 @@ export const ICONS: Record<string, string> = {
   install: svg(`<rect x="13" y="5" width="22" height="38" rx="5"/><path d="M24 14v14"/><path d="M18.5 23l5.5 5.5 5.5-5.5"/><path d="M21 37h6"/>`),
 };
 
+/** 勝敗予想の「予想チケット」：両側に切り込みのある券。当たりはチェック、ハズレは×。左側にミシン目 */
+const TICKET = 'M9 12h30a4 4 0 0 1 4 4v4.5a3.5 3.5 0 0 0 0 7V32a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4v-4.5a3.5 3.5 0 0 0 0-7V16a4 4 0 0 1 4-4z';
+export function predictMark(hit: boolean): string {
+  const fill = hit ? '#ffd84a' : '#8a90a8';
+  const sign = hit ? '<path d="M21 24.5l4.5 4.5 9-10" stroke="#1b1f3b" stroke-width="3.6"/>' : '<path d="M23 19.5l9 9M32 19.5l-9 9" stroke="#1b1f3b" stroke-width="3.4"/>';
+  return `<svg class="predict-mark" viewBox="3 10 42 28" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${TICKET}" fill="${fill}"/><path d="M15 15v18" stroke="#1b1f3b" stroke-width="2" stroke-dasharray="2.5 3" opacity=".55"/><circle cx="10.5" cy="24" r="2" fill="#1b1f3b" opacity=".45"/>${sign}</svg>`;
+}
+
 /** 色つきの台に載せたアイコン（メニューの大きなボタン用） */
 export function iconTile(name: string, color: string): string {
   return `<span class="m-ic" style="--ic:${color}">${ICONS[name] ?? ''}</span>`;
