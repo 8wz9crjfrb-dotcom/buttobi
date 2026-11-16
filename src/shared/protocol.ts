@@ -1,6 +1,6 @@
 // 端末とサーバーの間でやり取りするメッセージ（JSON）
 
-import type { FighterSnapshot } from './sim';
+import { COUNTDOWN_FRAMES, type FighterSnapshot } from './sim';
 import {
   MOVE_IDS,
   STATE_NAMES,
@@ -13,7 +13,12 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 26;
+export const PROTOCOL_VERSION = 27;
+
+/** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
+export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
+/** 勝敗予想が当たったときのコイン */
+export const PREDICT_REWARD = 15;
 
 /** 定型文のスタンプ（文字を打たずに気持ちを伝える。自由な文は送れない） */
 export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って'];
@@ -90,6 +95,8 @@ export type ClientMsg =
   | { t: 'ready'; on: boolean }
   /** 定型文のスタンプ（STAMPS の番号） */
   | { t: 'stamp'; id: number }
+  /** 勝敗予想（勝つと思う選手の slot）。試合に出ていない人だけ */
+  | { t: 'predict'; slot: number }
   /** 入力。s = 最初の入力の通し番号、i = 1フレームごとの [mx, my, ボタン] */
   | { t: 'in'; s: number; i: [number, number, number][] }
   | { t: 'ping'; c: number; r?: number }
@@ -108,6 +115,8 @@ export type ServerMsg =
   | { t: 'notice'; msg: string }
   /** だれかが送ったスタンプ */
   | { t: 'stamp'; slot: number; name: string; id: number }
+  /** 勝敗予想の一覧（n = 予想した人の名前、p = 勝つと思う選手の slot） */
+  | { t: 'predicts'; list: { n: string; p: number }[] }
   | { t: 'pong'; c: number }
   | { t: 'error'; code: 'full' | 'taken' | 'notfound' | 'inmatch' | 'version' | 'bad'; msg: string };
 

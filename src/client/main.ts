@@ -3,7 +3,7 @@
 import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, getCharacter, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
-import { MAX_PLAYERS, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
+import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { roundName } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
@@ -299,6 +299,7 @@ function startSession(s: Session): void {
   if (!(s instanceof LocalSession && s.training && tutorialStarting)) stopTutorial();
   session = s;
   resultsShown = false;
+  if (s.kind !== 'net') hidePredict();
   lastView = null;
   renderer.setMatch(s.setup, getStage(s.setup.stageId));
   input.reset();
@@ -1751,6 +1752,129 @@ function updateRoomShare(): void {
 }
 
 // ---------------------------------------------------------------------------
+// 勝敗予想：試合に出ていない人（トーナメントの待ち・観戦）が勝つ人を予想する
+/** みんなの予想（n = 予想した人、p = 勝つと思う選手の slot） */
+let predicts: { n: string; p: number }[] = [];
+/** 自分の予想（-1 = していない） */
+let myPick = -1;
+/** 終わった試合の予想の結果（結果画面に出す） */
+let predictResult: { pick: number; hit: boolean; list: { n: string; p: number }[] } | null = null;
+const predictEl = document.createElement('div');
+predictEl.id = 'predict';
+predictEl.className = 'hidden';
+document.getElementById('app')!.appendChild(predictEl);
+let predictClose = 0;
+let predictSetup: MatchSetup | null = null;
+
+/** この試合で予想できるか（個人戦で、自分が出ていない） */
+function canPredictMatch(setup: MatchSetup): boolean {
+  const r = setup.rules;
+  return !r.teams && r.mode !== 'ball' && !r.horde && !setup.players.some((p) => p.slot === net.slot && net.slot >= 0);
+}
+
+function hidePredict(): void {
+  predictEl.classList.add('hidden');
+  predictSetup = null;
+  clearTimeout(predictClose);
+}
+
+/** 予想の票の数（slot → 人数） */
+function predictCount(slot: number): number {
+  return predicts.filter((x) => x.p === slot).length;
+}
+
+/** 選手を選ぶボタン（試合中のパネル・トーナメントの合間で使う） */
+function pickButtons(players: { slot: number; name: string; charId: string }[], open: boolean): string {
+  return players
+    .map((p) => {
+      const n = predictCount(p.slot);
+      return `<button type="button" class="pick-btn ${myPick === p.slot ? 'on' : ''}" data-pick="${p.slot}" ${open ? '' : 'disabled'} style="--pc:${hex(SLOT_COLORS[p.slot % SLOT_COLORS.length])}"><b>${esc(p.name)}</b><small>${getCharacter(p.charId).name}</small>${n ? `<span class="pick-n">${n}票</span>` : ''}</button>`;
+    })
+    .join('');
+}
+
+function bindPickButtons(root: HTMLElement): void {
+  root.querySelectorAll<HTMLButtonElement>('[data-pick]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      myPick = Number(b.dataset.pick);
+      net.predict(myPick);
+      sfx.click();
+      renderPredict();
+      updateTourInfo();
+    }),
+  );
+}
+
+/** 試合中のパネル（予想できる時間は選べる。過ぎたら自分の予想だけ小さく出す） */
+function renderPredict(): void {
+  const setup = predictSetup;
+  if (!setup || session?.kind !== 'net') return hidePredict();
+  const open = (lastView?.frame ?? 0) < PREDICT_FRAMES - 20;
+  if (!open && myPick < 0) {
+    predictEl.classList.add('hidden');
+    return;
+  }
+  predictEl.classList.remove('hidden');
+  predictEl.classList.toggle('mini', !open);
+  if (!open) {
+    const p = setup.players.find((x) => x.slot === myPick);
+    predictEl.innerHTML = `<div class="pr-mini">あなたの予想：<b>${esc(p?.name ?? '？')}</b>${p ? `（${getCharacter(p.charId).name}）` : ''}</div>`;
+    return;
+  }
+  predictEl.innerHTML = `<div class="pr-title">勝つのはだれ？ 予想しよう<small>当たると +${PREDICT_REWARD} コイン</small></div><div class="pr-btns">${pickButtons(setup.players, true)}</div>`;
+  bindPickButtons(predictEl);
+}
+
+/** 試合が始まった：予想のパネルを出す（トーナメントの合間に選んだ予想は引き継ぐ） */
+function onPredictStart(setup: MatchSetup): void {
+  if (!setup.players.some((p) => p.slot === myPick)) myPick = -1;
+  if (!canPredictMatch(setup)) {
+    myPick = -1;
+    return hidePredict();
+  }
+  predictSetup = setup;
+  renderPredict();
+  clearTimeout(predictClose);
+  // 予想できる時間が過ぎたら小さくする
+  predictClose = window.setTimeout(renderPredict, ((PREDICT_FRAMES - 20) / 60) * 1000 + 300);
+}
+
+/** 試合が終わった：予想が当たったか */
+function onPredictEnd(results: ResultEntry[]): void {
+  const list = predicts.slice();
+  predictResult = null;
+  if (myPick >= 0) {
+    const hit = results.find((r) => r.slot === myPick)?.rank === 1;
+    if (hit) {
+      wallet.coins += PREDICT_REWARD;
+      saveWallet(wallet);
+    }
+    predictResult = { pick: myPick, hit, list };
+  } else if (list.length) {
+    predictResult = { pick: -1, hit: false, list };
+  }
+  myPick = -1;
+  hidePredict();
+}
+
+/** 結果画面の予想の行 */
+function predictLines(results: ResultEntry[], setup: MatchSetup): string {
+  const pr = predictResult;
+  if (!pr) return '';
+  const winners = new Set(results.filter((r) => r.rank === 1).map((r) => r.slot));
+  const nameOf = (slot: number) => {
+    const p = setup.players.find((x) => x.slot === slot);
+    return p ? `${esc(p.name)}・${getCharacter(p.charId).name}` : '？';
+  };
+  const hits = pr.list.filter((x) => winners.has(x.p)).map((x) => esc(x.n));
+  const lines: string[] = [];
+  if (pr.pick >= 0) lines.push(pr.hit ? `🔮 予想的中！（${nameOf(pr.pick)}） +${PREDICT_REWARD} コイン` : `🔮 予想はハズレ…（${nameOf(pr.pick)}）`);
+  if (pr.list.length) lines.push(hits.length ? `予想が当たった人：${hits.join('、')}` : `予想が当たった人：なし（${pr.list.length}人が予想）`);
+  return `<div class="reward-sub predict-res">${lines.map((l) => `<div>${l}</div>`).join('')}</div>`;
+}
+
+// ---------------------------------------------------------------------------
 // トーナメント
 /** 優勝したときのごほうび（コイン） */
 const TOUR_PRIZE = 100;
@@ -1796,7 +1920,10 @@ function tourStatus(t: TourInfo): string {
       const nm = (slot: number) => esc(t.entrants.find((x) => x.slot === slot)?.name ?? '？');
       const left = tourDeadline ? Math.max(0, Math.ceil((tourDeadline - Date.now()) / 1000)) : 0;
       const mine = m.a === net.slot || m.b === net.slot;
-      return `<div class="tour-status ${mine ? 'mine' : ''}">次の試合（${roundName(r, t.rounds.length)}）：${nm(m.a)} vs ${nm(m.b)}${mine ? '　← あなたの出番！' : ''}<span class="tour-left" data-tour-left>${left ? `あと${left}秒で開始` : ''}</span></div>`;
+      // 自分が出ない試合は、勝敗を予想できる
+      const ents = [m.a, m.b].map((slot) => t.entrants.find((x) => x.slot === slot)!).filter(Boolean);
+      const pick = mine ? '' : `<div class="pr-btns tour-pick"><span class="muted">勝つのはだれ？（当たると +${PREDICT_REWARD}）</span>${pickButtons(ents, true)}</div>`;
+      return `<div class="tour-status ${mine ? 'mine' : ''}">次の試合（${roundName(r, t.rounds.length)}）：${nm(m.a)} vs ${nm(m.b)}${mine ? '　← あなたの出番！' : ''}<span class="tour-left" data-tour-left>${left ? `あと${left}秒で開始` : ''}</span></div>${pick}`;
     }
   }
   return '';
@@ -1821,6 +1948,7 @@ function updateTourInfo(): void {
   const t = lobby?.tour;
   if (!el) return;
   el.innerHTML = t && lobby?.tourOn ? `${tourStatus(t)}${tourBracket(t)}` : '';
+  bindPickButtons(el);
   // 結果画面のホストのボタン
   const btn = screensEl.querySelector<HTMLElement>('#rematch');
   if (btn && t && lobby?.tourOn) btn.textContent = t.champion >= 0 ? 'もう一度トーナメント' : '次の試合へ';
@@ -1925,6 +2053,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
     ];
     if (lines.length) reward += `<div class="reward-sub">${lines.map((l) => `<div>🎉 ${l}</div>`).join('')}</div>`;
   }
+  if (online) reward += predictLines(results, setup);
   // 所持コインは、勝利・ミッション・称号をすべて足したあとの数を出す
   reward = reward.replace('__COINS__', wallet.coins.toLocaleString());
   renderer.celebrate(win ? win.slot : null);
@@ -3194,8 +3323,10 @@ const net = new NetClient({
   },
   onStart(setup) {
     startSession(new NetSession(setup, setup.players.find((p) => p.slot === net.slot) ? net.slot : -1, net));
+    onPredictStart(setup);
   },
   onEnd(results) {
+    onPredictEnd(results);
     // 一緒に戦ったフレンドの回数を数える（観戦は数えない）
     if (session?.kind === 'net' && net.slot >= 0 && lobby) {
       const inMatch = new Set(session.setup.players.map((p) => p.slot));
@@ -3255,9 +3386,15 @@ const net = new NetClient({
   onStamp(slot, name, id) {
     showStamp(slot, name, STAMPS[id] ?? '');
   },
+  onPredicts(list) {
+    predicts = list;
+    if (predictSetup) renderPredict();
+    updateTourInfo();
+  },
   onClose() {
     toast('サーバーとの接続が切れました', 3500);
     lobby = null;
+    hidePredict();
     if (session?.kind === 'net') endToMenu();
     else showMenu();
   },

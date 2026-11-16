@@ -26,6 +26,8 @@ export interface NetHandlers {
   onNotice(msg: string): void;
   /** だれかが送ったスタンプ */
   onStamp(slot: number, name: string, id: number): void;
+  /** 勝敗予想の一覧が変わった */
+  onPredicts(list: { n: string; p: number }[]): void;
 }
 
 /** 対戦中のルームに戻るための情報（アプリを閉じても残す。30分で使えなくなる） */
@@ -234,6 +236,9 @@ export class NetClient {
       case 'stamp':
         this.handlers.onStamp(m.slot, m.name, m.id);
         break;
+      case 'predicts':
+        this.handlers.onPredicts(Array.isArray(m.list) ? m.list : []);
+        break;
       case 'pong':
         this.rtt = performance.now() - m.c;
         break;
@@ -345,6 +350,10 @@ export class NetClient {
   }
 
   /** 結果画面の「もう1戦したい」 */
+  predict(slot: number): void {
+    this.send({ t: 'predict', slot });
+  }
+
   again(on: boolean): void {
     this.send({ t: 'again', on });
   }

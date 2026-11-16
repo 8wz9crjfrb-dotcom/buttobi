@@ -9,6 +9,7 @@ import {
   MAX_INPUTS_PER_MSG,
   MAX_PLAYERS,
   STAMPS,
+  PREDICT_FRAMES,
   PROTOCOL_VERSION,
   encodeState,
   isRoomCode,
@@ -98,6 +99,9 @@ export default {
 
 interface Attachment {
   slot: number;
+  /** 観戦している人の名前と番号（勝敗予想に使う） */
+  name?: string;
+  sid?: number;
 }
 
 interface StoredHuman {
@@ -196,6 +200,32 @@ export class Room extends DurableObject<Env> {
   /** トーナメント：次の試合が自動で始まる時刻（0 = 予定なし） */
   private tourNextAt = 0;
   private tourTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 勝敗予想（予想した人 → 名前と勝つと思う選手）。人は "h<slot>"、観戦は "s<番号>" */
+  private predicts = new Map<string, { n: string; p: number }>();
+  private nextSid = 1;
+
+  /** 今予想できる試合の選手（予想できないときは null） */
+  private predictTargets(): number[] | null {
+    const l = this.lobby;
+    if (!l) return null;
+    if (this.sim && this.setup) {
+      const r = this.setup.rules;
+      // チームで勝ち負けが決まるルールと100人組手は予想しない
+      if (r.teams || r.mode === 'ball' || r.horde || this.sim.frame >= PREDICT_FRAMES) return null;
+      return this.setup.players.map((p) => p.slot);
+    }
+    // トーナメントの合間：次の試合
+    const t = l.tourOn ? l.tour : undefined;
+    if (!t || t.champion >= 0) return null;
+    const nm = nextMatch(t.rounds);
+    if (!nm) return null;
+    const m = t.rounds[nm[0]][nm[1]];
+    return [m.a, m.b];
+  }
+
+  private pushPredicts(): void {
+    this.broadcast({ t: 'predicts', list: [...this.predicts.values()] });
+  }
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -364,10 +394,11 @@ export class Room extends DurableObject<Env> {
           this.send(ws, { t: 'error', code: 'full', msg: '観戦の人数がいっぱいです。' });
           return ws.close(1000, 'full');
         }
-        ws.serializeAttachment({ slot: SPECTATOR, code: this.lobby.code });
+        ws.serializeAttachment({ slot: SPECTATOR, code: this.lobby.code, name: sanitizeName(msg.name), sid: this.nextSid++ });
         this.send(ws, { t: 'welcome', slot: -1, token: '' });
         this.send(ws, { t: 'lobby', lobby: this.lobbyInfo() });
         if (this.sim && this.setup) this.send(ws, { t: 'start', setup: this.setup });
+        if (this.predicts.size) this.send(ws, { t: 'predicts', list: [...this.predicts.values()] });
         this.pushLobby();
         return;
       }
@@ -413,6 +444,18 @@ export class Room extends DurableObject<Env> {
       await this.save();
       this.send(ws, { t: 'welcome', slot: s, token });
       this.pushLobby();
+      return;
+    }
+
+    if (msg.t === 'predict' && this.lobby && (slot >= 0 || slot === SPECTATOR)) {
+      // 勝敗予想：試合に出ていない人だけ。決め直しはできる
+      const targets = this.predictTargets();
+      const pick = Number(msg.slot) | 0;
+      if (!targets || !targets.includes(pick) || (slot >= 0 && targets.includes(slot))) return;
+      const key = slot >= 0 ? `h${slot}` : `s${att?.sid ?? 0}`;
+      const name = slot >= 0 ? this.lobby.humans.find((h) => h.slot === slot)?.name ?? '？' : `${(att as Attachment | null)?.name ?? '観戦'}（観戦）`;
+      this.predicts.set(key, { n: name, p: pick });
+      this.pushPredicts();
       return;
     }
 
@@ -723,6 +766,9 @@ export class Room extends DurableObject<Env> {
       for (const h of this.lobby.humans) h.ready = false;
     }
     this.setup = setup;
+    // トーナメントの合間にした予想は、この試合の選手を選んでいれば引き継ぐ
+    const inMatch = new Set(setup.players.map((p) => p.slot));
+    for (const [k, v] of this.predicts) if (!inMatch.has(v.p) || (k.startsWith('h') && inMatch.has(Number(k.slice(1))))) this.predicts.delete(k);
     this.sim = new Sim(setup);
     this.cpu = new CpuController(setup.seed);
     this.cpuSlots.clear();
@@ -730,6 +776,7 @@ export class Room extends DurableObject<Env> {
     this.queues.clear();
     this.eventBuf = [];
     this.broadcast({ t: 'start', setup });
+    this.pushPredicts();
     this.lastTick = Date.now();
     this.loop = setInterval(() => this.tick(), TICK_MS);
   }
@@ -844,6 +891,9 @@ export class Room extends DurableObject<Env> {
         this.stopMatch();
         this.endTourMatch(results);
         this.broadcast({ t: 'end', results });
+        // 予想は試合ごと（結果は端末が end の時点の一覧で判定する）
+        this.predicts.clear();
+        this.pushPredicts();
         if (this.lobby) {
           const connected = this.connectedSlots();
           this.lobby.humans = this.lobby.humans.filter((h) => connected.has(h.slot) || (h.goneAt > 0 && Date.now() - h.goneAt < REJOIN_GRACE));

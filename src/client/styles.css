@@ -4094,3 +4094,96 @@ table.rec td:first-child {
 .results-screen .tb-col {
   min-width: 112px;
 }
+
+/* 勝敗予想：試合に出ていない人のパネル（タイマーの下） */
+#predict {
+  position: absolute;
+  left: 50%;
+  top: calc(84px + var(--safe-t));
+  transform: translateX(-50%);
+  z-index: 55;
+  padding: 8px 12px 10px;
+  border-radius: 14px;
+  background: rgba(10, 12, 30, 0.88);
+  border: 1px solid rgba(255, 216, 74, 0.5);
+  text-align: center;
+  max-width: calc(100vw - 32px);
+}
+#predict.hidden {
+  display: none;
+}
+#predict.mini {
+  padding: 4px 12px;
+  border-color: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+.pr-title {
+  font-weight: 800;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.pr-title small {
+  display: block;
+  font-size: 11px;
+  color: #ffd84a;
+  font-weight: 700;
+}
+.pr-mini {
+  font-size: 12px;
+}
+.pr-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+}
+.tour-pick {
+  margin: 2px 0 6px;
+}
+.tour-pick > .muted {
+  font-size: 12px;
+  width: 100%;
+}
+.pick-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 96px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 2px solid var(--pc);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  position: relative;
+}
+.pick-btn b {
+  font-size: 13px;
+}
+.pick-btn small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.pick-btn.on {
+  background: var(--pc);
+  color: #111;
+}
+.pick-btn.on small {
+  color: rgba(0, 0, 0, 0.6);
+}
+.pick-btn .pick-n {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  font-size: 10px;
+  font-weight: 800;
+  background: #ffd84a;
+  color: #111;
+  border-radius: 8px;
+  padding: 1px 5px;
+}
+.predict-res {
+  text-align: center;
+}
