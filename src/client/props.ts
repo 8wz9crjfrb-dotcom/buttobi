@@ -128,7 +128,8 @@ export class PropRenderer {
     sprite.renderOrder = 10;
     sprite.position.set(x, y, 1);
     this.scene.add(sprite);
-    this.texts.push({ sprite, life, max: life });
+    // 注意の文字はその場にとどめる（上へ流れて画面の外に出ないように）
+    this.texts.push({ sprite, life, max: life, still: warn });
   }
 
   // ---------------------------------------------------------------- 部品の作り方

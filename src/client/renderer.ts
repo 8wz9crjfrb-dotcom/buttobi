@@ -1198,6 +1198,18 @@ export class GameRenderer {
   }
 
   /** ステージギミックの予告：何が来るかの文字と、来る場所の印 */
+  /** 今のカメラで、画面の縦の位置 ndcY（-1 = 下の端、1 = 上の端）に見える高さ（奥行き z = 1 の面、横の位置 x のあたり） */
+  private screenY(ndcY: number, x: number): number {
+    const ray = new THREE.Raycaster();
+    const xs = new THREE.Vector3(x, 0, 1).project(this.camera).x;
+    ray.setFromCamera(new THREE.Vector2(xs, ndcY), this.camera);
+    const o = ray.ray.origin;
+    const d = ray.ray.direction;
+    if (Math.abs(d.z) < 1e-6) return o.y;
+    const t = (1 - o.z) / d.z;
+    return o.y + d.y * t;
+  }
+
   private gimmickWarn(e: Extract<GameEvent, { k: 'warn' }>): void {
     const st = this.stage;
     if (!st) return;
@@ -1215,7 +1227,8 @@ export class GameRenderer {
       livebar: '照明が落ちる！',
     };
     if (e.h === 'livebar') this.blackoutAt = this.time + 1.5;
-    this.props.showText(labels[e.h] ?? '注意！', '#ffd23f', (m.x1 + m.x2) / 2, m.top + 6.5, true, 110, true);
+    // 画面の上の端で切れないよう、今のカメラで「画面の上から約1/4」の高さに出す（ステージより低くはしない）
+    this.props.showText(labels[e.h] ?? '注意！', '#ffd23f', (m.x1 + m.x2) / 2, Math.max(m.top + 2, this.screenY(0.5, (m.x1 + m.x2) / 2)), true, 110, true);
     if (e.h === 'lab') {
       // 光線が落ちる場所に赤い印
       for (let i = 0; i < 3; i++) this.spawn(this.ringGeo, 0xff3b3b, e.x, m.top + 0.1, 0, 0, 0.9, 40 + i * 25, -0.004);
