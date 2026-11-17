@@ -1615,7 +1615,14 @@ function showLoginBonus(root: HTMLElement, day: number, amount: number): void {
     </div>`;
   root.appendChild(pop);
   sfx.gacha(4);
-  pop.querySelector('#lb-ok')!.addEventListener('click', () => pop.remove());
+  pop.querySelector('#lb-ok')!.addEventListener('click', () => {
+    pop.remove();
+    // 受け取ったら、まだ読んでいないアップデートのお知らせをすぐ出す
+    if (!newsShownOnce && unreadNews().length && !screensEl.querySelector('.modal')) {
+      newsShownOnce = true;
+      showNews();
+    }
+  });
 }
 document.addEventListener('installable', () => {
   if (screensEl.querySelector('.menu-screen')) showMenu();
