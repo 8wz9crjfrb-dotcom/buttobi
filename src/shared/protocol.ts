@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 27;
+export const PROTOCOL_VERSION = 28;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -96,6 +96,9 @@ export interface TourInfo {
   champion: number;
   /** 次の試合が自動で始まるまで（ms。0 = 予定なし） */
   nextIn: number;
+  /** 次の試合を予想できる人数と、そのうち予想した人数（試合と試合の間だけ） */
+  need?: number;
+  voted?: number;
 }
 
 /** 端末 → サーバー */

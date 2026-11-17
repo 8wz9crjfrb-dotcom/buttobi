@@ -79,7 +79,7 @@ export function loadSettings(): Settings {
     leftHanded: false,
     btnPos: {},
     hideOnline: false,
-    shareRoom: true,
+    shareRoom: false,
   };
   try {
     const raw = localStorage.getItem(KEY);

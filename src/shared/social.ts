@@ -76,6 +76,8 @@ export interface FriendInfo {
   room?: SharedRoom;
   /** プロフィール（まだ設定していない人はなし） */
   prof?: Profile;
+  /** 最後にアプリを開いていた時刻（ms。オフラインのときだけ。在席を隠している人・記録がない人はなし） */
+  seen?: number;
 }
 
 /** 端末 → サーバー */

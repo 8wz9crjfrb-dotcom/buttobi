@@ -139,8 +139,12 @@ interface StoredLobby {
   tour?: Omit<TourInfo, 'nextIn'>;
 }
 
-/** トーナメント：試合が終わってから次の試合が自動で始まるまで（ms） */
+/** トーナメント：次の試合が自動で始まるまで（ms）。予想する人がいないとき */
 const TOUR_NEXT_MS = 15_000;
+/** 予想する人がいるとき：全員が予想し終えるのを待つ最長の時間（だれかが放置しても進むように） */
+const TOUR_VOTE_MS = 30_000;
+/** 全員が予想し終えてから試合が始まるまで（最後の票とオッズを見る時間） */
+const TOUR_VOTED_MS = 3_000;
 
 /** チームの番号を 0〜3 に収める */
 function validTeam(n: unknown): number | undefined {
@@ -211,7 +215,8 @@ export class Room extends DurableObject<Env> {
     if (this.sim && this.setup) {
       const r = this.setup.rules;
       // チームで勝ち負けが決まるルールと100人組手は予想しない
-      if (r.teams || r.mode === 'ball' || r.horde || this.sim.frame >= PREDICT_FRAMES) return null;
+      // トーナメントの試合は、試合と試合の間にだけ予想する（試合が始まったら締め切り）
+      if (r.teams || r.mode === 'ball' || r.horde || l.tourOn || this.sim.frame >= PREDICT_FRAMES) return null;
       return this.setup.players.map((p) => p.slot);
     }
     // トーナメントの合間：次の試合
@@ -225,6 +230,37 @@ export class Room extends DurableObject<Env> {
 
   private pushPredicts(): void {
     this.broadcast({ t: 'predicts', list: [...this.predicts.values()] });
+  }
+
+  /** トーナメントの合間：予想できる人（次の試合に出ない、つながっている人）と、そのうち予想した人数 */
+  private tourVotes(): { need: number; voted: number } {
+    const l = this.lobby;
+    const targets = !this.sim ? this.predictTargets() : null;
+    if (!l || !targets) return { need: 0, voted: 0 };
+    const connected = this.connectedSlots();
+    const voters = l.humans.filter((h) => connected.has(h.slot) && !targets.includes(h.slot));
+    return { need: voters.length, voted: voters.filter((h) => this.predicts.has(`h${h.slot}`)).length };
+  }
+
+  /** トーナメントの次の試合を ms 後に始める（すでに早い予定があればそのまま） */
+  private scheduleTour(ms: number, keepEarlier = false): void {
+    const at = Date.now() + ms;
+    if (keepEarlier && this.tourNextAt && this.tourNextAt <= at) return;
+    if (this.tourTimer) clearTimeout(this.tourTimer);
+    const t = this.lobby?.tour;
+    this.tourNextAt = at;
+    this.tourTimer = setTimeout(() => {
+      this.tourTimer = null;
+      this.tourNextAt = 0;
+      if (!this.sim && this.lobby?.tour === t && this.connectedSlots().size > 0) this.startTour();
+    }, ms);
+  }
+
+  /** トーナメントの合間の待ち時間を決める：予想する人がいれば、全員が予想し終えたら少しして始める */
+  private planTourNext(first = false): void {
+    const { need, voted } = this.tourVotes();
+    if (need > 0 && voted >= need) this.scheduleTour(TOUR_VOTED_MS, true);
+    else if (first) this.scheduleTour(need > 0 ? TOUR_VOTE_MS : TOUR_NEXT_MS);
   }
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -325,7 +361,7 @@ export class Room extends DurableObject<Env> {
       }
     }
     players.sort((a, b) => a.slot - b.slot);
-    const tour: TourInfo | undefined = l.tour ? { ...l.tour, nextIn: !this.sim && this.tourNextAt ? Math.max(0, this.tourNextAt - Date.now()) : 0 } : undefined;
+    const tour: TourInfo | undefined = l.tour ? { ...l.tour, nextIn: !this.sim && this.tourNextAt ? Math.max(0, this.tourNextAt - Date.now()) : 0, ...this.tourVotes() } : undefined;
     return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, ...(tour ? { tour } : {}) };
   }
 
@@ -456,6 +492,11 @@ export class Room extends DurableObject<Env> {
       const name = slot >= 0 ? this.lobby.humans.find((h) => h.slot === slot)?.name ?? '？' : `${(att as Attachment | null)?.name ?? '観戦'}（観戦）`;
       this.predicts.set(key, { n: name, p: pick });
       this.pushPredicts();
+      // トーナメントの合間：全員が予想し終えたら、少しして次の試合を始める
+      if (!this.sim && this.lobby.tourOn && this.lobby.tour) {
+        this.planTourNext();
+        this.pushLobby();
+      }
       return;
     }
 
@@ -663,6 +704,8 @@ export class Room extends DurableObject<Env> {
     }
     if (!connected.has(l.hostSlot)) l.hostSlot = remaining[0].slot;
     if (!this.sim) l.cpuCount = Math.min(l.cpuCount, MAX_PLAYERS - l.humans.length);
+    // トーナメントの合間：抜けた人を除いて全員が予想し終えていれば、少しして始める
+    if (!this.sim && l.tourOn && l.tour && l.tour.champion < 0) this.planTourNext();
     await this.save();
     this.pushLobby();
   }
@@ -692,6 +735,13 @@ export class Room extends DurableObject<Env> {
         cur: null,
         champion: -1,
       };
+      // 最初の試合の前に、組み合わせ表を見せて予想を受け付ける
+      this.predicts.clear();
+      this.pushPredicts();
+      this.planTourNext(true);
+      this.pushLobby();
+      this.ctx.waitUntil(this.save());
+      return true;
     }
     const t = l.tour;
     const nm = nextMatch(t.rounds);
@@ -722,14 +772,6 @@ export class Room extends DurableObject<Env> {
     t.cur = null;
     t.champion = champion(t.rounds);
     this.clearTourTimer();
-    if (t.champion < 0) {
-      this.tourNextAt = Date.now() + TOUR_NEXT_MS;
-      this.tourTimer = setTimeout(() => {
-        this.tourTimer = null;
-        this.tourNextAt = 0;
-        if (!this.sim && this.lobby?.tour === t && this.connectedSlots().size > 0) this.startTour();
-      }, TOUR_NEXT_MS);
-    }
   }
 
   /** ロビーの設定（ステージ・ルール・CPU）で試合を始める。始められたら true */
@@ -894,6 +936,8 @@ export class Room extends DurableObject<Env> {
         // 予想は試合ごと（結果は端末が end の時点の一覧で判定する）
         this.predicts.clear();
         this.pushPredicts();
+        // トーナメント：次の試合までの待ち時間（予想する人がいれば長め）
+        if (this.lobby?.tourOn && this.lobby.tour && this.lobby.tour.champion < 0) this.planTourNext(true);
         if (this.lobby) {
           const connected = this.connectedSlots();
           this.lobby.humans = this.lobby.humans.filter((h) => connected.has(h.slot) || (h.goneAt > 0 && Date.now() - h.goneAt < REJOIN_GRACE));

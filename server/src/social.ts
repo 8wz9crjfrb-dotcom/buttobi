@@ -37,6 +37,8 @@ interface User {
   hidden: boolean;
   /** フレンドに見せるプロフィール */
   profile?: Profile;
+  /** 最後にアプリを開いていた時刻（在席を隠している間は更新しない） */
+  seen?: number;
 }
 
 interface Attachment {
@@ -125,7 +127,8 @@ export class Social extends DurableObject {
       const on = online.has(fid);
       const room = this.roomOf(online.get(fid));
       // 隠していればオフラインに見える。ただし、自分から公開したルームは見せる
-      friends.push({ code: f.code, name: f.name, online: on && !f.hidden, ...(room ? { room } : {}), ...(f.profile ? { prof: f.profile } : {}) });
+      const shownOnline = on && !f.hidden;
+      friends.push({ code: f.code, name: f.name, online: shownOnline, ...(room ? { room } : {}), ...(f.profile ? { prof: f.profile } : {}), ...(!shownOnline && !f.hidden && f.seen ? { seen: f.seen } : {}) });
     }
     const names = async (ids: string[]) => {
       const out: { code: string; name: string }[] = [];
@@ -175,6 +178,7 @@ export class Social extends DurableObject {
         u.name = sanitizeName(msg.name);
         u.hidden = !!msg.hidden;
       }
+      if (!u.hidden) u.seen = Date.now();
       await this.save(msg.id, u);
       ws.serializeAttachment({ id: msg.id } as Attachment);
       this.send(ws, { t: 'me', code: u.code });
@@ -301,6 +305,12 @@ export class Social extends DurableObject {
     ws.serializeAttachment({ id: '' } as Attachment);
     const still = this.ctx.getWebSockets().some((x) => x !== ws && (x.deserializeAttachment() as Attachment | null)?.id === a.id);
     if (still) return;
+    // 最後にアプリを開いていた時刻（在席を隠している人は記録しない）
+    const u = await this.user(a.id);
+    if (u && !u.hidden) {
+      u.seen = Date.now();
+      await this.save(a.id, u);
+    }
     await this.pushAround(a.id);
   }
 }

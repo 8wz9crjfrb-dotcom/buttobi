@@ -33,6 +33,9 @@ interface Particle {
   grow: number;
 }
 
+/** 衣装の文字（「三刀流！」など）を同じ人が続けて出せる間隔 */
+const HIT_TEXT_GAP_MS = 5000;
+
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -1222,6 +1225,9 @@ export class GameRenderer {
   }
 
   /** SSR衣装の人が攻撃を当てたとき：衣装の粒（星・ハート・コインなど）がはじける */
+  /** 衣装の文字を最後に出した時刻（slot ごと） */
+  private hitTextAt = new Map<number, number>();
+
   private costumeHit(e: Extract<GameEvent, { k: 'hit' }>): void {
     if (e.a === undefined || e.a === e.s) return;
     const p = this.setup?.players.find((x) => x.slot === e.a);
@@ -1237,8 +1243,12 @@ export class GameRenderer {
       const power = Math.min(1, e.p / 15);
       rainbow.forEach((col, i) => this.spawn(this.ringGeo, col, e.x, e.y, 0, 0, 0.25 + i * 0.05, 18 + i * 3, 0.07 + power * 0.08 + i * 0.012, true));
     }
-    // 強い攻撃が当たると、衣装ごとの文字が光る（ゲーセン荒らしの「777」など）
-    if (fx.hitText && e.p >= 10) this.props.showText(fx.hitText, '#' + fx.hit.toString(16).padStart(6, '0'), e.x, e.y + 0.9, true, 60);
+    // 強い攻撃が当たると、衣装ごとの文字が光る（ゲーセン荒らしの「777」など）。出すぎないよう、1人5秒に1回まで
+    const now = performance.now();
+    if (fx.hitText && e.p >= 10 && now - (this.hitTextAt.get(e.a) ?? -1e9) >= HIT_TEXT_GAP_MS) {
+      this.hitTextAt.set(e.a, now);
+      this.props.showText(fx.hitText, '#' + fx.hit.toString(16).padStart(6, '0'), e.x, e.y + 0.9, true, 60);
+    }
     const n = (ur ? 12 : 7) + Math.min(6, Math.round(e.p / 3));
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
