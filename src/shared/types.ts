@@ -114,6 +114,10 @@ export interface MatchRules {
   timeLimit: number;
   /** アイテムが出る */
   items?: boolean;
+  /** 出るアイテムの種類（番号。なければ全部）。乱入アイテムもこの中から選ぶ */
+  itemKinds?: number[];
+  /** アイテムの出る頻度（なければ普通） */
+  itemRate?: 'low' | 'mid' | 'high';
   /** ステージギミックが動く */
   gimmicks?: boolean;
   /** 体力制のHP */
@@ -189,6 +193,8 @@ export type GameEvent =
   | { k: 'taunt'; s: number; i: number }
   /** アイテムを拾った（t = 種類） */
   | { k: 'item'; s: number; t: number; x: number; y: number }
+  /** サドンデスが始まった */
+  | { k: 'sudden' }
   /** メガホン（アイテム）の衝撃波 */
   | { k: 'shout'; x: number; y: number }
   /** ステージギミックの予告（h = 種類、x/y = 位置、d = 向き） */
@@ -275,6 +281,8 @@ export interface ViewState {
   area?: AreaView;
   /** 玉入れの状態 */
   ball?: BallView;
+  /** サドンデス中（1位が同点のときの延長戦） */
+  sudden?: boolean;
 }
 
 /** 玉入れの画面用の状態 */

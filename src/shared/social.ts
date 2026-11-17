@@ -52,6 +52,9 @@ export interface Profile {
   pn?: number;
   ph?: number;
   pc?: number;
+  /** トーナメントの優勝・3位の回数 */
+  tw?: number;
+  t3?: number;
 }
 
 const int = (v: unknown, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v)) || 0));
@@ -73,6 +76,8 @@ export function sanitizeProfile(raw: unknown, charIds: string[]): Profile | null
     pn: int(r.pn, 999999),
     ph: Math.min(int(r.ph, 999999), int(r.pn, 999999)),
     pc: int(r.pc, 99999999),
+    tw: int(r.tw, 99999),
+    t3: int(r.t3, 99999),
   };
 }
 

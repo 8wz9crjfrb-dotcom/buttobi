@@ -272,11 +272,16 @@ export class Hud {
       // 時間制限なし（ストック制）：経過時間を数える
       const el = Math.max(0, Math.floor((v.frame - COUNTDOWN_FRAMES) / 60));
       this.timer.textContent = `${Math.floor(el / 60)}:${String(el % 60).padStart(2, '0')}`;
-    } else this.timer.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    } else if (v.sudden) this.timer.textContent = 'サドンデス';
+    else this.timer.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    // 残り10秒：タイマーを大きく赤くする（サドンデス・時間制限なしは除く）
+    const final = !this.horde && !this.training && !this.noLimit && !v.sudden && !v.ended && v.countdown <= 0 && v.timeLeft > 0 && secs <= 10;
+    this.timer.classList.toggle('final', final);
+    this.timer.classList.toggle('sudden', !!v.sudden && !v.ended);
     let c = '';
     if (v.countdown > 0) c = v.countdown > 100 ? '3' : v.countdown > 50 ? '2' : '1';
     else if (v.frame < 210) c = 'GO!';
-    if (v.ended) c = this.horde ? ((v.horde ?? 0) >= this.horde ? 'CLEAR!' : 'GAME!') : v.timeLeft <= 0 && !this.noLimit ? 'TIME UP!' : 'GAME!';
+    if (v.ended) c = this.horde ? ((v.horde ?? 0) >= this.horde ? 'CLEAR!' : 'GAME!') : v.timeLeft <= 0 && !this.noLimit && !v.sudden ? 'TIME UP!' : 'GAME!';
     if (c !== this.lastCenter) {
       this.center.textContent = c;
       this.center.classList.remove('pop');

@@ -401,6 +401,8 @@ function updateCooldownUI(f: Fighter | null): void {
 // ---------------------------------------------------------------------------
 // メインループ
 let prevT = performance.now();
+/** 残り10秒の音を最後に鳴らした秒 */
+let lastTickSec = -1;
 function loop(t: number): void {
   const dt = Math.min(0.1, (t - prevT) / 1000);
   prevT = t;
@@ -414,6 +416,15 @@ function loop(t: number): void {
       updateCooldownUI(session.myFighter());
       if (session.kind === 'net') hud.setNetInfo(net.connected ? `通信 ${Math.round(net.rtt)}ms` : '再接続中…');
       playEvents(events, session.mySlot, lastView);
+      // 残り10秒：1秒ごとに音（最後の3秒は高い音）
+      {
+        const secs = Math.ceil(lastView.timeLeft / 60);
+        const timed = session.setup.rules.timeLimit > 0 && !session.setup.rules.horde && !(session instanceof LocalSession && session.training);
+        if (timed && !lastView.sudden && !lastView.ended && lastView.countdown <= 0 && lastView.timeLeft > 0 && secs <= 10 && secs !== lastTickSec) {
+          lastTickSec = secs;
+          sfx.beep(secs <= 3);
+        }
+      }
       countTally(lastView, events, session.mySlot);
       // ピンチ（残り30秒・自分が最後の1機）でBGMを盛り上げる。練習モードは除く
       if (!(session instanceof LocalSession && session.training)) {
@@ -485,6 +496,7 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'shot') sfx.shot();
     else if (e.k === 'counter') sfx.counter();
     else if (e.k === 'boom' || e.k === 'shout') sfx.boom();
+    else if (e.k === 'sudden') sfx.finish();
     else if (e.k === 'kick') sfx.kick(e.p);
     else if (e.k === 'goal') sfx.goal();
     else if (e.k === 'flash') sfx.shutter();
@@ -593,6 +605,8 @@ function myProfile(): Profile {
     pn: progress.pred?.n ?? 0,
     ph: progress.pred?.hit ?? 0,
     pc: progress.pred?.coins ?? 0,
+    tw: progress.tour?.wins ?? 0,
+    t3: progress.tour?.third ?? 0,
   };
 }
 
@@ -633,7 +647,7 @@ function profileCard(name: string, code: string, p: Profile | undefined, togethe
       <div class="pc-bub">${chatMark()}${esc(PROFILE_COMMENTS[p.comment] ?? '')}</div>
       <div class="pc-code">フレンドコード ${esc(code)}</div>
       <div class="pc-stats">${st(String(p.wins), '通算勝利')}${st(`${p.horde}人`, '100人組手')}${st(String(p.costumes), '衣装')}${together !== undefined ? st(`${together}回`, '一緒に戦った') : ''}</div>
-      <div class="pc-stats pc-pred">${st(p.pn ? `${Math.round(((p.ph ?? 0) / p.pn) * 100)}%` : '—', `予想的中率${p.pn ? `（${p.ph ?? 0}/${p.pn}）` : ''}`)}${st((p.pc ?? 0).toLocaleString(), '予想で獲得コイン')}</div>
+      <div class="pc-stats pc-pred">${st(`${p.tw ?? 0}回`, 'トーナメント優勝')}${st(`${p.t3 ?? 0}回`, '3位')}${st(p.pn ? `${Math.round(((p.ph ?? 0) / p.pn) * 100)}%` : '—', `予想的中率${p.pn ? `（${p.ph ?? 0}/${p.pn}）` : ''}`)}${st((p.pc ?? 0).toLocaleString(), '予想で獲得コイン')}</div>
     </div></div>`;
 }
 
@@ -1196,6 +1210,8 @@ function ruleControls(rules: MatchRules): string {
     <div class="opt opt-wide" data-show="ball"><span class="muted">玉入れは、参加した順に赤・青の2チームに分かれます。スティック斜め上＋攻撃で山なり、斜め下＋攻撃で低く速く打てます</span></div>
     <div class="opt" data-team>味方への攻撃 ${seg('ff', [['off', '当たらない'], ['on', '当たる']], rules.friendlyFire ? 'on' : 'off')}</div>
     <div class="opt">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
+    <div class="opt" data-items>アイテムの頻度 ${seg('irate', [['low', '少ない'], ['mid', '普通'], ['high', '多い']], rules.itemRate ?? 'mid')}</div>
+    <div class="opt opt-wide" data-items>出るアイテム（乱入アイテムも同じ）<div class="item-chips">${ITEM_NAMES.map((n, i) => `<button type="button" class="ichip ${(rules.itemKinds ?? ITEM_NAMES.map((_, k) => k)).includes(i) ? 'on' : ''}" data-ikind="${i}"><b>${n}</b><small>${ITEM_INFO[i].short}</small></button>`).join('')}</div></div>
     <div class="opt">ステージギミック ${seg('gim', [['on', 'あり'], ['off', 'なし']], rules.gimmicks ? 'on' : 'off')}</div>`;
 }
 
@@ -1204,6 +1220,7 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     root.querySelectorAll<HTMLElement>('[data-show]').forEach((el) => el.classList.toggle('hidden', !el.dataset.show!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-hide]').forEach((el) => el.classList.toggle('hidden', el.dataset.hide!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.classList.toggle('hidden', !rules.teams));
+    root.querySelectorAll<HTMLElement>('[data-items]').forEach((el) => el.classList.toggle('hidden', !rules.items));
   };
   sync();
   bindSeg(root, 'mode', (v) => {
@@ -1265,8 +1282,28 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
   });
   bindSeg(root, 'items', (v) => {
     rules.items = v === 'on';
+    sync();
     onChange();
   });
+  bindSeg(root, 'irate', (v) => {
+    rules.itemRate = v as MatchRules['itemRate'];
+    onChange();
+  });
+  // 出るアイテム：タップで出す・出さないを切り替える（最低1つは残す）
+  root.querySelectorAll<HTMLElement>('[data-ikind]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const k = Number(b.dataset.ikind);
+      const cur = new Set(rules.itemKinds ?? ITEM_NAMES.map((_, i) => i));
+      if (cur.has(k)) {
+        if (cur.size <= 1) return toast('アイテムは1種類以上選んでください');
+        cur.delete(k);
+      } else cur.add(k);
+      rules.itemKinds = [...cur].sort((x, y) => x - y);
+      b.classList.toggle('on', cur.has(k));
+      sfx.click();
+      onChange();
+    }),
+  );
   bindSeg(root, 'gim', (v) => {
     rules.gimmicks = v === 'on';
     onChange();
@@ -1796,7 +1833,7 @@ function renderDrop(): void {
   dropEl.classList.remove('hidden');
   dropEl.innerHTML = dropUsed
     ? `<div class="drop-title">乱入アイテム</div><div class="drop-done">投入済み</div>`
-    : `<div class="drop-title">乱入アイテム<small>1試合に1回</small></div>${ITEM_NAMES.map((n, i) => `<button type="button" class="drop-btn" data-drop="${i}"><b>${n}</b><small>${ITEM_INFO[i].short}</small></button>`).join('')}`;
+    : `<div class="drop-title">乱入アイテム<small>1試合に1回</small></div>${ITEM_NAMES.map((n, i) => ((session?.setup.rules.itemKinds ?? [i]).includes(i) ? `<button type="button" class="drop-btn" data-drop="${i}"><b>${n}</b><small>${ITEM_INFO[i].short}</small></button>` : '')).join('')}`;
   dropEl.querySelectorAll<HTMLButtonElement>('[data-drop]').forEach((b) =>
     b.addEventListener('click', () => {
       if (dropUsed) return;
@@ -2071,11 +2108,27 @@ function onTourLobby(l: LobbyInfo): void {
   if (t && t.champion >= 0 && t.champion === net.slot && tourPaid !== t.id) {
     tourPaid = t.id;
     wallet.coins += TOUR_PRIZE;
+    // 優勝の回数を記録して、プロフィールに出す（称号も調べる）
+    (progress.tour ??= { wins: 0, third: 0 }).wins++;
+    for (const tt of checkTitles(progress, wallet)) toast(`称号「${tt.name}」を手に入れた！ +${tt.coins}`, 3500);
+    saveProgress(progress);
     saveWallet(wallet);
+    social.setProfile(myProfile());
     toast(`トーナメント優勝！ +${TOUR_PRIZE} コイン`, 4000);
+  }
+  // 3位決定戦に勝ったら、3位の回数を記録する（トーナメントごとに1回）
+  if (t && t.third && t.third.w >= 0 && t.third.w === net.slot && tourThirdPaid !== t.id) {
+    tourThirdPaid = t.id;
+    (progress.tour ??= { wins: 0, third: 0 }).third++;
+    saveProgress(progress);
+    social.setProfile(myProfile());
+    toast('トーナメント3位！', 3000);
   }
   updateTourInfo();
 }
+
+/** 3位を記録したトーナメント */
+let tourThirdPaid = -1;
 
 /** 結果画面・ロビーのトーナメント表示を最新にする */
 function updateTourInfo(): void {

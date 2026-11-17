@@ -1056,6 +1056,14 @@ export class GameRenderer {
       this.shake = Math.max(this.shake, 0.5);
       return;
     }
+    if (e.k === 'sudden') {
+      // サドンデスの始まり：画面の上に大きく出す
+      const m = this.stage?.main;
+      const x = m ? (m.x1 + m.x2) / 2 : 0;
+      this.props.showText('サドンデス！', '#ff5a5a', x, Math.max((m?.top ?? 0) + 2, this.screenY(0.4, x)), true, 150);
+      this.shake = Math.max(this.shake, 0.5);
+      return;
+    }
     if (e.k === 'shout') {
       // メガホンの衝撃波：黄色と白の輪が、少しずつずれて広がる
       [0xffd84a, 0xffffff, 0xffd84a].forEach((col, i) => this.spawn(this.ringGeo, col, e.x, e.y, 0, 0, 0.3 + i * 0.12, 16 + i * 3, 0.14 + i * 0.02));

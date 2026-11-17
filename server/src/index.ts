@@ -4,6 +4,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { CpuController } from '../../src/shared/ai';
 import { CHARACTERS, nameCpus } from '../../src/shared/characters';
+import { ITEMS } from '../../src/shared/moves';
 import { COSTUMES } from '../../src/shared/costumes';
 import {
   MAX_INPUTS_PER_MSG,
@@ -590,6 +591,9 @@ export class Room extends DurableObject<Env> {
           // ストック制は時間制限なし
           timeLimit: r?.mode === 'stock' || !r?.mode ? 0 : Math.max(60, Math.min(600, r?.timeLimit | 0 || 180)),
           items: r?.items === true,
+          // 出るアイテムの種類（番号の重複・範囲外は除く）と出る頻度
+          ...(Array.isArray(r?.itemKinds) ? { itemKinds: [...new Set(r.itemKinds.map((x: unknown) => Number(x) | 0))].filter((x) => x >= 0 && x < ITEMS.kinds) } : {}),
+          itemRate: r?.itemRate === 'low' || r?.itemRate === 'high' ? r.itemRate : 'mid',
           gimmicks: r?.gimmicks === true,
           hp: Math.max(50, Math.min(300, (r?.hp ?? 0) | 0 || DEFAULT_HP)),
           // 玉入れは参加した順に赤・青に分かれる（チーム戦の設定は使わない）

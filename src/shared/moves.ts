@@ -706,6 +706,8 @@ export const ITEMS = {
   heal: 20,
   freeze: 60,
   invuln: 240,
+  /** 出る頻度ごとの間隔（フレーム）：少ない・普通・多い */
+  intervals: { low: 900, mid: 600, high: 360 },
   /** カイロ：攻撃力アップの時間（威力は課金と同じ PAY.dmg 倍） */
   power: 600,
   /** 傘：ひるまない時間（とても強いふっとばしは防げない） */
@@ -716,6 +718,11 @@ export const ITEMS = {
   shoutBase: 9,
   shoutGrowth: 9,
 };
+/**
+ * サドンデス（1位が同点のときの延長戦）：同点の人だけで、1ストック・ダメージ高めで戦う。
+ * damage = はじめのダメージ%、hp = 体力制で残るHP、max = これを過ぎたらダメージの少ない人の勝ち
+ */
+export const SUDDEN = { damage: 100, hp: 30, max: 60 * 60 };
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };
 

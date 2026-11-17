@@ -76,6 +76,67 @@ check('アイテムの種類は7つ（名前・説明・色がそろっている
   check('乱入アイテム：選んだ種類', it?.dir === 6);
 }
 
+// アイテムの細かい設定：出る種類と頻度
+{
+  const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'guard', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: 'thief', cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'time', stocks: 3, timeLimit: 120, items: true, itemKinds: [4], itemRate: 'high' }, seed: 3 });
+  const seen = new Set<number>();
+  let first = -1;
+  for (let i = 0; i < COUNTDOWN_FRAMES + 2000; i++) {
+    sim.step(new Map());
+    for (const e of sim.entities) if (e.kind === 'item') {
+      seen.add(e.dir);
+      if (first < 0) first = sim.frame - COUNTDOWN_FRAMES;
+    }
+  }
+  check('出る種類：選んだもの（カイロ）だけ', seen.size === 1 && seen.has(4), [...seen].join(','));
+  check(`頻度「多い」：${ITEMS.intervals.high}フレームで最初のアイテム`, first === ITEMS.intervals.high, `${first}`);
+  check('選んでいないアイテムは乱入でも落とせない', !sim.dropItem(6, 0) && sim.dropItem(4, 0));
+}
+
+// サドンデス：時間切れで1位が同点なら延長戦。1人残ったら終わり、勝者は1人
+for (const mode of ['time', 'stamina'] as const) {
+  const sim = new Sim({ players: [0, 1, 2].map((i) => ({ slot: i, name: 'p' + i, charId: ['guard', 'thief', 'hacker'][i], cpu: false, cpuLevel: 1 })), stageId: 'plain', rules: { mode, stocks: 1, timeLimit: 60, hp: 100 }, seed: 1 });
+  while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+  // 3人目は先に1回落ちている（time：撃墜数で負け／stamina：ダメージが多い）
+  const c = sim.fighters[2];
+  if (mode === 'time') c.falls = 1;
+  else c.damage = 50;
+  let started = false;
+  for (let i = 0; i < 60 * 60 + 10 && !sim.ended; i++) {
+    sim.step(new Map());
+    if (sim.events.some((e) => e.k === 'sudden')) started = true;
+  }
+  check(`${mode}：同点でサドンデスが始まる`, started && sim.sudden && !sim.ended);
+  check(`${mode}：同点でない人は観戦`, c.out && !sim.fighters[0].out && !sim.fighters[1].out);
+  check(`${mode}：ダメージ高めから`, mode === 'time' ? sim.fighters[0].damage === 100 : sim.fighters[0].damage === 70, `${sim.fighters[0].damage}`);
+  // 1人を場外へ
+  for (let i = 0; i < 200 && !sim.fighters[1].out; i++) {
+    sim.fighters[1].x = 99;
+    sim.step(new Map());
+  }
+  for (let i = 0; i < 400 && !sim.finished; i++) sim.step(new Map());
+  const r = sim.results();
+  check(`${mode}：1人残って終わり、1位は1人`, sim.finished && r.filter((e) => e.rank === 1).length === 1 && r[0].slot === 0, JSON.stringify(r.map((e) => [e.slot, e.rank])));
+  check(`${mode}：観戦にまわった人は最下位`, r[r.length - 1].slot === 2);
+}
+// タイム制：点（撃墜−落下）が同じなら、ダメージが違ってもサドンデス
+{
+  const sim = new Sim({ players: [0, 1].map((i) => ({ slot: i, name: 'p' + i, charId: 'guard', cpu: false, cpuLevel: 1 })), stageId: 'plain', rules: { mode: 'time', stocks: 1, timeLimit: 60 }, seed: 1 });
+  while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+  sim.fighters[0].damage = 40;
+  sim.fighters[1].damage = 75;
+  for (let i = 0; i < 60 * 60 + 10; i++) sim.step(new Map());
+  check('タイム制：点が同じならダメージが違ってもサドンデス', sim.sudden && !sim.ended);
+}
+// 同点でなければサドンデスにならない
+{
+  const sim = new Sim({ players: [0, 1].map((i) => ({ slot: i, name: 'p' + i, charId: 'guard', cpu: false, cpuLevel: 1 })), stageId: 'plain', rules: { mode: 'time', stocks: 1, timeLimit: 60 }, seed: 1 });
+  while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+  sim.fighters[1].falls = 1;
+  for (let i = 0; i < 60 * 60 + 10; i++) sim.step(new Map());
+  check('同点でなければそのまま終わる', sim.ended && !sim.sudden);
+}
+
 if (fail) {
   console.log(`\n${fail} 件 NG`);
   process.exit(1);

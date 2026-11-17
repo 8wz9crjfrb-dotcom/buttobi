@@ -41,6 +41,8 @@ export interface Progress {
   tutorialAsked?: boolean;
   /** 100人組手の自己ベスト（倒した数と、そのときの時間） */
   hordeBest?: { kos: number; frames: number; charId: string };
+  /** トーナメントの成績（優勝・3位の回数） */
+  tour?: { wins: number; third: number };
   /** 勝敗予想の成績（予想した回数・当たった回数・予想でもらったコイン） */
   pred?: { n: number; hit: number; coins: number };
   /** メニューの赤い点：最後にその画面を開いたときの状態（開くと赤い点が消える） */
@@ -123,6 +125,8 @@ export const TITLES: TitleDef[] = [
   { id: 'costumeAll', name: 'コンプリート', cond: '衣装を全部集める', coins: 500, check: (_p, w) => GACHA_COSTUMES.every((c) => w.owned.includes(c.id)) },
   { id: 'horde30', name: '組手の達人', cond: '100人組手で30人倒す', coins: 100, check: (p) => (p.hordeBest?.kos ?? 0) >= 30 },
   { id: 'horde100', name: '百人斬り', cond: '100人組手をクリアする', coins: 300, check: (p) => (p.hordeBest?.kos ?? 0) >= 100 },
+  { id: 'tour1', name: '初優勝', cond: 'トーナメントで1回優勝する', coins: 100, check: (p) => (p.tour?.wins ?? 0) >= 1 },
+  { id: 'tour3', name: 'トーナメント王者', cond: 'トーナメントで3回優勝する', coins: 300, check: (p) => (p.tour?.wins ?? 0) >= 3 },
   { id: 'pred10', name: '予想名人', cond: '勝敗予想を10回当てる', coins: 100, check: (p) => (p.pred?.hit ?? 0) >= 10 },
   { id: 'pred300', name: '予想王', cond: '勝敗予想で合計300コインもらう', coins: 200, check: (p) => (p.pred?.coins ?? 0) >= 300 },
   { id: 'login7', name: '皆勤賞', cond: '7日連続でログイン', coins: 100, check: (_p, w) => w.streak >= 7 },

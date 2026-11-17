@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 31;
+export const PROTOCOL_VERSION = 32;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -39,7 +39,7 @@ export function predictCoins(odds: number): number {
 }
 
 /** 定型文のスタンプ（文字を打たずに気持ちを伝える。自由な文は送れない） */
-export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って'];
+export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って', 'おめでとう！', '次こそ！', '予想当たった！', '乱入ありがとう！'];
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -167,6 +167,8 @@ export interface EncodedState {
   a?: { z: number[][]; x: number[][]; i: number; g: number[]; o: number };
   /** 玉入れ：[x, y, vx, 出ている(1/0), 赤の点, 青の点, 先取点] */
   b?: number[];
+  /** サドンデス中 */
+  sd?: 1;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -200,6 +202,7 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
     q: v.projectiles.map((p) => [Math.round(p.x * 100), Math.round(p.y * 100), p.owner, Math.max(0, SHOT_KINDS.indexOf(p.kind))]),
     n: v.entities.map((e) => [ENTITY_KINDS.indexOf(e.kind), Math.round(e.x * 100), Math.round(e.y * 100), e.owner, e.life, e.dir]),
     ev: events.map((e) => ('x' in e ? { ...e, x: r2(e.x), y: r2(e.y) } : e)),
+    ...(v.sudden ? { sd: 1 as const } : {}),
     ...(v.ball ? { b: [Math.round(v.ball.x * 100), Math.round(v.ball.y * 100), Math.round(v.ball.vx * 10), v.ball.on ? 1 : 0, v.ball.score[0], v.ball.score[1], v.ball.target] } : {}),
     ...(v.area
       ? {
@@ -244,6 +247,7 @@ export function decodeState(s: EncodedState): ViewState {
     projectiles: s.q.map((a) => ({ x: a[0] / 100, y: a[1] / 100, owner: a[2], kind: SHOT_KINDS[a[3]] ?? 'bullet' })),
     entities: (s.n ?? []).map((a) => ({ kind: ENTITY_KINDS[a[0]] ?? 'wall', x: a[1] / 100, y: a[2] / 100, owner: a[3], life: a[4], dir: a[5] ?? 1 })),
     events: s.ev,
+    sudden: s.sd === 1 || undefined,
     ball: s.b ? { x: s.b[0] / 100, y: s.b[1] / 100, vx: s.b[2] / 10, on: s.b[3] === 1, score: [s.b[4], s.b[5]], target: s.b[6] } : undefined,
     area: s.a
       ? {

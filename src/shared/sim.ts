@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { CLOSE, SLEEP_MAX, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { CLOSE, SLEEP_MAX, SUDDEN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -1486,14 +1486,23 @@ export class Sim {
   }
 
   // ------------------------------------------------------------------ アイテム（ルールでオン・オフ）
+  /** 出していいアイテムの種類（ルールで選んだもの。なければ全部） */
+  itemKinds(): number[] {
+    const k = this.setup.rules.itemKinds;
+    return Array.isArray(k) ? k.filter((x) => Number.isInteger(x) && x >= 0 && x < ITEMS.kinds) : Array.from({ length: ITEMS.kinds }, (_, i) => i);
+  }
+
   private updateItems(): void {
     if (!this.setup.rules.items) return;
+    const kinds = this.itemKinds();
+    if (!kinds.length) return;
     const t = this.frame - COUNTDOWN_FRAMES;
-    if (t <= 0 || t % ITEMS.interval !== 0) return;
+    const interval = ITEMS.intervals[this.setup.rules.itemRate ?? 'mid'] ?? ITEMS.interval;
+    if (t <= 0 || t % interval !== 0) return;
     if (this.entities.filter((e) => e.kind === 'item').length >= ITEMS.max) return;
     const m = this.stage.main;
     const x = m.x1 + 1 + this.rng.next() * (m.x2 - m.x1 - 2);
-    const kind = Math.floor(this.rng.next() * ITEMS.kinds);
+    const kind = kinds[Math.floor(this.rng.next() * kinds.length)];
     this.addEntity('item', -1, x, m.top + 9, ITEMS.life, kind);
   }
 
@@ -1503,6 +1512,8 @@ export class Sim {
    */
   dropItem(kind: number, x: number): boolean {
     if (this.finished || this.frame <= COUNTDOWN_FRAMES) return false;
+    // ルールで出さないことにしたアイテムは落とせない
+    if (!this.itemKinds().includes(kind)) return false;
     const m = this.stage.main;
     const cx = Math.max(m.x1 + 1, Math.min(m.x2 - 1, x));
     this.addEntity('item', -1, cx, m.top + 9, ITEMS.life, ((kind % ITEMS.kinds) + ITEMS.kinds) % ITEMS.kinds);
@@ -3272,7 +3283,8 @@ export class Sim {
       }
       return;
     }
-    if (rules.mode !== 'time' && rules.mode !== 'area' && rules.mode !== 'ball') {
+    // サドンデスはどのルールでも1ストック（落ちたら退場）
+    if (this.sudden || (rules.mode !== 'time' && rules.mode !== 'area' && rules.mode !== 'ball')) {
       f.stocks--;
       if (f.stocks <= 0) {
         f.out = true;
@@ -3281,9 +3293,62 @@ export class Sim {
     }
   }
 
+  /** サドンデス中（1位が同点のときの延長戦） */
+  sudden = false;
+  /** サドンデスに出ている人（同点だった人） */
+  private suddenSlots: number[] = [];
+  private suddenStart = 0;
+
+  /**
+   * 1位が同点なら、同点の人だけでサドンデスを始める（始めたら true）。
+   * 個人戦だけ（チーム戦・玉入れ・100人組手はしない）。同点でない人は観戦にまわる
+   */
+  private tryStartSudden(): boolean {
+    const r = this.setup.rules;
+    if (r.teams || r.horde || r.mode === 'ball' || this.fighters.length < 2) return false;
+    // タイム制は「撃墜−落下」の点が同じなら同点（ダメージの差では決めない）。ほかのルールは順位のとおり
+    const res = this.results();
+    const pts = (slot: number) => {
+      const f = this.fighter(slot)!;
+      return f.kos - f.falls;
+    };
+    const top =
+      r.mode === 'time'
+        ? this.fighters.filter((f) => pts(f.slot) === Math.max(...this.fighters.map((o) => pts(o.slot)))).map((f) => f.slot)
+        : res.filter((e) => e.rank === 1).map((e) => e.slot);
+    if (top.length < 2) return false;
+    this.sudden = true;
+    this.suddenSlots = top;
+    this.suddenStart = this.frame;
+    for (const f of this.fighters) {
+      if (!top.includes(f.slot)) {
+        f.out = true;
+        f.outFrame = this.frame;
+        this.setState(f, 'dead');
+        continue;
+      }
+      this.respawn(f);
+      f.out = false;
+      f.stocks = 1;
+      // ダメージ高めから（体力制は残りHPが少ない状態から）
+      f.damage = r.mode === 'stamina' ? Math.max(0, this.maxHp - SUDDEN.hp) : SUDDEN.damage;
+    }
+    this.events.push({ k: 'sudden' });
+    return true;
+  }
+
   private checkEnd(): void {
     if (this.ended) return;
     const rules = this.setup.rules;
+    if (this.sudden) {
+      // サドンデス：残りが1人になったら終わり。長引いたらダメージの少ない人の勝ち
+      const alive = this.fighters.filter((f) => this.suddenSlots.includes(f.slot) && !f.out);
+      if (alive.length <= 1 || this.frame - this.suddenStart > SUDDEN.max) {
+        this.ended = true;
+        this.endFrame = this.frame;
+      }
+      return;
+    }
     // 制限時間 0 は時間切れなし（100人組手）
     const timeUp = rules.timeLimit > 0 && this.frame > COUNTDOWN_FRAMES && this.timeLeftFrames <= 0;
     let over = timeUp;
@@ -3297,6 +3362,8 @@ export class Sim {
       if (teams.size <= 1) over = true;
     }
     if (over) {
+      // 1位が同点なら、すぐには終わらずサドンデス
+      if (this.tryStartSudden()) return;
       this.ended = true;
       this.endFrame = this.frame;
     }
@@ -3328,7 +3395,9 @@ export class Sim {
         : members.reduce((n, o) => n + o.stocks, 0) * 10000 + Math.max(...members.map((o) => (o.out ? o.outFrame : 999999)));
       teamScore.set(f.team, v);
     }
-    const entries = this.fighters.map((f) => ({ f, team: teamScore.get(f.team)!, score: score(f) }));
+    // サドンデスをした人は、ほかの人より上。その中では最後まで残った人（同じなら先に落ちなかった人・ダメージの少ない人）が上
+    const suddenBonus = (f: Fighter) => (this.sudden && this.suddenSlots.includes(f.slot) ? 1e13 + (f.out ? f.outFrame * 1e3 : 1e12) - f.damage : 0);
+    const entries = this.fighters.map((f) => ({ f, team: teamScore.get(f.team)!, score: score(f) + suddenBonus(f) }));
     const teamMode = this.teamMode;
     if (teamMode) entries.sort((a, b) => b.team - a.team || a.f.team - b.f.team || b.score - a.score);
     else entries.sort((a, b) => b.score - a.score);
@@ -3398,6 +3467,7 @@ export class Sim {
       ended: this.ended,
       horde: this.setup.rules.horde ? this.hordeDefeated : undefined,
       area: this.setup.rules.mode === 'area' ? this.areaView() : undefined,
+      sudden: this.sudden || undefined,
       ball: this.setup.rules.mode === 'ball' ? this.ballView() : undefined,
     };
   }
