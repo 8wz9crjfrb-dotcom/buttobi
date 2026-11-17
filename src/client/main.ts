@@ -607,6 +607,7 @@ function myProfile(): Profile {
     pc: progress.pred?.coins ?? 0,
     tw: progress.tour?.wins ?? 0,
     t3: progress.tour?.third ?? 0,
+    tc: progress.titles.length,
   };
 }
 
@@ -626,28 +627,39 @@ function agoText(t: number): string {
 /** 名刺カード（案A）。p がなければ「未設定」のカード。together はフレンドのときだけ */
 function profileCard(name: string, code: string, p: Profile | undefined, together?: number): string {
   const [c1, c2] = PROFILE_COLORS[p?.color ?? 6] ?? PROFILE_COLORS[0];
+  // フレンドコード（自分のカードでは出さない：フレンド画面の左に出ている）と、一緒に戦った回数（フレンドのとき）
+  const meta = [code ? `フレンドコード ${esc(code)}` : '', together !== undefined ? `一緒に戦った ${together}回` : ''].filter(Boolean).join('　・　');
   if (!p) {
     return `<div class="pcard" style="--c1:${c1};--c2:${c2}">
       <div class="pc-pic empty">？</div>
       <div class="pc-r"><div class="pc-nm">${esc(name)}</div>
         <div class="pc-cos">まだプロフィールを設定していません</div>
-        <div class="pc-code">フレンドコード ${esc(code)}</div>
-        ${together !== undefined ? `<div class="pc-stats"><div class="pc-st"><b>${together}回</b><small>一緒に戦った</small></div></div>` : ''}
+        ${meta ? `<div class="pc-code">${meta}</div>` : ''}
       </div></div>`;
   }
   const cos = getCostume(p.costume, p.charId);
   const rar = rarityName(cos.rarity);
-  const st = (v: string, label: string) => `<div class="pc-st"><b>${v}</b><small>${label}</small></div>`;
+  // 成績：4つのグループ（対戦・トーナメント・予想・コレクション）に2つずつ。同じ幅の格子にそろえる
+  // 狭い画面では短い言葉に切り替える（長い言葉 / 短い言葉）
+  const lbl = (long: string, short = long) => (short === long ? long : `<span class="l">${long}</span><span class="s">${short}</span>`);
+  const v = (val: string, label: string, sub = '') => `<div class="pc-v"><b>${val}</b><small>${label}</small>${sub ? `<small class="pc-sub">${sub}</small>` : ''}</div>`;
+  const group = (head: string, a: string, b: string) => `<div class="pc-g"><div class="pc-gh">${head}</div>${a}${b}</div>`;
+  const rate = p.pn ? `${Math.round(((p.ph ?? 0) / p.pn) * 100)}%` : '—';
+  const stats = [
+    group('対戦', v(String(p.wins), lbl('通算勝利', '勝利')), v(`${p.horde}人`, lbl('100人組手', '組手'))),
+    group(lbl('トーナメント', '大会'), v(`${p.tw ?? 0}回`, '優勝'), v(`${p.t3 ?? 0}回`, '3位')),
+    group(lbl('勝敗予想', '予想'), v(rate, '的中率', p.pn ? `${p.ph ?? 0}/${p.pn}` : ''), v((p.pc ?? 0).toLocaleString(), lbl('獲得コイン', 'コイン'))),
+    group(lbl('コレクション', '収集'), v(String(p.costumes), '衣装'), v(String(p.tc ?? 0), '称号')),
+  ].join('');
   return `<div class="pcard ${cos.rarity >= 6 ? 'ur' : ''}" style="--c1:${c1};--c2:${c2}">
     <div class="pc-pic" data-char="${p.charId}" data-cos="${esc(p.costume)}"><img alt="" src="${renderer.fullBody(p.charId, p.costume)}"/></div>
     <div class="pc-r">
       <div class="pc-nm">${esc(name)}</div>
-      ${p.title ? `<div><span class="pc-title">称号：${esc(p.title)}</span></div>` : ''}
+      ${p.title ? `<div><span class="pc-title">${rewardMark()}${esc(p.title)}</span></div>` : ''}
       <div class="pc-cos">お気に入り：${getCharacter(p.charId).name}「${esc(cos.name)}」${rar ? `（${rar}）` : ''}</div>
       <div class="pc-bub">${chatMark()}${esc(PROFILE_COMMENTS[p.comment] ?? '')}</div>
-      <div class="pc-code">フレンドコード ${esc(code)}</div>
-      <div class="pc-stats">${st(String(p.wins), '通算勝利')}${st(`${p.horde}人`, '100人組手')}${st(String(p.costumes), '衣装')}${together !== undefined ? st(`${together}回`, '一緒に戦った') : ''}</div>
-      <div class="pc-stats pc-pred">${st(`${p.tw ?? 0}回`, 'トーナメント優勝')}${st(`${p.t3 ?? 0}回`, '3位')}${st(p.pn ? `${Math.round(((p.ph ?? 0) / p.pn) * 100)}%` : '—', `予想的中率${p.pn ? `（${p.ph ?? 0}/${p.pn}）` : ''}`)}${st((p.pc ?? 0).toLocaleString(), '予想で獲得コイン')}</div>
+      ${meta ? `<div class="pc-code">${meta}</div>` : ''}
+      <div class="pc-grid">${stats}</div>
     </div></div>`;
 }
 
@@ -699,7 +711,7 @@ function showFriends(): void {
   const card = pick
     ? `${profileCard(pick.name, pick.code, pick.prof, social.together(pick.code))}
        <div class="fr-acts">${pick.room ? `<button class="btn small primary" data-join="${pick.room.code}">ルームに参加</button>` : ''}<button class="btn small" data-remove="${pick.code}" data-name="${esc(pick.name)}">フレンドから外す</button></div>`
-    : `${profileCard(settings.name || 'あなた', social.code || '…', me)}
+    : `${profileCard(settings.name || 'あなた', '', me)}
        <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
   showScreen(
     `<div class="fr-head"><button class="btn small" id="back">もどる</button><h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2></div>
@@ -776,7 +788,7 @@ function showProfileEdit(): void {
     showScreen(
       `<h2>プロフィールの編集 <small class="h2-sub">フレンドに見えます</small></h2>
        <div class="pe-wrap">
-         <div class="pe-card">${profileCard(settings.name || 'あなた', social.code || '…', p)}</div>
+         <div class="pe-card">${profileCard(settings.name || 'あなた', '', p)}</div>
          <div class="pe-opts">
            <div class="opt-label">お気に入りのキャラ</div>
            <div class="pe-chips">${CHARACTERS.map((c) => chip('char', c.id, esc(c.name), c.id === draft.charId)).join('')}</div>

@@ -3734,8 +3734,10 @@ table.rec td:first-child {
   white-space: nowrap;
 }
 .pc-title {
-  display: inline-block;
-  padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px 2px 6px;
   border-radius: 99px;
   background: #1b1b28;
   color: #ffd23f;
@@ -3762,42 +3764,72 @@ table.rec td:first-child {
   font-size: 12px;
   font-weight: 800;
 }
-.pc-stats {
-  display: flex;
-  gap: 4px;
-  margin-top: auto;
-}
-/* 勝敗予想の成績（2つ目の段） */
-.pc-stats.pc-pred {
-  margin-top: 4px;
-}
-.pc-stats.pc-pred .pc-st {
-  max-width: 120px;
-}
-/* 数字の箱は1列に並べ、カードが狭いときは箱を縮める */
-.pc-st {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: 76px;
-  padding: 4px 2px;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.28);
-  text-align: center;
-}
-.pc-st b {
-  display: block;
-  font-size: clamp(12px, 1.9vw, 15px);
-  white-space: nowrap;
-}
-.pc-st small {
-  display: block;
-  font-size: 9px;
-  letter-spacing: -0.05em;
-  opacity: 0.85;
+.pc-code {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 成績：4つのグループを同じ幅で横に並べ、それぞれに2つの数字を縦に置く */
+.pc-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: auto;
+}
+.pc-g {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 3px 5px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.26);
+  text-align: center;
+  min-width: 0;
+}
+.pc-gh {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  padding-bottom: 2px;
+  margin-bottom: 1px;
+}
+.pc-v b {
+  display: block;
+  font-size: clamp(13px, 1.9vw, 16px);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.pc-v small {
+  display: block;
+  font-size: 9.5px;
+  opacity: 0.88;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-v .pc-sub {
+  font-size: 8.5px;
+  opacity: 0.7;
+  margin-top: -1px;
+}
+/* 成績の言葉：ふだんは長い言葉、狭い画面では短い言葉 */
+.pc-grid .s {
+  display: none;
+}
+@media (max-width: 600px) {
+  .pc-grid .l {
+    display: none;
+  }
+  .pc-grid .s {
+    display: inline;
+  }
+}
+
 
 /* フレンド画面：左に一覧、右に名刺カード */
 .fr-wrap {
@@ -4413,4 +4445,28 @@ table.rec td:first-child {
   border-color: #ffd84a;
   background: rgba(255, 216, 74, 0.16);
   color: #fff;
+}
+
+.pc-title .reward-mark {
+  width: 1.1em;
+  height: 1.3em;
+  margin: 0;
+}
+/* カードの中の行は縮めない（狭い画面で名前が上で切れないように） */
+.pc-r > * {
+  flex-shrink: 0;
+}
+/* フレンド画面の右：カードは縮めず、入りきらないときはスクロール（入るときは上下の真ん中） */
+.fr-right {
+  overflow-y: auto;
+  justify-content: flex-start;
+}
+.fr-right > :first-child {
+  margin-top: auto;
+}
+.fr-right > :last-child {
+  margin-bottom: auto;
+}
+.fr-right .pcard {
+  flex-shrink: 0;
 }

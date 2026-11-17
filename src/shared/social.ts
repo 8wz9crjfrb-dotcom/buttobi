@@ -55,6 +55,8 @@ export interface Profile {
   /** トーナメントの優勝・3位の回数 */
   tw?: number;
   t3?: number;
+  /** 持っている称号の数 */
+  tc?: number;
 }
 
 const int = (v: unknown, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v)) || 0));
@@ -78,6 +80,7 @@ export function sanitizeProfile(raw: unknown, charIds: string[]): Profile | null
     pc: int(r.pc, 99999999),
     tw: int(r.tw, 99999),
     t3: int(r.t3, 99999),
+    tc: int(r.tc, 9999),
   };
 }
 
