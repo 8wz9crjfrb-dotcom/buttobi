@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { CLOSE, SLEEP_MAX, SUDDEN, REWIND, AIR_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { CLOSE, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -92,9 +92,6 @@ export interface Entity {
 const POISON_TICK = 30;
 /** 一時的な足場の上に立っているときの groundRef（1000 + 足場の id） */
 const ENTITY_GROUND = 1000;
-
-/** ジャンプ攻撃（空中攻撃） */
-const AERIAL_MOVES = new Set<string>(['nair', 'fair', 'bair', 'uair', 'dair']);
 
 const SNAPSHOT_KEYS = [
   'x', 'y', 'vx', 'vy', 'facing', 'grounded', 'groundRef', 'state', 'stateTime', 'jumpsLeft', 'sideBUsed',
@@ -2875,8 +2872,6 @@ export class Sim {
     // 酔い（フレアボトル）・長いひるみ（スライド・シザーラッシュ）
     if (md.confuse) v.confused = Math.max(v.confused, md.confuse);
     if (md.hitstunMul && v.state === 'hitstun') v.hitstun = Math.round(v.hitstun * md.hitstunMul);
-    // ジャンプ攻撃（空中攻撃）のひるみは短め
-    if (AERIAL_MOVES.has(a.move ?? '') && v.state === 'hitstun') v.hitstun = Math.max(1, Math.round(v.hitstun * AIR_HITSTUN));
     if (md.special === 'dive') {
       // ステージダイブ：相手を踏み台にして跳ね上がる
       a.vy = THREEB_RULES.bounce;
@@ -3248,6 +3243,8 @@ export class Sim {
             this.knock(v, dir, p.dmg, p.base, p.growth, p.angle, owner ? this.powerMul(owner).kb : 1, p.owner);
             this.lifesteal(owner, v.damage - before);
             v.hitstun = Math.round(v.hitstun * p.hitstunMul);
+            // 飛び道具のひるみは半分
+            if (v.state === 'hitstun') v.hitstun = Math.max(1, Math.round(v.hitstun * SHOT_HITSTUN));
             if (p.confuse > 0) v.confused = Math.max(v.confused, p.confuse);
             if (p.poison > 0) {
               v.poison = Math.max(v.poison, p.poison);

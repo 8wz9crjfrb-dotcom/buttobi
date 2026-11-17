@@ -137,22 +137,34 @@ for (const mode of ['time', 'stamina'] as const) {
   check('同点でなければそのまま終わる', sim.ended && !sim.sudden);
 }
 
-// ジャンプ攻撃（空中攻撃）のひるみは半分（ふっとばしで決まるひるみ → 半分）
+// ひるみ時間：飛び道具は半分、ジャンプ攻撃（空中攻撃）はそのまま
 {
-  const sim = make();
-  const [a, b] = sim.fighters;
-  a.x = 0; b.x = 0.8; a.facing = 1; b.damage = 60;
-  a.y = 3; a.grounded = false; a.groundRef = -1; a.state = 'air';
-  b.y = 3; b.grounded = false; b.groundRef = -1; b.state = 'air';
-  const s2 = sim as unknown as { knock: (...x: unknown[]) => void; applyHit: (...x: unknown[]) => void };
-  let before = 0, after = 0, mv = '';
-  const k = s2.knock.bind(sim);
-  s2.knock = (...x: unknown[]) => { k(...x); before = (x[0] as { hitstun: number }).hitstun; };
-  const ah = s2.applyHit.bind(sim);
-  s2.applyHit = (...x: unknown[]) => { ah(...x); after = (x[1] as { hitstun: number }).hitstun; mv = String((x[0] as { move: string }).move); };
-  sim.step(new Map([[0, { mx: 0, my: 0, buttons: 1 }]]));
-  for (let i = 0; i < 10; i++) sim.step(new Map());
-  check('ジャンプ攻撃のひるみは半分', mv === 'nair' && before > 0 && after === Math.round(before / 2), `${mv} ${before} → ${after}`);
+  const measure = (shot: boolean) => {
+    const sim = make();
+    const [a, b] = sim.fighters;
+    b.damage = 60;
+    const s2 = sim as unknown as { knock: (...x: unknown[]) => void };
+    let before = 0;
+    const k = s2.knock.bind(sim);
+    s2.knock = (...x: unknown[]) => { k(...x); before = (x[0] as { hitstun: number }).hitstun; };
+    let after = 0;
+    if (shot) {
+      // ハッカーの代わりに警備員の前に弾を置いて当てる：DDoS の弾と同じ値
+      a.x = -3; b.x = 0; a.facing = 1;
+      (sim as unknown as { projectiles: unknown[] }).projectiles.push({ x: -0.3, y: b.y + 0.8, vx: 16, vy: 0, gravity: 0, life: 10, owner: 0, kind: 'bullet', dmg: 2.8, base: 2.8, growth: 2.2, angle: 25, r: 0.25, hitstunMul: 1, poison: 0, confuse: 0, homing: 0, boomerang: 0, age: 0, returning: false, hits: [], pierce: false });
+      for (let i = 0; i < 6 && !after; i++) { sim.step(new Map()); if ((b.state as string) === 'hitstun') after = b.hitstun + (b.hitlag > 0 ? 0 : 1); }
+    } else {
+      a.x = 0; b.x = 0.8; a.facing = 1;
+      a.y = 3; a.grounded = false; a.groundRef = -1; a.state = 'air';
+      b.y = 3; b.grounded = false; b.groundRef = -1; b.state = 'air';
+      sim.step(new Map([[0, { mx: 0, my: 0, buttons: 1 }]]));
+      for (let i = 0; i < 10 && !after; i++) { sim.step(new Map()); if ((b.state as string) === 'hitstun') after = b.hitstun + (b.hitlag > 0 ? 0 : 1); }
+    }
+    return { before, after };
+  };
+  const s = measure(true), a = measure(false);
+  check('飛び道具のひるみは半分', s.before > 0 && s.after === Math.max(1, Math.round(s.before / 2)), `${s.before} → ${s.after}`);
+  check('ジャンプ攻撃のひるみはそのまま', a.before > 0 && a.after === a.before, `${a.before} → ${a.after}`);
 }
 
 // 配達員：自転車に乗ったままジャンプ、ダメージ合計10%をこえると降りる、置き配は6%回復

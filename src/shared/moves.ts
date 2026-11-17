@@ -714,8 +714,8 @@ export const ITEMS = {
 export const SUDDEN = { damage: 100, hp: 30, max: 60 * 60 };
 /** Ctrl+Z（ハッカー）：戻る時間（フレーム）、消すダメージの割合、戻ったあとの無敵 */
 export const REWIND = { frames: 120, heal: 0.5, invuln: 20 };
-/** ジャンプ攻撃（空中攻撃）のひるみ時間の倍率 */
-export const AIR_HITSTUN = 0.5;
+/** 飛び道具が当たったときのひるみ時間の倍率 */
+export const SHOT_HITSTUN = 0.5;
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };
 

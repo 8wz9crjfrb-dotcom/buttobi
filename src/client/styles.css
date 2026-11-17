@@ -2419,11 +2419,11 @@ table.rec td:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 衣装名は省略せず、入りきらなければ2行に */
+/* 衣装名は1行（入りきらなければ文字を小さくして収める：fitPlateName） */
 .m-plate .n {
   line-height: 1.2;
-  word-break: keep-all;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .m-plate .t {
   font-size: 10px;
@@ -4596,4 +4596,10 @@ table.rec td:first-child {
 }
 .roulette.hit .rl-sub {
   color: #ffd84a;
+}
+/* フレンドから外す：ボタンだが、目立ちすぎない赤い枠 */
+.btn.danger-outline {
+  background: transparent;
+  border: 1.5px solid rgba(255, 110, 110, 0.7);
+  color: #ff8a8a;
 }

@@ -712,7 +712,7 @@ function showFriends(): void {
   const card = pick
     ? `${profileCard(pick.name, pick.code, pick.prof, social.together(pick.code))}
        <div class="fr-acts">${pick.room ? `<button class="btn small primary" data-join="${pick.room.code}">ルームに参加</button>` : ''}</div>
-       <div class="fr-danger"><button class="btn-text danger" data-remove="${pick.code}" data-name="${esc(pick.name)}">フレンドから外す…</button></div>`
+       <div class="fr-danger"><button class="btn small danger-outline" data-remove="${pick.code}" data-name="${esc(pick.name)}">フレンドから外す</button></div>`
     : `${profileCard(settings.name || 'あなた', '', me)}
        <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
   showScreen(
@@ -1500,6 +1500,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
       on('settings', showSettings);
       on('install', () => void promptInstall().then(() => showMenu()));
       // 下の衣装名の札：タップするとキャラ・衣装の変更へ
+      fitPlateName(root);
       root.querySelector('#m-plate')!.addEventListener('click', () => {
         sfx.click();
         showCharSelect({ title: 'キャラ・衣装を変える', slot: 0, current: settings.charId, nextLabel: '決定', onBack: () => showMenu(), onNext: () => showMenu() });
@@ -1736,6 +1737,19 @@ function rollCpuChars(players: MatchSetup['players']): void {
 }
 
 /** 相手のCPUのキャラをえらぶ（ランダム＋全キャラ） */
+/** ホームの名札：衣装名を1行に収める（入りきらなければ文字を小さくする） */
+function fitPlateName(root: ParentNode = document): void {
+  const n = root.querySelector<HTMLElement>('.m-plate .n');
+  if (!n) return;
+  let size = 17;
+  n.style.fontSize = `${size}px`;
+  while (size > 9 && n.scrollWidth > n.clientWidth + 0.5) {
+    size -= 0.5;
+    n.style.fontSize = `${size}px`;
+  }
+}
+window.addEventListener('resize', () => fitPlateName());
+
 /** 確かめる画面（ゲームの中の画面で出す。ホーム画面に追加したアプリでも確実に出るように） */
 function confirmDialog(title: string, note: string, okLabel: string, onOk: () => void): void {
   const el = document.createElement('div');
