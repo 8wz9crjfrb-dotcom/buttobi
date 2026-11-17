@@ -11,7 +11,7 @@ import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
 import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
-import { ICONS, iconTile, predictMark } from './icons';
+import { championMark, ICONS, iconTile, predictMark } from './icons';
 import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
@@ -1908,7 +1908,7 @@ function tourBracket(t: TourInfo): string {
     const e = name(slot);
     // シード（相手なし）は勝ちの色にしない
     const cls = m.w < 0 || bye ? '' : m.w === slot ? 'win' : 'lose';
-    return `<div class="tb-p ${cls} ${slot === net.slot ? 'me' : ''}"><span class="dot" style="background:${hex(SLOT_COLORS[slot % SLOT_COLORS.length])}"></span>${esc(e?.name ?? '？')}<small>${e ? getCharacter(e.charId).name : ''}</small>${r === t.rounds.length - 1 && m.w === slot ? ' 👑' : ''}</div>`;
+    return `<div class="tb-p ${cls} ${slot === net.slot ? 'me' : ''}"><span class="dot" style="background:${hex(SLOT_COLORS[slot % SLOT_COLORS.length])}"></span>${esc(e?.name ?? '？')}<small>${e ? getCharacter(e.charId).name : ''}</small>${r === t.rounds.length - 1 && m.w === slot ? championMark() : ''}</div>`;
   };
   return `<div class="tour-bracket">${t.rounds
     .map(
@@ -1927,7 +1927,7 @@ function tourBracket(t: TourInfo): string {
 function tourStatus(t: TourInfo): string {
   if (t.champion >= 0) {
     const e = t.entrants.find((x) => x.slot === t.champion);
-    return `<div class="tour-status champ">🏆 優勝：${esc(e?.name ?? '？')}${t.champion === net.slot ? '（あなた）' : ''}</div>`;
+    return `<div class="tour-status champ">${championMark()}優勝：${esc(e?.name ?? '？')}${t.champion === net.slot ? '（あなた）' : ''}</div>`;
   }
   if (t.cur) return `<div class="tour-status">試合中…</div>`;
   for (let r = 0; r < t.rounds.length; r++) {
@@ -1953,7 +1953,7 @@ function onTourLobby(l: LobbyInfo): void {
     tourPaid = t.id;
     wallet.coins += TOUR_PRIZE;
     saveWallet(wallet);
-    toast(`🏆 トーナメント優勝！ +${TOUR_PRIZE} コイン`, 4000);
+    toast(`トーナメント優勝！ +${TOUR_PRIZE} コイン`, 4000);
   }
   updateTourInfo();
 }

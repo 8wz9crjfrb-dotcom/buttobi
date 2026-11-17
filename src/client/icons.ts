@@ -105,3 +105,8 @@ export function predictMark(hit: boolean): string {
 export function iconTile(name: string, color: string): string {
   return `<span class="m-ic" style="--ic:${color}">${ICONS[name] ?? ''}</span>`;
 }
+
+/** トーナメント優勝の「優勝旗」：先に玉の付いた旗ざおと、燕尾（えんび）形の金色の旗。旗に星 */
+export function championMark(): string {
+  return `<svg class="champ-mark" viewBox="6 4 38 40" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 9v33" stroke="#d9dbe8" stroke-width="3"/><circle cx="11" cy="7" r="3" fill="#ffd84a"/><path d="M12.5 10H41l-7 9 7 9H12.5z" fill="#ffd84a"/><path d="M12.5 10H41l-7 9 7 9H12.5z" stroke="#c9a21a" stroke-width="1.6"/><path d="M24 13.2l1.7 3.5 3.8.5-2.8 2.6.7 3.8-3.4-1.8-3.4 1.8.7-3.8-2.8-2.6 3.8-.5z" fill="#1b1f3b"/></svg>`;
+}

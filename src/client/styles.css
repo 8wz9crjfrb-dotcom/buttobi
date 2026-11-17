@@ -4207,3 +4207,19 @@ table.rec td:first-child {
 .pick-btn.on .pick-odds {
   color: #1b1f3b;
 }
+/* 優勝旗（トーナメントの優勝の印） */
+.champ-mark {
+  width: 1.3em;
+  height: 1.37em;
+  vertical-align: -0.3em;
+  margin-right: 6px;
+  flex: none;
+}
+.tour-status.champ .champ-mark {
+  width: 1.6em;
+  height: 1.68em;
+  vertical-align: -0.42em;
+}
+.tb-p .champ-mark {
+  margin: 0 0 0 4px;
+}
