@@ -698,7 +698,24 @@ export const CHARGE = { max: 90, mul: 1.75 };
 export const GRAB = { base: 50, perDamage: 0.5, max: 150, mash: 3, pummelGap: 6 };
 
 /** アイテム：出る間隔、同時に出る最大数、置いてある時間、種類（0=おにぎり 1=スニーカー 2=砂時計 3=お守り） */
-export const ITEMS = { interval: 600, max: 2, life: 900, kinds: 4, heal: 20, freeze: 60, invuln: 240 };
+export const ITEMS = {
+  interval: 600,
+  max: 2,
+  life: 900,
+  kinds: 7,
+  heal: 20,
+  freeze: 60,
+  invuln: 240,
+  /** カイロ：攻撃力アップの時間（威力は課金と同じ PAY.dmg 倍） */
+  power: 600,
+  /** 傘：ひるまない時間（とても強いふっとばしは防げない） */
+  armor: 480,
+  /** メガホン：衝撃波の届く距離・威力 */
+  shoutR: 3.2,
+  shoutDmg: 8,
+  shoutBase: 9,
+  shoutGrowth: 9,
+};
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };
 

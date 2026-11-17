@@ -297,11 +297,14 @@ export class PropRenderer {
       case 'item0':
       case 'item1':
       case 'item2':
-      case 'item3': {
+      case 'item3':
+      case 'item4':
+      case 'item5':
+      case 'item6': {
         // アイテム：光る台座の上に、種類ごとの形
         const g = new THREE.Group();
         const k = Number(kind.slice(4));
-        const ring = new THREE.Mesh(new THREE.RingGeometry(0.32, 0.45, 24), basic([0x4fd18b, 0xb6ff3a, 0xff3b3b, 0x4f9dff][k], { transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.32, 0.45, 24), basic([0x4fd18b, 0xb6ff3a, 0xff3b3b, 0x4f9dff, 0xff8a3a, 0xa070ff, 0xffd84a][k], { transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.02;
         g.add(ring);
@@ -352,6 +355,49 @@ export class PropRenderer {
           const sand = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.1, 14), toon(0xff5a5a));
           sand.position.y = -0.17;
           body.add(sand);
+        } else if (k === 4) {
+          // カイロ：白い平たい袋に、オレンジの「あったか」の帯と湯気
+          const bag = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.44, 0.06), toon(0xfaf7ee));
+          body.add(bag);
+          const band = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.14, 0.065), toon(0xff7a1a));
+          body.add(band);
+          for (const x of [-0.08, 0.08]) {
+            const steam = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.015, 6, 12, Math.PI * 1.4), basic(0xffffff));
+            steam.position.set(x, 0.32, 0);
+            steam.rotation.z = Math.PI / 2;
+            body.add(steam);
+          }
+        } else if (k === 5) {
+          // 傘：開いた紫の傘（8本の骨）と、曲がった持ち手
+          const canopy = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.22, 8, 1, true), new THREE.MeshToonMaterial({ color: 0x8a5cff, side: THREE.DoubleSide }));
+          canopy.position.y = 0.18;
+          body.add(canopy);
+          const tip = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), toon(0xffffff));
+          tip.position.y = 0.3;
+          body.add(tip);
+          const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.5, 8), toon(0x3a2a20));
+          stick.position.y = -0.06;
+          body.add(stick);
+          const hook = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.018, 6, 12, Math.PI), toon(0x3a2a20));
+          hook.position.set(0.06, -0.31, 0);
+          hook.rotation.z = Math.PI;
+          body.add(hook);
+        } else if (k === 6) {
+          // メガホン：横向きの黄色いラッパ（口は白）と、持ち手
+          const horn = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.08, 0.42, 16, 1, true), new THREE.MeshToonMaterial({ color: 0xffd23f, side: THREE.DoubleSide }));
+          horn.rotation.z = -Math.PI / 2;
+          body.add(horn);
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.025, 6, 20), toon(0xffffff));
+          rim.position.x = 0.21;
+          rim.rotation.y = Math.PI / 2;
+          body.add(rim);
+          const back = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 12), toon(0x3a3a48));
+          back.position.x = -0.24;
+          back.rotation.z = Math.PI / 2;
+          body.add(back);
+          const grip = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.06), toon(0x3a3a48));
+          grip.position.set(-0.06, -0.14, 0);
+          body.add(grip);
         } else {
           // お守り：紺色の袋に金の縁取りと、上のひも
           const bag = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, 0.08), toon(0x2d4fb3));

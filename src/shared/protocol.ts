@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 30;
+export const PROTOCOL_VERSION = 31;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -74,6 +74,8 @@ export interface LobbyInfo {
   tourOn?: boolean;
   /** トーナメントの3位決定戦（決勝の前に行う） */
   tourThird?: boolean;
+  /** 乱入アイテム（試合に出ていない人がアイテムを落とせる） */
+  dropOn?: boolean;
   /** 進行中・終わったトーナメント */
   tour?: TourInfo;
 }
@@ -112,7 +114,7 @@ export type ClientMsg =
   | { t: 'char'; charId: string; costume?: string }
   /** チーム戦のチームを変える（自分の枠。ホストは slot でCPUの枠も変えられる） */
   | { t: 'team'; team: number; slot?: number }
-  | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number; tour?: boolean; tourThird?: boolean }
+  | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number; tour?: boolean; tourThird?: boolean; dropOn?: boolean }
   | { t: 'start' }
   /** 結果画面の「もう1戦したい」（on = 押した / 取り消した）。人が全員押すと再戦が始まる */
   | { t: 'again'; on: boolean }

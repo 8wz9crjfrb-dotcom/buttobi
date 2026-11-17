@@ -420,15 +420,18 @@ export const TAUNT_LINES: Record<string, { lines: string[]; ssr: string }> = {
 };
 
 /** アイテムの名前（種類の番号順） */
-export const ITEM_NAMES = ['おにぎり', 'スニーカー', '砂時計', 'お守り'];
+export const ITEM_NAMES = ['おにぎり', 'スニーカー', '砂時計', 'お守り', 'カイロ', '傘', 'メガホン'];
 /** アイテムの効果（short = 落ちているアイテムの上に出す短い説明、effect = 拾ったときに大きく出す説明。数値は moves.ts の設定どおり） */
 export const ITEM_INFO = [
   { short: '回復', effect: `${ITEMS.heal}%回復！` },
   { short: 'スピードアップ', effect: `${SPEEDUP.duration / 60}秒スピードアップ！` },
   { short: '相手をストップ', effect: `ほかの人が${ITEMS.freeze / 60}秒ストップ！` },
   { short: '無敵', effect: `${ITEMS.invuln / 60}秒無敵！` },
+  { short: '攻撃力アップ', effect: `${ITEMS.power / 60}秒攻撃力アップ！` },
+  { short: 'ひるまない', effect: `${ITEMS.armor / 60}秒ひるまない！` },
+  { short: '衝撃波', effect: 'まわりを吹き飛ばす！' },
 ];
-export const ITEM_COLORS = ['#4fd18b', '#b6ff3a', '#ff5a5a', '#6ab8ff'];
+export const ITEM_COLORS = ['#4fd18b', '#b6ff3a', '#ff5a5a', '#6ab8ff', '#ff8a3a', '#b48cff', '#ffd84a'];
 
 /** CPU の名前に使う短いキャラ名（HUD の名札に収まる長さ） */
 const CPU_SHORT: Record<string, string> = {

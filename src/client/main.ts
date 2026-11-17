@@ -484,7 +484,7 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'shield') sfx.shield();
     else if (e.k === 'shot') sfx.shot();
     else if (e.k === 'counter') sfx.counter();
-    else if (e.k === 'boom') sfx.boom();
+    else if (e.k === 'boom' || e.k === 'shout') sfx.boom();
     else if (e.k === 'kick') sfx.kick(e.p);
     else if (e.k === 'goal') sfx.goal();
     else if (e.k === 'flash') sfx.shutter();
@@ -633,6 +633,7 @@ function profileCard(name: string, code: string, p: Profile | undefined, togethe
       <div class="pc-bub">${chatMark()}${esc(PROFILE_COMMENTS[p.comment] ?? '')}</div>
       <div class="pc-code">フレンドコード ${esc(code)}</div>
       <div class="pc-stats">${st(String(p.wins), '通算勝利')}${st(`${p.horde}人`, '100人組手')}${st(String(p.costumes), '衣装')}${together !== undefined ? st(`${together}回`, '一緒に戦った') : ''}</div>
+      <div class="pc-stats pc-pred">${st(p.pn ? `${Math.round(((p.ph ?? 0) / p.pn) * 100)}%` : '—', `予想的中率${p.pn ? `（${p.ph ?? 0}/${p.pn}）` : ''}`)}${st((p.pc ?? 0).toLocaleString(), '予想で獲得コイン')}</div>
     </div></div>`;
 }
 
@@ -687,7 +688,7 @@ function showFriends(): void {
     : `${profileCard(settings.name || 'あなた', social.code || '…', me)}
        <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
   showScreen(
-    `<div class="fr-head"><button class="btn small" id="back">もどる</button><h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2><button class="btn small" id="pred-rank">${predictMark(true)}予想ランキング</button></div>
+    `<div class="fr-head"><button class="btn small" id="back">もどる</button><h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2></div>
      <div class="fr-wrap">
        <div class="fr-left">
          <button type="button" class="fr-item me ${friendPick === 'me' ? 'on' : ''}" data-pick="me">${friendFace(settings.name || 'あなた', me)}<span class="fr-txt"><b>自分のプロフィール</b><small>見る・編集する</small></span></button>
@@ -717,7 +718,6 @@ function showFriends(): void {
         }),
       );
       root.querySelector('#pf-edit')?.addEventListener('click', () => showProfileEdit());
-      root.querySelector('#pred-rank')?.addEventListener('click', () => showPredRanking());
       root.querySelector('#fr-copy')?.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(social.code);
@@ -1651,38 +1651,6 @@ function pickCpuChar(i: number, onPick: (id: string) => void): void {
   screensEl.appendChild(el);
 }
 
-/** 予想ランキング：自分とフレンドの、勝敗予想でもらったコインの順（同じなら当たった回数の順） */
-function showPredRanking(): void {
-  const rows = [
-    { name: settings.name || 'あなた', me: true, n: progress.pred?.n ?? 0, h: progress.pred?.hit ?? 0, c: progress.pred?.coins ?? 0 },
-    ...social.state.friends.map((f) => ({ name: f.name, me: false, n: f.prof?.pn ?? 0, h: f.prof?.ph ?? 0, c: f.prof?.pc ?? 0 })),
-  ].sort((a, b) => b.c - a.c || b.h - a.h || a.n - b.n);
-  let rank = 0;
-  let prev = '';
-  const body = rows
-    .map((r, i) => {
-      const key = `${r.c}/${r.h}/${r.n}`;
-      if (key !== prev) rank = i + 1;
-      prev = key;
-      const rate = r.n ? Math.round((r.h / r.n) * 100) : 0;
-      return `<div class="pr-rank-row ${r.me ? 'me' : ''}"><span class="pr-rank-no">${rank}</span><b class="grow">${esc(r.name)}${r.me ? '（あなた）' : ''}</b><span class="pr-rank-c">${r.c.toLocaleString()}<small>コイン</small></span><span class="pr-rank-h">${r.h}/${r.n}回<small>的中率 ${rate}%</small></span></div>`;
-    })
-    .join('');
-  const el = document.createElement('div');
-  el.className = 'modal';
-  el.innerHTML = `<div class="modal-box">
-      <h3>${predictMark(true)}予想ランキング</h3>
-      <p class="muted small-note">勝敗予想でもらったコインの合計の順です。フレンドの成績は、そのフレンドがアプリを開いたときに更新されます。</p>
-      <div class="modal-body pr-rank">${body}</div>
-      <div class="footer"><button class="btn" data-close>閉じる</button></div>
-    </div>`;
-  el.addEventListener('click', (e) => {
-    const t = e.target as HTMLElement;
-    if (t === el || t.closest('[data-close]')) el.remove();
-  });
-  screensEl.appendChild(el);
-}
-
 /** 100人組手を始める（自分＋敵3人。敵は倒されると次の敵が出てくる） */
 function startHorde(): void {
   cpuSpec = null;
@@ -1824,7 +1792,7 @@ function hideDrop(): void {
 }
 
 function renderDrop(): void {
-  if (session?.kind !== 'net' || session.mySlot !== -1 || session.setup.rules.horde || resultsShown) return hideDrop();
+  if (session?.kind !== 'net' || session.mySlot !== -1 || session.setup.rules.horde || resultsShown || lobby?.dropOn === false) return hideDrop();
   dropEl.classList.remove('hidden');
   dropEl.innerHTML = dropUsed
     ? `<div class="drop-title">乱入アイテム</div><div class="drop-done">投入済み</div>`
@@ -1844,7 +1812,7 @@ function renderDrop(): void {
 function onDropStart(setup: MatchSetup): void {
   dropUsed = false;
   hideDrop();
-  if (setup.players.some((p) => p.slot === net.slot && net.slot >= 0) || setup.rules.horde) return;
+  if (setup.players.some((p) => p.slot === net.slot && net.slot >= 0) || setup.rules.horde || lobby?.dropOn === false) return;
   dropTimer = window.setTimeout(renderDrop, (COUNTDOWN_FRAMES / 60) * 1000);
 }
 
@@ -3701,13 +3669,15 @@ function showLobby(): void {
       <div data-pane="rule"><div class="setup-grid wide">
         <div class="opt opt-wide">対戦の形式 ${seg('fmt', [['all', '全員で'], ['tour', 'トーナメント']], tourOn ? 'tour' : 'all')}</div>
         <div class="opt" data-fmt-help ${tourOn ? '' : 'hidden'}>3位決定戦 ${seg('third', [['on', 'あり'], ['off', 'なし']], l.tourThird !== false ? 'on' : 'off')}</div>
+        <div class="opt">乱入アイテム ${seg('dropon', [['on', 'あり'], ['off', 'なし']], l.dropOn !== false ? 'on' : 'off')}</div>
+        <div class="opt opt-wide"><span class="muted">乱入アイテム：試合に出ていない人（トーナメントの待ち・観戦）が、1試合に1回アイテムを落とせます</span></div>
         <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">ルームの全員（CPUも）で1対1の勝ち抜き戦。3人から。人数が半端ならシード（1回戦なし）ができます。始める前に組み合わせ表が出ます。試合に出ない人は勝敗を予想して観戦し、全員が予想すると次の試合が始まります（予想する人がいなければ15秒後、予想を待つのは最長30秒）。全員が「OK！」を押すと、待たずにすぐ始まります。3位決定戦（4人以上のとき）は、決勝の前に準決勝で負けた2人で戦います（次に始めるトーナメントから）。チーム戦の設定は使いません</span></div>
         ${ruleControls(rules)}</div></div>
       <div data-pane="cpu"><div class="setup-grid wide">
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
       </div></div>`
-    : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
+    : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'} ／ 乱入アイテム${l.dropOn !== false ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
   const teamCount = new Set(l.players.map((p) => p.team ?? 0)).size;
   // 準備OK：人（CPU以外）のうち押している数。全員そろうとホストの開始ボタンが光る
   const humanList = l.players.filter((p) => !p.cpu && p.connected);
@@ -3800,7 +3770,12 @@ function showLobby(): void {
         let stageId = l.stageId;
         let fmtTour = tourOn;
         let third = l.tourThird !== false;
-        const push = () => net.config(rules, stageId, cpuCount, lv, fmtTour, third);
+        let dropOn = l.dropOn !== false;
+        const push = () => net.config(rules, stageId, cpuCount, lv, fmtTour, third, dropOn);
+        bindSeg(root, 'dropon', (v) => {
+          dropOn = v === 'on';
+          push();
+        });
         bindSeg(root, 'third', (v) => {
           third = v === 'on';
           push();

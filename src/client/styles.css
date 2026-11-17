@@ -3231,6 +3231,12 @@ table.rec td:first-child {
 .hud-p .buffs .bf.inv {
   background: #6ab8ff;
 }
+.hud-p .buffs .bf.pow {
+  background: #ff8a3a;
+}
+.hud-p .buffs .bf.arm {
+  background: #b48cff;
+}
 @keyframes bf-pulse {
   to {
     opacity: 0.6;
@@ -3760,6 +3766,13 @@ table.rec td:first-child {
   display: flex;
   gap: 4px;
   margin-top: auto;
+}
+/* 勝敗予想の成績（2つ目の段） */
+.pc-stats.pc-pred {
+  margin-top: 4px;
+}
+.pc-stats.pc-pred .pc-st {
+  max-width: 120px;
 }
 /* 数字の箱は1列に並べ、カードが狭いときは箱を縮める */
 .pc-st {
@@ -4347,44 +4360,3 @@ table.rec td:first-child {
   padding: 4px 0;
 }
 
-/* 予想ランキング */
-.pr-rank {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.pr-rank-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-}
-.pr-rank-row.me {
-  outline: 2px solid rgba(255, 216, 74, 0.6);
-}
-.pr-rank-no {
-  font-weight: 900;
-  font-size: 18px;
-  width: 1.6em;
-  text-align: center;
-  color: #ffd84a;
-}
-.pr-rank-c,
-.pr-rank-h {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-weight: 800;
-  white-space: nowrap;
-}
-.pr-rank-c small,
-.pr-rank-h small {
-  font-size: 10px;
-  color: var(--muted);
-  font-weight: 600;
-}
-.fr-head #pred-rank {
-  margin-left: auto;
-}

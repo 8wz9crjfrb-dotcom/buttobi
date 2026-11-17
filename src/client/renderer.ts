@@ -1056,6 +1056,13 @@ export class GameRenderer {
       this.shake = Math.max(this.shake, 0.5);
       return;
     }
+    if (e.k === 'shout') {
+      // メガホンの衝撃波：黄色と白の輪が、少しずつずれて広がる
+      [0xffd84a, 0xffffff, 0xffd84a].forEach((col, i) => this.spawn(this.ringGeo, col, e.x, e.y, 0, 0, 0.3 + i * 0.12, 16 + i * 3, 0.14 + i * 0.02));
+      this.props.showText('ワーッ！', '#ffd84a', e.x, e.y + 1.4, true, 50);
+      this.shake = Math.max(this.shake, 0.45);
+      return;
+    }
     if (e.k === 'boom') {
       for (let i = 0; i < 18; i++) {
         const a = Math.random() * Math.PI * 2;

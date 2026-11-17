@@ -137,6 +137,8 @@ interface StoredLobby {
   tourOn?: boolean;
   /** トーナメントの3位決定戦（なし = false） */
   tourThird?: boolean;
+  /** 乱入アイテム（なし = false） */
+  dropOn?: boolean;
   /** 進行中・終わったトーナメント（nextIn は送るときに計算する） */
   tour?: Omit<TourInfo, 'nextIn'>;
 }
@@ -368,7 +370,7 @@ export class Room extends DurableObject<Env> {
     // CPU はキャラで見分けられる名前に（「CPU 配信者」など）
     nameCpus(players);
     const tour: TourInfo | undefined = l.tour ? { ...l.tour, nextIn: !this.sim && this.tourNextAt ? Math.max(0, this.tourNextAt - Date.now()) : 0, ...this.tourVotes() } : undefined;
-    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, tourThird: l.tourThird !== false, ...(tour ? { tour } : {}) };
+    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, tourThird: l.tourThird !== false, dropOn: l.dropOn !== false, ...(tour ? { tour } : {}) };
   }
 
   private pushLobby(): void {
@@ -489,7 +491,7 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
-    if (msg.t === 'drop' && this.lobby && this.sim && this.setup && (slot >= 0 || slot === SPECTATOR)) {
+    if (msg.t === 'drop' && this.lobby && this.lobby.dropOn !== false && this.sim && this.setup && (slot >= 0 || slot === SPECTATOR)) {
       // 乱入アイテム：試合に出ていない人だけ、1試合に1回
       if (slot >= 0 && this.setup.players.some((p) => p.slot === slot)) return;
       const key = slot >= 0 ? `h${slot}` : `s${att?.sid ?? 0}`;
@@ -601,6 +603,8 @@ export class Room extends DurableObject<Env> {
         l.tourOn = msg.tour === true;
         // 3位決定戦（初期は「あり」）。次に始めるトーナメントから
         l.tourThird = msg.tourThird !== false;
+        // 乱入アイテム（初期は「あり」）
+        l.dropOn = msg.dropOn !== false;
         if (!l.tourOn && l.tour) {
           l.tour = undefined;
           this.clearTourTimer();

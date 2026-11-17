@@ -189,6 +189,8 @@ export type GameEvent =
   | { k: 'taunt'; s: number; i: number }
   /** アイテムを拾った（t = 種類） */
   | { k: 'item'; s: number; t: number; x: number; y: number }
+  /** メガホン（アイテム）の衝撃波 */
+  | { k: 'shout'; x: number; y: number }
   /** ステージギミックの予告（h = 種類、x/y = 位置、d = 向き） */
   | { k: 'warn'; h: string; x: number; y: number; d: number }
   /** 撃墜が確定するほどの一撃（演出：スロー＆ズーム） */

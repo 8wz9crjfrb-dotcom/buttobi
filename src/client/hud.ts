@@ -3,7 +3,7 @@
 import { areaColor, ballTeamOf, getCharacter, playerColor, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { COUNTDOWN_FRAMES } from '../shared/sim';
 import { clashMark } from './icons';
-import { DEFAULT_HP, FX_SPEED, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
+import { DEFAULT_HP, FX_ARMOR, FX_POWER, FX_SPEED, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
@@ -220,7 +220,7 @@ export class Hud {
       p.stk.textContent = this.training || this.area ? '' : this.stockMode ? '●'.repeat(Math.max(0, f.stocks)) : `${f.kos - f.falls >= 0 ? '+' : ''}${f.kos - f.falls}`;
       p.root.classList.toggle('out', f.out);
       // 効果中のしるし（復活直後の無敵は出さない）
-      const b = `${f.fx & FX_SPEED ? '<span class="bf spd">スピードUP</span>' : ''}${f.invuln && f.state !== 'respawn' && f.state !== 'dead' ? '<span class="bf inv">無敵</span>' : ''}`;
+      const b = `${f.fx & FX_SPEED ? '<span class="bf spd">スピードUP</span>' : ''}${f.fx & FX_POWER ? '<span class="bf pow">攻撃UP</span>' : ''}${f.fx & FX_ARMOR ? '<span class="bf arm">ひるまない</span>' : ''}${f.invuln && f.state !== 'respawn' && f.state !== 'dead' ? '<span class="bf inv">無敵</span>' : ''}`;
       if (b !== p.lastBuffs) {
         p.buffs.innerHTML = b;
         p.lastBuffs = b;

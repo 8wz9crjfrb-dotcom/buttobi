@@ -1509,7 +1509,10 @@ export class Sim {
     return true;
   }
 
-  /** アイテムの効果（0=おにぎり：回復 1=スニーカー：倍速 2=砂時計：ほかの人が止まる 3=お守り：無敵） */
+  /**
+   * アイテムの効果（0=おにぎり：回復 1=スニーカー：倍速 2=砂時計：ほかの人が止まる 3=お守り：無敵
+   * 4=カイロ：攻撃力アップ 5=傘：ひるまない 6=メガホン：まわりを衝撃波で押し飛ばす）
+   */
   private useItem(f: Fighter, kind: number): void {
     switch (kind) {
       case 0:
@@ -1524,6 +1527,24 @@ export class Sim {
       case 3:
         f.invuln = Math.max(f.invuln, ITEMS.invuln);
         break;
+      case 4:
+        f.powerBuff = Math.max(f.powerBuff, ITEMS.power);
+        break;
+      case 5:
+        f.armor = Math.max(f.armor, ITEMS.armor);
+        break;
+      case 6: {
+        const cy = f.y + f.h / 2;
+        this.events.push({ k: 'shout', x: f.x, y: cy });
+        for (const v of this.fighters) {
+          if (v === f || !v.alive || v.invuln > 0 || this.friendly(f.slot, v)) continue;
+          if (Math.hypot(v.x - f.x, v.y + v.h / 2 - cy) > ITEMS.shoutR) continue;
+          this.knock(v, v.x >= f.x ? 1 : -1, ITEMS.shoutDmg, ITEMS.shoutBase, ITEMS.shoutGrowth, 35, 1, f.slot);
+          v.hitlag = 6;
+          this.events.push({ k: 'hit', x: v.x, y: v.y + v.h / 2, p: ITEMS.shoutDmg, s: v.slot, a: f.slot });
+        }
+        break;
+      }
     }
   }
 
