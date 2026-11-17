@@ -855,7 +855,18 @@ function buildStudio(kit: Kit): void {
     g.font = `900 52px ${FONT}`;
     g.fillText('● LIVE', 56, 90);
     g.font = `800 40px ${FONT}`;
-    g.fillText('👁 12,345 人が視聴中', 250, 86);
+    // 目の形（絵文字は端末で見た目が変わるので、自分で描く）
+    g.beginPath();
+    g.moveTo(252, 72);
+    g.quadraticCurveTo(272, 50, 292, 72);
+    g.quadraticCurveTo(272, 94, 252, 72);
+    g.fill();
+    g.fillStyle = '#ff2a55';
+    g.beginPath();
+    g.arc(272, 72, 8, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#fff';
+    g.fillText('12,345 人が視聴中', 304, 86);
     g.font = `900 120px ${FONT}`;
     g.textAlign = 'center';
     g.fillStyle = 'rgba(255,255,255,0.9)';
@@ -1040,7 +1051,13 @@ function buildTimeline(kit: Kit): void {
       g.fillText('♥', 140, 220);
       g.font = `bold 14px ${FONT}`;
       g.fillText(`${(r() * 99).toFixed(1)}万`, 132, 240);
-      g.fillText('💬', 140, 270);
+      // コメントの吹き出し（自分で描く）
+      g.beginPath();
+      g.roundRect(128, 252, 26, 18, 5);
+      g.moveTo(134, 270);
+      g.lineTo(132, 277);
+      g.lineTo(141, 270);
+      g.fill();
       // 再生バー
       g.fillStyle = 'rgba(255,255,255,0.35)';
       g.fillRect(14, 296, 152, 5);

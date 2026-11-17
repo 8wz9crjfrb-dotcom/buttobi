@@ -3,6 +3,7 @@
 // 色は衣装（costumes.ts）から受け取るので、着せ替えにも対応できる。
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { threebDef, type CharacterDef } from '../shared/characters';
 import type { Accessory, Costume, CostumeFx } from '../shared/costumes';
 import { moveOf } from '../shared/moves';
@@ -572,6 +573,110 @@ export class FighterModel {
     );
     this.halo.position.y = -0.06;
     this.root.add(this.halo);
+
+    // 動かない部品をまとめて、描く回数を減らす（見た目は変わらない）
+    this.mergeStatic();
+  }
+
+  /**
+   * 同じ親（頭・胴・腕など）に付いた部品を1つの形にまとめる（色は頂点ごとに持たせる）。輪郭線もまとめる。
+   * 1部品ごとに「部品＋輪郭線」で2回描いていたのを、親と色ごとに1回にする。
+   * 表情・小物・ジョブの見た目など、あとで個別に表示や形を変えるもの（このクラスが覚えているもの）はまとめない
+   */
+  private mergeStatic(): void {
+    // このクラスが覚えている部品と色（個別に動かす・切り替えるもの）
+    const keepObj = new Set<THREE.Object3D>();
+    const keepMat = new Set<THREE.Material>();
+    const visit = (v: unknown, depth: number): void => {
+      if (!v || typeof v !== 'object' || depth > 4) return;
+      if (v instanceof THREE.Object3D) return void keepObj.add(v);
+      if (v instanceof THREE.Material) return void keepMat.add(v);
+      if (v instanceof THREE.BufferGeometry || v instanceof THREE.Texture) return;
+      if (Array.isArray(v)) return v.forEach((x) => visit(x, depth + 1));
+      if (v instanceof Map || v instanceof Set) return [...v.values()].forEach((x) => visit(x, depth + 1));
+      if (Object.getPrototypeOf(v) === Object.prototype) Object.values(v).forEach((x) => visit(x, depth + 1));
+    };
+    for (const [k, v] of Object.entries(this)) {
+      // 全部の色をまとめて変える一覧・輪郭線の色は、まとめても困らない
+      if (k === 'mats' || k === 'glowMats' || k === 'outlineMat' || k === 'def' || k === 'costume' || k === 'c') continue;
+      visit(v, 0);
+    }
+    const isOutline = (o: THREE.Object3D) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).material === this.outlineMat && o.children.length === 0;
+    const matKey = (m: THREE.Material): string | null => {
+      if (keepMat.has(m)) return null;
+      const t = m as THREE.MeshToonMaterial;
+      if (!(m instanceof THREE.MeshToonMaterial || m instanceof THREE.MeshBasicMaterial) || t.map || t.alphaMap) return null;
+      if (!(this.mats.includes(m as THREE.MeshToonMaterial) || this.glowMats.includes(m as THREE.MeshBasicMaterial))) return null;
+      // 色は頂点ごとに持たせるので、色が違ってもまとめられる（陰影のつけ方・面の向き・透明度が同じもの）
+      return `${m.type}:${m.customProgramCacheKey()}:${m.side}:${m.transparent ? 1 : 0}:${m.opacity}`;
+    };
+    const groups: THREE.Object3D[] = [];
+    this.root.traverse((o) => groups.push(o));
+    for (const g of groups) {
+      const buckets = new Map<string, THREE.Mesh[]>();
+      for (const o of g.children) {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || keepObj.has(m) || !m.visible || Array.isArray(m.material) || isOutline(m)) continue;
+        if (!m.children.every(isOutline) || m.children.length > 1) continue;
+        const geo = m.geometry;
+        if (!geo.attributes.position || !geo.attributes.normal || Object.keys(geo.morphAttributes).length) continue;
+        const key = matKey(m.material);
+        if (!key) continue;
+        // 鏡に映した部品（大きさがマイナス）は、番号付きの形なら面の向きを直してまとめる。そうでなければまとめない
+        m.updateMatrix();
+        if (m.matrix.determinant() < 0 && !geo.index) continue;
+        // 輪郭線のある・なし、番号付きの形かどうかで分ける（まとめ方をそろえる）
+        const k = `${key}|${m.children.length}|${geo.index ? 1 : 0}|${geo.attributes.uv ? 1 : 0}`;
+        buckets.set(k, [...(buckets.get(k) ?? []), m]);
+      }
+      for (const list of buckets.values()) {
+        if (list.length < 2) continue;
+        const geos = list.map((m) => {
+          m.updateMatrix();
+          const src = m.geometry;
+          const gg = new THREE.BufferGeometry();
+          if (src.index) gg.setIndex(src.index.clone());
+          for (const name of ['position', 'normal', 'uv']) if (src.attributes[name]) gg.setAttribute(name, src.attributes[name].clone());
+          // 部品の色を頂点の色にする（材質の色は白にして、頂点の色をそのまま使う）
+          const col = (m.material as THREE.MeshToonMaterial).color;
+          const n = gg.attributes.position.count;
+          const arr = new Float32Array(n * 3);
+          for (let i = 0; i < n; i++) arr.set([col.r, col.g, col.b], i * 3);
+          gg.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+          gg.applyMatrix4(m.matrix);
+          if (m.matrix.determinant() < 0 && gg.index) {
+            // 裏返った面を表に戻す（三角形の頂点の順番を入れ替える）
+            const ix = gg.index;
+            for (let i = 0; i < ix.count; i += 3) {
+              const t = ix.getX(i + 1);
+              ix.setX(i + 1, ix.getX(i + 2));
+              ix.setX(i + 2, t);
+            }
+          }
+          return gg;
+        });
+        const merged = mergeGeometries(geos, false);
+        geos.forEach((x) => x.dispose());
+        if (!merged) continue;
+        const src = list[0].material as THREE.MeshToonMaterial | THREE.MeshBasicMaterial;
+        const mat = src.clone();
+        mat.color.set(0xffffff);
+        mat.vertexColors = true;
+        mat.onBeforeCompile = src.onBeforeCompile;
+        mat.customProgramCacheKey = src.customProgramCacheKey;
+        // 光らせる・半透明にするなどの一括の変更が、まとめた形にも届くように一覧に入れる
+        if (mat instanceof THREE.MeshToonMaterial) this.mats.push(mat);
+        else this.glowMats.push(mat);
+        const mesh = new THREE.Mesh(merged, mat);
+        mesh.castShadow = true;
+        g.add(mesh);
+        if (list[0].children.length) mesh.add(new THREE.Mesh(merged, this.outlineMat));
+        for (const m of list) {
+          g.remove(m);
+          m.geometry.dispose();
+        }
+      }
+    }
   }
 
   // ---------------------------------------------------------------- 部品づくり

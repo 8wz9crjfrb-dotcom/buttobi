@@ -2,6 +2,7 @@
 
 import { areaColor, ballTeamOf, getCharacter, playerColor, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { COUNTDOWN_FRAMES } from '../shared/sim';
+import { clashMark } from './icons';
 import { DEFAULT_HP, FX_SPEED, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
@@ -162,9 +163,11 @@ export class Hud {
     // 取り合い中・エリアの移動の予告
     const contested = holders.has(-2);
     const sec = Math.ceil(v.area.nextIn / 60);
-    const msg = v.ended ? '' : v.area.next.length ? `エリア移動まで ${sec}` : contested ? '⚔ 取り合い中（カウント停止）' : '';
+    const msg = v.ended ? '' : v.area.next.length ? `エリア移動まで ${sec}` : contested ? '取り合い中（カウント停止）' : '';
     if (msg !== a.last) {
-      a.notice.textContent = msg;
+      // 取り合い中は、オリジナルの「ぶつかる矢印」の印を付ける
+      if (contested && !v.area.next.length && msg) a.notice.innerHTML = `${clashMark()}${msg}`;
+      else a.notice.textContent = msg;
       a.notice.className = `hud-area-notice ${v.area.next.length ? 'move' : contested ? 'fight' : ''}`;
       a.last = msg;
     }

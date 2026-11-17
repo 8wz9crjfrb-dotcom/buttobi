@@ -238,6 +238,8 @@ export class GameRenderer {
 
   private buildStage(stage: StageDef): void {
     const th = stage.theme;
+    // 前の試合の空の画像を片付けてから作り直す（残すと試合のたびに1枚ずつたまる）
+    if (this.scene.background instanceof THREE.Texture) this.scene.background.dispose();
     this.scene.background = makeSkyTexture(th.sky, th.skyBottom);
     if (th.bright) {
       // 昼・明るい室内：明るい照明。光のにじみはかけない
@@ -1213,7 +1215,7 @@ export class GameRenderer {
       livebar: '照明が落ちる！',
     };
     if (e.h === 'livebar') this.blackoutAt = this.time + 1.5;
-    this.props.showText(`⚠ ${labels[e.h] ?? '注意！'}`, '#ffd23f', (m.x1 + m.x2) / 2, m.top + 6.5, true, 110);
+    this.props.showText(labels[e.h] ?? '注意！', '#ffd23f', (m.x1 + m.x2) / 2, m.top + 6.5, true, 110, true);
     if (e.h === 'lab') {
       // 光線が落ちる場所に赤い印
       for (let i = 0; i < 3; i++) this.spawn(this.ringGeo, 0xff3b3b, e.x, m.top + 0.1, 0, 0, 0.9, 40 + i * 25, -0.004);

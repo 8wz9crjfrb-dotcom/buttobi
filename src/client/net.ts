@@ -98,6 +98,8 @@ export class NetClient {
   /** 最新の照合情報（まだ使っていなければ authorityFresh が true） */
   authority: Authority | null = null;
   authorityFresh = false;
+  /** 本人の選手の完全な状態（サーバーからは変わった項目だけが届くので、ここで組み立てる） */
+  private meCache: Record<string, unknown> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   rtt = 0;
   slot = -1;
@@ -211,6 +213,7 @@ export class NetClient {
         this.pendingEvents = [];
         this.authority = null;
         this.authorityFresh = false;
+        this.meCache = null;
         this.unsent = [];
         this.seq = 0;
         this.lastButtons = 0;
@@ -220,7 +223,13 @@ export class NetClient {
         const view = decodeState(m.s);
         this.snaps.push({ at: performance.now(), view });
         if (m.me) {
-          this.authority = { frame: m.s.f, ack: m.me.a, state: m.me.st };
+          // 変わった項目だけが届いたら、覚えている状態に重ねて完全な状態にする
+          if (m.me.d && this.meCache) {
+            const c = { ...this.meCache, ...(m.me.st as unknown as Record<string, unknown>) };
+            for (const k of m.me.u ?? []) delete c[k];
+            this.meCache = c;
+          } else this.meCache = { ...(m.me.st as unknown as Record<string, unknown>) };
+          this.authority = { frame: m.s.f, ack: m.me.a, state: { ...this.meCache } as unknown as FighterSnapshot };
           this.authorityFresh = true;
         }
         if (this.snaps.length > 30) this.snaps.shift();

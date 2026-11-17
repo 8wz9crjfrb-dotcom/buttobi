@@ -429,3 +429,35 @@ export const ITEM_INFO = [
   { short: '無敵', effect: `${ITEMS.invuln / 60}秒無敵！` },
 ];
 export const ITEM_COLORS = ['#4fd18b', '#b6ff3a', '#ff5a5a', '#6ab8ff'];
+
+/** CPU の名前に使う短いキャラ名（HUD の名札に収まる長さ） */
+const CPU_SHORT: Record<string, string> = {
+  guard: '警備員',
+  hacker: 'ハッカー',
+  thief: '泥棒',
+  streamer: '配信者',
+  dopa: 'ドパガキ',
+  gacha: 'ガチャ廃人',
+  courier: '配達員',
+  ai: 'AI',
+  trainer: 'トレーナー',
+  threeb: '3B',
+};
+
+/**
+ * CPU に「CPU 配信者」のような、キャラで見分けられる名前を付ける（同じキャラが2人以上なら「CPU 配信者2」）。
+ * 人の名前はそのまま
+ */
+export function nameCpus<T extends { name: string; charId: string; cpu: boolean }>(players: T[]): T[] {
+  const count = new Map<string, number>();
+  for (const p of players) if (p.cpu) count.set(p.charId, (count.get(p.charId) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  for (const p of players) {
+    if (!p.cpu) continue;
+    const base = `CPU ${CPU_SHORT[p.charId] ?? getCharacter(p.charId).name}`;
+    const k = (seen.get(p.charId) ?? 0) + 1;
+    seen.set(p.charId, k);
+    p.name = (count.get(p.charId) ?? 0) > 1 ? `${base}${k}` : base;
+  }
+  return players;
+}

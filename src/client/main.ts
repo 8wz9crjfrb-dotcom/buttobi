@@ -2,7 +2,7 @@
 
 import './styles.css';
 import { CpuController } from '../shared/ai';
-import { ballTeamOf, CHARACTERS, getCharacter, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
+import { ballTeamOf, CHARACTERS, getCharacter, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { roundName } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
@@ -11,7 +11,7 @@ import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
 import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
-import { championMark, ICONS, iconTile, predictMark } from './icons';
+import { championMark, chatMark, diceMark, ICONS, iconTile, predictMark, rewardMark } from './icons';
 import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
@@ -624,7 +624,7 @@ function profileCard(name: string, code: string, p: Profile | undefined, togethe
       <div class="pc-nm">${esc(name)}</div>
       ${p.title ? `<div><span class="pc-title">称号：${esc(p.title)}</span></div>` : ''}
       <div class="pc-cos">お気に入り：${getCharacter(p.charId).name}「${esc(cos.name)}」${rar ? `（${rar}）` : ''}</div>
-      <div class="pc-bub">💬 ${esc(PROFILE_COMMENTS[p.comment] ?? '')}</div>
+      <div class="pc-bub">${chatMark()}${esc(PROFILE_COMMENTS[p.comment] ?? '')}</div>
       <div class="pc-code">フレンドコード ${esc(code)}</div>
       <div class="pc-stats">${st(String(p.wins), '通算勝利')}${st(`${p.horde}人`, '100人組手')}${st(String(p.costumes), '衣装')}${together !== undefined ? st(`${together}回`, '一緒に戦った') : ''}</div>
     </div></div>`;
@@ -1549,8 +1549,8 @@ function showLocalRules(): void {
           `<div class="opt-label">相手のキャラ（タップで変える）</div>` +
           Array.from({ length: settings.cpuCount }, (_, i) => {
             const id = settings.cpuChars[i] ?? 'random';
-            const name = id === 'random' ? '🎲 ランダム' : getCharacter(id).name;
-            return `<button type="button" class="cpu-chip ${id === 'random' ? 'rnd' : ''}" data-cpu="${i}"><small>CPU${i + 1}</small>${esc(name)}</button>`;
+            const name = id === 'random' ? `${diceMark()}ランダム` : esc(getCharacter(id).name);
+            return `<button type="button" class="cpu-chip ${id === 'random' ? 'rnd' : ''}" data-cpu="${i}"><small>CPU${i + 1}</small>${name}</button>`;
           }).join('');
       };
       drawCpus();
@@ -1616,6 +1616,8 @@ function rollCpuChars(players: MatchSetup['players']): void {
     p.charId = list[(Math.random() * list.length) | 0].id;
     used.add(p.charId);
   }
+  // キャラが決まったら、CPU に見分けられる名前を付ける（「CPU 配信者」など）
+  nameCpus(players);
 }
 
 /** 相手のCPUのキャラをえらぶ（ランダム＋全キャラ） */
@@ -1626,7 +1628,7 @@ function pickCpuChar(i: number, onPick: (id: string) => void): void {
   el.innerHTML = `<div class="modal-box">
       <h3>CPU${i + 1}のキャラ</h3>
       <div class="modal-body cpu-grid">
-        <button type="button" class="cpu-opt rnd ${cur === 'random' ? 'on' : ''}" data-id="random">🎲 ランダム<small>毎試合かわる</small></button>
+        <button type="button" class="cpu-opt rnd ${cur === 'random' ? 'on' : ''}" data-id="random">${diceMark()}ランダム<small>毎試合かわる</small></button>
         ${CHARACTERS.map((c) => `<button type="button" class="cpu-opt ${cur === c.id ? 'on' : ''}" data-id="${c.id}">${esc(c.name)}<small>${esc(c.role)}</small></button>`).join('')}
       </div>
       <div class="footer"><button class="btn" data-close>閉じる</button></div>
@@ -1706,7 +1708,7 @@ function showHordeResults(setup: MatchSetup, view: ViewState | null): void {
        ${best ? '<div class="new-best">自己ベスト更新！</div>' : `<div class="muted">自己ベスト：${pb.kos}人${pb.kos >= total ? `（${fmtTime(pb.frames)}）` : ''}</div>`}
      </div>
      ${coins ? `<div class="reward"><span class="coin-icon"></span>+${coins} コイン<small>（所持 ${wallet.coins.toLocaleString()}）</small></div>` : ''}
-     ${lines.length ? `<div class="reward-sub">${lines.map((l) => `<div>🎉 ${l}</div>`).join('')}</div>` : ''}
+     ${lines.length ? `<div class="reward-sub">${lines.map((l) => `<div>${rewardMark()}${l}</div>`).join('')}</div>` : ''}
      <div class="footer">
        <button class="btn" id="menu">メニューへ</button>
        <button class="btn primary" id="again">もう一度</button>
@@ -2136,7 +2138,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
       ...(got.bonus ? [`今日のミッションをすべて達成！ +${MISSION_BONUS}`] : []),
       ...got.titles.map((t) => `称号「${esc(t.name)}」を手に入れた！ +${t.coins}`),
     ];
-    if (lines.length) reward += `<div class="reward-sub">${lines.map((l) => `<div>🎉 ${l}</div>`).join('')}</div>`;
+    if (lines.length) reward += `<div class="reward-sub">${lines.map((l) => `<div>${rewardMark()}${l}</div>`).join('')}</div>`;
   }
   if (online) reward += predictLines(results, setup);
   // 所持コインは、勝利・ミッション・称号をすべて足したあとの数を出す

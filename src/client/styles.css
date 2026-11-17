@@ -4255,3 +4255,29 @@ table.rec td:first-child {
   border-radius: 14px;
   background: rgba(10, 12, 30, 0.55);
 }
+/* ミッション・称号のごほうびバッジ、エリアの取り合いの印 */
+.reward-mark {
+  width: 1.15em;
+  height: 1.35em;
+  vertical-align: -0.32em;
+  margin-right: 5px;
+}
+.clash-mark {
+  width: 2.1em;
+  height: 1.4em;
+  vertical-align: -0.2em;
+  margin-right: 6px;
+}
+.dice-mark {
+  width: 1.05em;
+  height: 1.05em;
+  vertical-align: -0.17em;
+  margin-right: 4px;
+}
+.chat-mark {
+  width: 1.1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  margin-right: 4px;
+  color: currentColor;
+}

@@ -84,15 +84,36 @@ export class PropRenderer {
   }
 
   /** 浮かんで消える文字（ガチャの結果など） */
-  showText(text: string, color: string, x: number, y: number, big = false, life = 70): void {
+  showText(text: string, color: string, x: number, y: number, big = false, life = 70, warn = false): void {
     const size = big ? 64 : 48;
+    // 注意の三角（絵文字ではなく自分で描く）の分だけ左を空ける
+    const icon = warn ? size * 1.1 : 0;
     // 文字数に合わせて横幅を決める（長い文字が切れないように）
-    const W = Math.max(256, Math.ceil((text.length * size + 30) / 64) * 64);
+    const W = Math.max(256, Math.ceil((text.length * size + 30 + icon) / 64) * 64);
     const tex = canvasTexture(W, 96, (g) => {
       g.font = `900 ${size}px ${FONT}`;
       g.textAlign = 'center';
       g.lineWidth = 10;
       g.strokeStyle = '#1b1b28';
+      if (warn) {
+        // 文字の幅を測って、三角を文字の左に置く
+        const tw = g.measureText(text).width;
+        const cx = W / 2 + icon / 2 - tw / 2 - size * 0.55;
+        const s = size * 0.5;
+        g.beginPath();
+        g.moveTo(cx, 70 - s * 1.55);
+        g.lineTo(cx + s, 70 + s * 0.2);
+        g.lineTo(cx - s, 70 + s * 0.2);
+        g.closePath();
+        g.lineJoin = 'round';
+        g.stroke();
+        g.fillStyle = '#ffd23f';
+        g.fill();
+        g.fillStyle = '#1b1b28';
+        g.fillRect(cx - s * 0.1, 70 - s * 1.0, s * 0.2, s * 0.62);
+        g.fillRect(cx - s * 0.1, 70 - s * 0.26, s * 0.2, s * 0.2);
+        g.translate(icon / 2, 0);
+      }
       g.strokeText(text, W / 2, 70);
       if (color === 'rainbow') {
         const grad = g.createLinearGradient(20, 0, W - 20, 0);
@@ -626,9 +647,18 @@ export class PropRenderer {
     this.zzz.clear();
     for (const q of this.question.values()) this.scene.remove(q);
     this.question.clear();
-    for (const t of this.texts) this.scene.remove(t.sprite);
+    // 試合の途中で消える文字・泡も、画像と形を片付ける（残すと試合のたびにたまっていく）
+    for (const t of this.texts) {
+      this.scene.remove(t.sprite);
+      (t.sprite.material as THREE.SpriteMaterial).map?.dispose();
+      t.sprite.material.dispose();
+    }
     this.texts = [];
-    for (const b of this.bubbles) this.scene.remove(b.mesh);
+    for (const b of this.bubbles) {
+      this.scene.remove(b.mesh);
+      b.mesh.geometry.dispose();
+      (b.mesh.material as THREE.Material).dispose();
+    }
     this.bubbles = [];
     for (const t of this.textures) if (t !== this.zzzTex && t !== this.qTex) t.dispose();
     this.textures = [this.zzzTex, this.qTex];

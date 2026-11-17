@@ -110,3 +110,29 @@ export function iconTile(name: string, color: string): string {
 export function championMark(): string {
   return `<svg class="champ-mark" viewBox="6 4 38 40" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 9v33" stroke="#d9dbe8" stroke-width="3"/><circle cx="11" cy="7" r="3" fill="#ffd84a"/><path d="M12.5 10H41l-7 9 7 9H12.5z" fill="#ffd84a"/><path d="M12.5 10H41l-7 9 7 9H12.5z" stroke="#c9a21a" stroke-width="1.6"/><path d="M24 13.2l1.7 3.5 3.8.5-2.8 2.6.7 3.8-3.4-1.8-3.4 1.8.7-3.8-2.8-2.6 3.8-.5z" fill="#1b1f3b"/></svg>`;
 }
+
+/** ミッション達成・称号の「ごほうびバッジ」：ぎざぎざの丸いメダルに星、下に2本のリボン */
+export function rewardMark(): string {
+  const pts: string[] = [];
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 ? 11.2 : 13;
+    pts.push(`${(24 + Math.cos(a) * r).toFixed(1)},${(19 + Math.sin(a) * r).toFixed(1)}`);
+  }
+  return `<svg class="reward-mark" viewBox="6 4 36 42" aria-hidden="true"><path d="M17 27l-5 15 6-3 4 5 4-14z" fill="#ff6b6b"/><path d="M31 27l5 15-6-3-4 5-4-14z" fill="#4f9dff"/><polygon points="${pts.join(' ')}" fill="#ffd84a"/><circle cx="24" cy="19" r="8.4" fill="none" stroke="#c9a21a" stroke-width="1.4"/><path d="M24 13.2l1.7 3.6 3.9.5-2.9 2.7.8 3.9-3.5-1.9-3.5 1.9.8-3.9-2.9-2.7 3.9-.5z" fill="#1b1f3b"/></svg>`;
+}
+
+/** エリアの「取り合い中」：左右から2本の矢印がぶつかり、間に火花 */
+export function clashMark(): string {
+  return `<svg class="clash-mark" viewBox="0 0 48 32" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16h13M12 10l6 6-6 6" stroke="#ffffff" stroke-width="3.6"/><path d="M44 16H31M36 10l-6 6 6 6" stroke="#ffffff" stroke-width="3.6"/><path d="M24 7v4M24 21v4M20 9.5l1.6 2.4M28 9.5l-1.6 2.4M20 22.5l1.6-2.4M28 22.5l-1.6-2.4" stroke="#ffd84a" stroke-width="2.2"/></svg>`;
+}
+
+/** 「ランダム」のサイコロ（白い角丸の箱に黒い目が5つ） */
+export function diceMark(): string {
+  return `<svg class="dice-mark" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="5" fill="#ffffff"/><g fill="#1b1f3b"><circle cx="8" cy="8" r="1.9"/><circle cx="16" cy="8" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="8" cy="16" r="1.9"/><circle cx="16" cy="16" r="1.9"/></g></svg>`;
+}
+
+/** ひとことの吹き出し（角丸の四角としっぽ、中に3つの点） */
+export function chatMark(): string {
+  return `<svg class="chat-mark" viewBox="0 0 24 22" aria-hidden="true"><path d="M5 2h14a3.5 3.5 0 0 1 3.5 3.5v7A3.5 3.5 0 0 1 19 16h-8l-5 4.5V16H5a3.5 3.5 0 0 1-3.5-3.5v-7A3.5 3.5 0 0 1 5 2z" fill="currentColor"/><g fill="#1b1f3b"><circle cx="7.5" cy="9" r="1.5"/><circle cx="12" cy="9" r="1.5"/><circle cx="16.5" cy="9" r="1.5"/></g></svg>`;
+}

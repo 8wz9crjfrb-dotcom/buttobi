@@ -3,7 +3,7 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import { CpuController } from '../../src/shared/ai';
-import { CHARACTERS } from '../../src/shared/characters';
+import { CHARACTERS, nameCpus } from '../../src/shared/characters';
 import { COSTUMES } from '../../src/shared/costumes';
 import {
   MAX_INPUTS_PER_MSG,
@@ -361,6 +361,8 @@ export class Room extends DurableObject<Env> {
       }
     }
     players.sort((a, b) => a.slot - b.slot);
+    // CPU はキャラで見分けられる名前に（「CPU 配信者」など）
+    nameCpus(players);
     const tour: TourInfo | undefined = l.tour ? { ...l.tour, nextIn: !this.sim && this.tourNextAt ? Math.max(0, this.tourNextAt - Date.now()) : 0, ...this.tourVotes() } : undefined;
     return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, ...(tour ? { tour } : {}) };
   }
@@ -811,6 +813,8 @@ export class Room extends DurableObject<Env> {
       for (const h of this.lobby.humans) h.ready = false;
     }
     this.setup = setup;
+    // 新しい試合：本人の状態は最初にすべて送り直す（端末は start で覚えていた状態を捨てる）
+    this.meSent = new WeakMap();
     // トーナメントの合間にした予想は、この試合の選手を選んでいれば引き継ぐ
     const inMatch = new Set(setup.players.map((p) => p.slot));
     for (const [k, v] of this.predicts) if (!inMatch.has(v.p) || (k.startsWith('h') && inMatch.has(Number(k.slice(1))))) this.predicts.delete(k);
@@ -875,7 +879,23 @@ export class Room extends DurableObject<Env> {
     return q.last;
   }
 
-  /** 状態を全員に送る。受け取る人ごとに、本人の選手の完全な状態と処理済みの入力番号を付ける */
+  /** 本人の選手の状態を、前に送ったもの（項目ごとの JSON）。変わった項目だけを送るのに使う（接続ごと） */
+  private meSent = new WeakMap<WebSocket, Map<string, string>>();
+
+  /** 本人の選手の状態のうち、前に送ってから変わった項目（初めての接続はすべて） */
+  private meDelta(ws: WebSocket, st: Record<string, unknown>): { st: Record<string, unknown>; d?: 1; u?: string[] } {
+    const prev = this.meSent.get(ws);
+    const now = new Map<string, string>();
+    for (const [k, v] of Object.entries(st)) if (v !== undefined) now.set(k, JSON.stringify(v));
+    this.meSent.set(ws, now);
+    if (!prev) return { st };
+    const out: Record<string, unknown> = {};
+    for (const [k, j] of now) if (prev.get(k) !== j) out[k] = st[k];
+    const gone = [...prev.keys()].filter((k) => !now.has(k));
+    return { st: out, d: 1, ...(gone.length ? { u: gone } : {}) };
+  }
+
+  /** 状態を全員に送る。受け取る人ごとに、本人の選手の状態（変わった項目だけ）と処理済みの入力番号を付ける */
   private sendSnapshots(sim: Sim): void {
     const base = JSON.stringify(encodeState(sim.toView(), this.eventBuf));
     for (const ws of this.ctx.getWebSockets()) {
@@ -883,7 +903,7 @@ export class Room extends DurableObject<Env> {
       if (!a || (a.slot < 0 && a.slot !== SPECTATOR)) continue;
       const f = this.cpuSlots.has(a.slot) ? undefined : sim.fighter(a.slot);
       const q = this.queues.get(a.slot);
-      const me = f && q ? `,"me":${JSON.stringify({ a: q.ack, st: f.serialize() })}` : '';
+      const me = f && q ? `,"me":${JSON.stringify({ a: q.ack, ...this.meDelta(ws, f.serialize() as unknown as Record<string, unknown>) })}` : '';
       try {
         ws.send(`{"t":"snap","s":${base}${me}}`);
       } catch {

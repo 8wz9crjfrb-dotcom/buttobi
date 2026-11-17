@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 28;
+export const PROTOCOL_VERSION = 29;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -129,8 +129,11 @@ export type ServerMsg =
   | { t: 'welcome'; slot: number; token: string }
   | { t: 'lobby'; lobby: LobbyInfo }
   | { t: 'start'; setup: MatchSetup }
-  /** me = 受け取った人の選手について、処理済みの入力番号(a)と完全な状態(st) */
-  | { t: 'snap'; s: EncodedState; me?: { a: number; st: FighterSnapshot } }
+  /**
+   * me = 受け取った人の選手について、処理済みの入力番号(a)と状態(st)。
+   * d = 1 なら st は「前に送ってから変わった項目」だけ（通信を減らすため）。u = なくなった（undefined になった）項目
+   */
+  | { t: 'snap'; s: EncodedState; me?: { a: number; st: FighterSnapshot; d?: 1; u?: string[] } }
   | { t: 'end'; results: ResultEntry[] }
   /** ほかの人のお知らせ（抜けた・通信が切れた・戻ってきた） */
   | { t: 'notice'; msg: string }
