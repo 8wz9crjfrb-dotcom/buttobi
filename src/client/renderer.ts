@@ -1056,6 +1056,17 @@ export class GameRenderer {
       this.shake = Math.max(this.shake, 0.5);
       return;
     }
+    if (e.k === 'rewind') {
+      // Ctrl+Z：元いた場所と戻った先に緑の輪、戻った先に「Ctrl+Z」の文字
+      this.spawn(this.ringGeo, 0x39ff88, e.x, e.y, 0, 0, 0.3, 14, 0.1);
+      this.spawn(this.ringGeo, 0x39ff88, e.tx, e.ty, 0, 0, 0.5, 18, 0.12);
+      for (let i = 0; i < 10; i++) {
+        const t = i / 9;
+        this.spawn(this.sparkGeo, 0x39ff88, e.x + (e.tx - e.x) * t, e.y + (e.ty - e.y) * t, 0, 1.5, 0.15, 16 + i, -0.004);
+      }
+      this.props.showText('Ctrl+Z', '#39ff88', e.tx, e.ty + 1.1, false, 60);
+      return;
+    }
     if (e.k === 'sudden') {
       // サドンデスの始まり：画面の上に大きく出す
       const m = this.stage?.main;

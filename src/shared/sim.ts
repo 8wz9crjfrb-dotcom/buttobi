@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { CLOSE, SLEEP_MAX, SUDDEN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { CLOSE, SLEEP_MAX, SUDDEN, REWIND, AIR_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -93,13 +93,16 @@ const POISON_TICK = 30;
 /** 一時的な足場の上に立っているときの groundRef（1000 + 足場の id） */
 const ENTITY_GROUND = 1000;
 
+/** ジャンプ攻撃（空中攻撃） */
+const AERIAL_MOVES = new Set<string>(['nair', 'fair', 'bair', 'uair', 'dair']);
+
 const SNAPSHOT_KEYS = [
   'x', 'y', 'vx', 'vy', 'facing', 'grounded', 'groundRef', 'state', 'stateTime', 'jumpsLeft', 'sideBUsed',
   'airDodgeUsed', 'fastFall', 'shortHopArmed', 'damage', 'stocks', 'kos', 'falls', 'out', 'outFrame', 'move',
   'moveFrame', 'charge', 'hitstun', 'tumble', 'invuln', 'hitlag', 'shield', 'stun', 'lastHitBy', 'lastHitFrame',
   'ledgeSide', 'ledgeCooldown', 'dropThrough', 'respawnTimer', 'dodgeDir', 'prevButtons', 'prevMx', 'prevMy',
   'flickX', 'flickY', 'neutralXAge', 'neutralYAge', 'poison', 'poisonFrom',
-  'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeHp', 'bikeHitCd', 'wallHit', 'confused', 'chain', 'redirected', 'pity', 'crit',
+  'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeAir', 'bikeHp', 'bikeHitCd', 'wallHit', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
   'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'goals', 'closeCall', 'size', 'warpCd', 'moveAim',
@@ -203,6 +206,10 @@ export class Fighter {
   moveAim = 0;
   /** 自転車の残りの耐久（%）。弱い攻撃はこの分まで受けても降りない */
   bikeHp = 0;
+  /** 自転車に乗ったままジャンプした（着地するまで自転車のまま） */
+  bikeAir = false;
+  /** Ctrl+Z（ハッカー）：直近の [x, y, ダメージ] の記録（古い順。サーバーと端末でそれぞれ記録する） */
+  rewindHist: number[] = [];
   /** 最後に一撃を受けた壁（物理ファイアウォール）の番号。同じ壁からは1回だけ */
   wallHit = -1;
   /** 自転車で同じ相手に再びぶつかるまでの時間（相手の slot ごと） */
@@ -1003,7 +1010,18 @@ export class Sim {
     for (let i = 0; i < f.bikeHitCd.length; i++) if (f.bikeHitCd[i] > 0) f.bikeHitCd[i]--;
     if (f.bike > 0) {
       f.bike--;
-      if (!f.grounded || f.state === 'hitstun' || f.state === 'shieldbreak' || f.state === 'sleep') f.bike = 0;
+      // 自転車ごとジャンプしたときは、着地するまで乗ったまま
+      if (f.grounded) f.bikeAir = false;
+      if ((!f.grounded && !f.bikeAir) || f.state === 'hitstun' || f.state === 'shieldbreak' || f.state === 'sleep') f.bike = 0;
+    }
+    if (f.bike <= 0) f.bikeAir = false;
+    // Ctrl+Z（ハッカー）：約2秒分の場所とダメージを記録する（やられている間・復活中は記録し直す）
+    if (f.def.id === 'hacker') {
+      if (!f.alive || f.state === 'respawn') f.rewindHist.length = 0;
+      else {
+        f.rewindHist.push(f.x, f.y, f.damage);
+        if (f.rewindHist.length > REWIND.frames * 3) f.rewindHist.splice(0, f.rewindHist.length - REWIND.frames * 3);
+      }
     }
     // 時間指定：走り続けるほど速くなる
     if (f.state === 'run' || f.bike > 0) f.runTime++;
@@ -1153,6 +1171,24 @@ export class Sim {
     this.collide(f, prevX, prevY, inp);
   }
 
+  /** Ctrl+Z（ハッカー）：記録のいちばん古い場所（約2秒前）へ戻り、その間に増えたダメージの半分を消す */
+  private rewind(f: Fighter): void {
+    const h = f.rewindHist;
+    if (h.length < 3) return;
+    const [x, y, dmg] = [h[0], h[1], h[2]];
+    this.events.push({ k: 'rewind', x: f.x, y: f.y + f.h / 2, tx: x, ty: y + f.h / 2, s: f.slot });
+    f.x = x;
+    f.y = y;
+    f.vx = 0;
+    f.vy = 0;
+    f.grounded = false;
+    f.groundRef = -1;
+    f.ledgeSide = 0;
+    if (f.damage > dmg) f.damage = Math.max(0, f.damage - (f.damage - dmg) * REWIND.heal);
+    f.invuln = Math.max(f.invuln, REWIND.invuln);
+    h.length = 0;
+  }
+
   /** 移動の速さの倍率（倍速再生・時間指定） */
   private speedMul(f: Fighter): number {
     let m = f.speedBuff > 0 ? SPEEDUP.speed : 1;
@@ -1164,9 +1200,11 @@ export class Sim {
   private bikeActions(f: Fighter): boolean {
     const inp = f.input;
     if (this.pressed(f, BTN_JUMP) || (f.flickY === 0 && inp.my > 0.7)) {
-      f.bike = 0;
+      // 自転車ごとジャンプ（降りない。攻撃・必殺技・ガードで降りる）
+      const vx = f.vx;
       this.jump(f);
-      f.vy *= 1.15;
+      f.vx = vx;
+      f.bikeAir = true;
       return true;
     }
     if (this.pressed(f, BTN_A) || this.pressed(f, BTN_B) || this.held(f, BTN_SHIELD)) {
@@ -1285,6 +1323,8 @@ export class Sim {
     const inp = f.input;
     const d = f.def;
     const helpless = f.state === 'helpless';
+    // 自転車ごとジャンプ中：攻撃・必殺技・ガードを押したら降りて、そのままその行動へ
+    if (f.bike > 0 && (this.pressed(f, BTN_A) || this.pressed(f, BTN_B) || this.held(f, BTN_SHIELD))) f.bike = 0;
     if (!helpless) {
       // ボタンを先に判定する（上にはじきながらB → 上必殺技、上にはじきながらA → 上空中攻撃）
       if (this.pressed(f, BTN_A)) return this.airAttack(f);
@@ -2020,6 +2060,9 @@ export class Sim {
           this.events.push({ k: 'gacha', x: f.x, y: f.y + 2 * sc, s: f.slot, r: f.crit ? 5 : 2 });
           break;
         }
+        case 'rewind':
+          this.rewind(f);
+          break;
         case 'pay':
           // 効果中にもう一度使っても何も起きない（%も増えない）
           if (f.powerBuff <= 0) {
@@ -2832,6 +2875,8 @@ export class Sim {
     // 酔い（フレアボトル）・長いひるみ（スライド・シザーラッシュ）
     if (md.confuse) v.confused = Math.max(v.confused, md.confuse);
     if (md.hitstunMul && v.state === 'hitstun') v.hitstun = Math.round(v.hitstun * md.hitstunMul);
+    // ジャンプ攻撃（空中攻撃）のひるみは短め
+    if (AERIAL_MOVES.has(a.move ?? '') && v.state === 'hitstun') v.hitstun = Math.max(1, Math.round(v.hitstun * AIR_HITSTUN));
     if (md.special === 'dive') {
       // ステージダイブ：相手を踏み台にして跳ね上がる
       a.vy = THREEB_RULES.bounce;
@@ -2957,7 +3002,8 @@ export class Sim {
       v.vx *= BIKE.slow;
       v.lastHitBy = from;
       v.lastHitFrame = this.frame;
-      if (v.bikeHp > 0) return;
+      // 受けたダメージの合計が耐久（10%）をこえたら降りる
+      if (v.bikeHp >= 0) return;
       // 耐久が尽きた：このまま降ろされて、ふつうにふっとぶ
     }
     v.bike = 0;

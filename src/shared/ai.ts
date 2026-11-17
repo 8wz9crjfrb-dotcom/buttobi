@@ -75,6 +75,8 @@ export class CpuController {
     if (offStage && !f.grounded) {
       const toward = (f.x < 0 ? 1 : -1) * (f.confused > 0 && lv >= 4 ? -1 : 1);
       if (f.state === 'helpless' || f.state === 'attack' || f.state === 'hitstun') return { mx: toward, my: 0, buttons: 0 };
+      // ハッカー：約2秒前にステージの上にいたなら、Ctrl+Z で戻る
+      if (f.def.id === 'hacker' && f.cdS === 0 && lv >= 3 && this.rewindTarget(f, m) && this.rng.chance(0.25)) return { mx: toward, my: 0, buttons: BTN_B };
       if (f.vy < 1 && f.y < m.top + 2 && f.jumpsLeft > 0) return { mx: toward, my: 0, buttons: BTN_JUMP };
       if (f.vy < 0 && f.jumpsLeft === 0 && f.y < m.top - 0.5) return { mx: toward * 0.4, my: 1, buttons: BTN_B };
       if (f.vy < -2 && f.jumpsLeft === 0 && Math.abs(f.x) - m.x2 > 4 && !f.sideBUsed) return { mx: toward, my: 0, buttons: BTN_B };
@@ -203,7 +205,8 @@ export class CpuController {
     if (adx < 7 && Math.abs(dy) < 1.2 && f.grounded) {
       const r = this.rng.next();
       if (r < 0.12) return { mx: 0, my: 0, buttons: BTN_B };
-      if (r < 0.2 && adx > 3) return { mx: dir, my: 0, buttons: BTN_B };
+      // ハッカーの横B（Ctrl+Z）は戻るための技なので、近づくのには使わない
+      if (r < 0.2 && adx > 3 && f.def.id !== 'hacker') return { mx: dir, my: 0, buttons: BTN_B };
     }
     if (dy > 2 && adx < 4 && (f.grounded || f.jumpsLeft > 0) && this.rng.chance(0.5)) {
       return { mx: dir * 0.5, my: 0, buttons: BTN_JUMP };
@@ -221,6 +224,13 @@ export class CpuController {
     return { mx: dir, my: 0, buttons: 0 };
   }
 
+  /** Ctrl+Z（ハッカー）で戻る先（約2秒前の場所）がステージの上なら true */
+  private rewindTarget(f: Fighter, m: { x1: number; x2: number; top: number }): boolean {
+    const h = f.rewindHist;
+    if (h.length < 3) return false;
+    return h[0] > m.x1 + 0.3 && h[0] < m.x2 - 0.3 && h[1] >= m.top - 0.2;
+  }
+
   /** キャラごとに得意な必殺技を、合う場面で使う */
   private characterSpecial(f: Fighter, t: Target, adx: number, dy: number, dir: number, lv: number, b: Brain): InputState | null {
     if (!f.grounded) return null;
@@ -236,6 +246,10 @@ export class CpuController {
           b.holdFrames = 0;
           return { mx: dir, my: 0, buttons: BTN_B };
         }
+        break;
+      case 'hacker':
+        // Ctrl+Z：ここ2秒で大きくダメージを受けていたら、戻ってダメージを減らす
+        if (f.cdS === 0 && f.rewindHist.length >= 3 && f.damage - f.rewindHist[2] >= 25 && this.rng.chance(skill * 0.5)) return { mx: dir, my: 0, buttons: BTN_B };
         break;
       case 'gacha':
         // 課金は効果が切れていて、%が低いうちに使う。離れていたら10連

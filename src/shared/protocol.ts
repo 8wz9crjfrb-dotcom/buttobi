@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 32;
+export const PROTOCOL_VERSION = 33;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -137,6 +137,8 @@ export type ServerMsg =
   | { t: 'welcome'; slot: number; token: string }
   | { t: 'lobby'; lobby: LobbyInfo }
   | { t: 'start'; setup: MatchSetup }
+  /** ステージおまかせのルーレット（stageId で止まる。少しあとに start が届く） */
+  | { t: 'roulette'; stageId: string }
   /**
    * me = 受け取った人の選手について、処理済みの入力番号(a)と状態(st)。
    * d = 1 なら st は「前に送ってから変わった項目」だけ（通信を減らすため）。u = なくなった（undefined になった）項目

@@ -28,7 +28,7 @@ export interface Wallet {
 export const GACHA_COST = { one: 100, ten: 900 };
 /** UR・SSR が出る確率（残りは SR）。UR の衣装がまだ1着もないうちは UR は出ない */
 export const UR_RATE = 0.03;
-export const SSR_RATE = 0.1;
+export const SSR_RATE = 0.07;
 /** 天井：UR が出ないまま60回目は必ず UR、SSR 以上が出ないまま30回目は必ず SSR */
 export const UR_PITY_LIMIT = 60;
 export const PITY_LIMIT = 30;

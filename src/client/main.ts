@@ -497,6 +497,7 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'counter') sfx.counter();
     else if (e.k === 'boom' || e.k === 'shout') sfx.boom();
     else if (e.k === 'sudden') sfx.finish();
+    else if (e.k === 'rewind') sfx.warp();
     else if (e.k === 'kick') sfx.kick(e.p);
     else if (e.k === 'goal') sfx.goal();
     else if (e.k === 'flash') sfx.shutter();
@@ -710,7 +711,8 @@ function showFriends(): void {
   const pick = st.friends.find((f) => f.code === friendPick);
   const card = pick
     ? `${profileCard(pick.name, pick.code, pick.prof, social.together(pick.code))}
-       <div class="fr-acts">${pick.room ? `<button class="btn small primary" data-join="${pick.room.code}">ルームに参加</button>` : ''}<button class="btn small" data-remove="${pick.code}" data-name="${esc(pick.name)}">フレンドから外す</button></div>`
+       <div class="fr-acts">${pick.room ? `<button class="btn small primary" data-join="${pick.room.code}">ルームに参加</button>` : ''}</div>
+       <div class="fr-danger"><button class="btn-text danger" data-remove="${pick.code}" data-name="${esc(pick.name)}">フレンドから外す…</button></div>`
     : `${profileCard(settings.name || 'あなた', '', me)}
        <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
   showScreen(
@@ -767,7 +769,7 @@ function showFriends(): void {
       root.querySelectorAll<HTMLElement>('[data-cancel]').forEach((b) => b.addEventListener('click', () => social.cancel(b.dataset.cancel!)));
       root.querySelectorAll<HTMLElement>('[data-remove]').forEach((b) =>
         b.addEventListener('click', () => {
-          if (confirm(`${b.dataset.name} さんをフレンドから外しますか？`)) social.remove(b.dataset.remove!);
+          confirmDialog(`${b.dataset.name} さんをフレンドから外しますか？`, 'もう一度申請し合うまで、フレンドに戻りません。', '外す', () => social.remove(b.dataset.remove!));
         }),
       );
       root.querySelectorAll<HTMLElement>('[data-join]').forEach((b) => b.addEventListener('click', () => joinRoom(b.dataset.join!, showFriends)));
@@ -1155,6 +1157,61 @@ function costumeChips(charId: string): string {
 }
 
 /** ステージの一覧（実際のステージの小さな画像つき） */
+/** ルーレットが回っている時間（ms）。サーバーはこれより少し長く待ってから試合を始める */
+const ROULETTE_MS = 2300;
+let rouletteEl: HTMLElement | null = null;
+
+/** ステージおまかせのルーレット：ステージのカードを回して、stageId で止める。終わったら done */
+function stageRoulette(stageId: string, done?: () => void): void {
+  rouletteEl?.remove();
+  const el = document.createElement('div');
+  el.className = 'roulette';
+  const card = (id: string) => {
+    const st = getStage(id);
+    const th = st.theme;
+    const img = renderer.cachedThumbnail(st.id);
+    return `<div class="rl-card" style="background:linear-gradient(${hex(th.sky)}, ${hex(th.skyBottom)})">${img ? `<img alt="" src="${img}"/>` : ''}<div class="rl-nm">${st.name}</div></div>`;
+  };
+  el.innerHTML = `<div class="rl-title">ステージおまかせ</div><div class="rl-slot"></div><div class="rl-sub">ルーレット中…</div>`;
+  document.getElementById('app')!.appendChild(el);
+  rouletteEl = el;
+  const slot = el.querySelector<HTMLElement>('.rl-slot')!;
+  const ids = STAGES.map((s) => s.id);
+  // だんだん遅くして、最後に決まったステージで止める
+  const steps: number[] = [];
+  let t = 0;
+  let gap = 60;
+  while (t < ROULETTE_MS - 600) {
+    steps.push(t);
+    t += gap;
+    gap = Math.min(260, gap * 1.13);
+  }
+  let k = Math.floor(Math.random() * ids.length);
+  steps.forEach((at, i) =>
+    setTimeout(() => {
+      if (rouletteEl !== el) return;
+      const last = i === steps.length - 1;
+      k = (k + 1 + (ids[(k + 1) % ids.length] === stageId && !last ? 1 : 0)) % ids.length;
+      slot.innerHTML = card(last ? stageId : ids[k]);
+      sfx.click();
+      if (last) {
+        el.classList.add('hit');
+        el.querySelector('.rl-sub')!.textContent = 'ステージ決定！';
+        sfx.beep(true);
+      }
+    }, at),
+  );
+  setTimeout(() => {
+    if (rouletteEl !== el) return;
+    el.classList.add('out');
+    setTimeout(() => {
+      el.remove();
+      if (rouletteEl === el) rouletteEl = null;
+    }, 250);
+    done?.();
+  }, ROULETTE_MS);
+}
+
 function stageCards(selected: string): string {
   const random = `<div class="stage-card random ${selected === RANDOM_STAGE ? 'on' : ''}" data-stage="${RANDOM_STAGE}">
       <div class="thumb"><span class="rnd">?</span></div>
@@ -1652,7 +1709,10 @@ function showLocalRules(): void {
         rollCpuChars(players);
         const seed = (Math.random() * 1e9) | 0;
         lastSetup = { players, stageId: resolveStage(settings.stageId, seed), rules: settings.rules, seed };
-        startSession(new LocalSession(lastSetup));
+        const setup = lastSetup;
+        // おまかせ：ルーレットで決めてから始める
+        if (settings.stageId === RANDOM_STAGE) stageRoulette(setup.stageId, () => startSession(new LocalSession(setup)));
+        else startSession(new LocalSession(setup));
       });
     },
   );
@@ -1676,6 +1736,25 @@ function rollCpuChars(players: MatchSetup['players']): void {
 }
 
 /** 相手のCPUのキャラをえらぶ（ランダム＋全キャラ） */
+/** 確かめる画面（ゲームの中の画面で出す。ホーム画面に追加したアプリでも確実に出るように） */
+function confirmDialog(title: string, note: string, okLabel: string, onOk: () => void): void {
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.innerHTML = `<div class="modal-box confirm-box">
+      <h3>${esc(title)}</h3>
+      ${note ? `<p class="muted">${esc(note)}</p>` : ''}
+      <div class="footer"><button class="btn primary" data-close>やめる</button><button class="btn danger" data-ok>${esc(okLabel)}</button></div>
+    </div>`;
+  el.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('[data-ok]')) {
+      el.remove();
+      onOk();
+    } else if (t === el || t.closest('[data-close]')) el.remove();
+  });
+  screensEl.appendChild(el);
+}
+
 function pickCpuChar(i: number, onPick: (id: string) => void): void {
   const cur = settings.cpuChars[i] ?? 'random';
   const el = document.createElement('div');
@@ -2318,7 +2397,9 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
             rollCpuChars(players);
             lastSetup = { ...lastSetup, players };
           }
-          startSession(new LocalSession(lastSetup));
+          const setup = lastSetup;
+          if (settings.stageId === RANDOM_STAGE && !setup.rules.horde) stageRoulette(setup.stageId, () => startSession(new LocalSession(setup)));
+          else startSession(new LocalSession(setup));
         }
       });
     },
@@ -2389,7 +2470,7 @@ function showHowTo(): void {
        <p><b>B（必殺技）：</b>キャラごとに4種類（そのまま・横・下・上）。上の必殺技は復帰に使え、使った後は着地まで無防備になります。</p>
        <p><b>キャラごとの特性：</b>各キャラには1つずつ特性があります（キャラ選択画面に表示されます）。</p>
        <p><b>データセンター警備員：</b>B 利用規約を読み上げる（ゆっくり進む文字で長くひるませる）／横B 物理ファイアウォール（壁で飛び道具を防ぎ、相手を押し返す）／下B クレーム対応（構え中に攻撃されると1.3倍で返す）／上B 非常口ダッシュ（斜め上へ突進）</p>
-       <p><b>ハッカー：</b>B DDoS（3連射）／横B 全体メール誤送信（3方向に飛ぶ封筒）／下B キャッシュ（触れると爆発する罠、1個まで）／上B ポップアップ広告（窓を足場にして上昇）</p>
+       <p><b>ハッカー：</b>B DDoS（3連射）／横B Ctrl+Z（約2秒前の場所に戻ってダメージを半分消す）／下B キャッシュ（触れると爆発する罠、1個まで）／上B ポップアップ広告（窓を足場にして上昇）</p>
        <p><b>データ泥棒：</b>B マルウェア（約3秒間じわじわダメージ）／横B スクショ（高速で突き抜ける）／下B なりすまし（近くの相手と位置を入れ替え、相手は一瞬固まる）／上B 炎上させる（炎をまとって上昇）</p>
        <p><b>配信者：</b>B 投げ銭（山なりのコイン）／横B 切り抜き（瞬間移動して斬る）／下B 強制アップデート（近くの相手をしばらく動けなくする）／上B スパチャ読み（上昇しながらハートを飛ばす）</p>
        <p><b>ドパガキ：</b>B 倍速再生（しばらく動きと攻撃が速くなる）／横B 無限スクロール（横へ滑って攻撃、Bを押し直すと最大3回）／下B 通知爆撃（周りの相手を自分のほうへ引き寄せる。ガードで防げる）／上B 次の動画へ（上へ滑り上がる。途中でBを押すと方向転換）</p>
@@ -3584,6 +3665,8 @@ const net = new NetClient({
     if (session?.kind === 'net') hud.setNetInfo('再接続中…');
   },
   onReconnected() {
+    // 待っている「つなぎ直しています…」のお知らせは、もう出さない
+    for (let i = toastQueue.length - 1; i >= 0; i--) if (toastQueue[i].msg.startsWith('通信が切れました。つなぎ直して')) toastQueue.splice(i, 1);
     toast('つなぎ直しました', 2000);
     // 離れている間に対戦が終わっていたら、ロビーへ戻る（対戦中なら start が届いて続きから）
     setTimeout(() => {
@@ -3598,6 +3681,9 @@ const net = new NetClient({
   },
   onStamp(slot, name, id) {
     showStamp(slot, name, STAMPS[id] ?? '');
+  },
+  onRoulette(stageId) {
+    stageRoulette(stageId);
   },
   onDropped(name, kind, used) {
     // だれが何を落としたかを全員に知らせる
@@ -3847,7 +3933,14 @@ function showLobby(): void {
         });
         bindSeg(root, 'fmt', (v) => {
           // 進行中のトーナメントがあれば終わりになるので、確かめる
-          if (v !== 'tour' && tourLive && !confirm('進行中のトーナメントを終わりにしますか？')) return showLobby();
+          if (v !== 'tour' && tourLive) {
+            showLobby();
+            confirmDialog('進行中のトーナメントを終わりにしますか？', '', '終わりにする', () => {
+              fmtTour = false;
+              push();
+            });
+            return;
+          }
           fmtTour = v === 'tour';
           push();
         });

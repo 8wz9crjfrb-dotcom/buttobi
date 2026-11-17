@@ -193,6 +193,8 @@ export type GameEvent =
   | { k: 'taunt'; s: number; i: number }
   /** アイテムを拾った（t = 種類） */
   | { k: 'item'; s: number; t: number; x: number; y: number }
+  /** Ctrl+Z（ハッカー）：(x, y) から (tx, ty) へ戻った */
+  | { k: 'rewind'; x: number; y: number; tx: number; ty: number; s: number }
   /** サドンデスが始まった */
   | { k: 'sudden' }
   /** メガホン（アイテム）の衝撃波 */

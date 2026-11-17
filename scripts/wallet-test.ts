@@ -66,8 +66,10 @@ check('通算100勝でも節目のボーナス（30・50・100勝）を受け取
     const r1 = pullGacha(w2, 1, () => 0.01)![0];
     check('確率：乱数が3%未満ならUR、URが出たらSSRの天井もリセット', r1.rarity === 6 && w2.pity === 0 && w2.urPity === 0);
     const w3: Wallet = { coins: 1000, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 20, urPity: 10 };
-    const r2 = pullGacha(w3, 1, () => 0.1)![0];
-    check('確率：3%〜13%ならSSR、SSRではURの天井はリセットされない', r2.rarity === 5 && w3.pity === 0 && w3.urPity === 11);
+    const r2 = pullGacha(w3, 1, () => 0.09)![0];
+    check('確率：3%〜10%ならSSR（SSRは7%）、SSRではURの天井はリセットされない', r2.rarity === 5 && w3.pity === 0 && w3.urPity === 11);
+    const w5: Wallet = { coins: 1000, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: [], pity: 0, urPity: 0 };
+    check('確率：10%をこえたらSR', pullGacha(w5, 1, () => 0.105)![0].rarity === 4);
     const w4: Wallet = { coins: 1000, wins: { cpu: 0, online: 0 }, lastLogin: '', streak: 0, milestone: 0, owned: GACHA_COSTUMES.filter((c) => c.rarity === 6).map((c) => c.id), pity: 0, urPity: 0 };
     pullGacha(w4, 1, () => 0.01);
     check('持っているURが出たら500コイン', w4.coins === 900 + 500, `${w4.coins}`);

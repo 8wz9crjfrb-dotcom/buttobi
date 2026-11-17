@@ -1,6 +1,6 @@
 // アイテム：カイロ（攻撃力アップ）・傘（ひるまない）・メガホン（衝撃波）と、乱入アイテム
 import { Sim, COUNTDOWN_FRAMES } from '../src/shared/sim';
-import { ITEMS } from '../src/shared/moves';
+import { ITEMS, FOOD } from '../src/shared/moves';
 import { ITEM_INFO, ITEM_NAMES, ITEM_COLORS } from '../src/shared/characters';
 import type { InputState } from '../src/shared/types';
 
@@ -136,6 +136,49 @@ for (const mode of ['time', 'stamina'] as const) {
   for (let i = 0; i < 60 * 60 + 10; i++) sim.step(new Map());
   check('同点でなければそのまま終わる', sim.ended && !sim.sudden);
 }
+
+// ジャンプ攻撃（空中攻撃）のひるみは半分（ふっとばしで決まるひるみ → 半分）
+{
+  const sim = make();
+  const [a, b] = sim.fighters;
+  a.x = 0; b.x = 0.8; a.facing = 1; b.damage = 60;
+  a.y = 3; a.grounded = false; a.groundRef = -1; a.state = 'air';
+  b.y = 3; b.grounded = false; b.groundRef = -1; b.state = 'air';
+  const s2 = sim as unknown as { knock: (...x: unknown[]) => void; applyHit: (...x: unknown[]) => void };
+  let before = 0, after = 0, mv = '';
+  const k = s2.knock.bind(sim);
+  s2.knock = (...x: unknown[]) => { k(...x); before = (x[0] as { hitstun: number }).hitstun; };
+  const ah = s2.applyHit.bind(sim);
+  s2.applyHit = (...x: unknown[]) => { ah(...x); after = (x[1] as { hitstun: number }).hitstun; mv = String((x[0] as { move: string }).move); };
+  sim.step(new Map([[0, { mx: 0, my: 0, buttons: 1 }]]));
+  for (let i = 0; i < 10; i++) sim.step(new Map());
+  check('ジャンプ攻撃のひるみは半分', mv === 'nair' && before > 0 && after === Math.round(before / 2), `${mv} ${before} → ${after}`);
+}
+
+// 配達員：自転車に乗ったままジャンプ、ダメージ合計10%をこえると降りる、置き配は6%回復
+{
+  const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'courier', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: 'guard', cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'stock', stocks: 3, timeLimit: 0 }, seed: 1 });
+  while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+  const c = sim.fighters[0];
+  sim.fighters[1].x = 8;
+  c.x = -6;
+  sim.step(new Map([[0, { mx: 1, my: 0, buttons: 2 }]]));
+  for (let i = 0; i < 20; i++) sim.step(new Map([[0, { mx: 1, my: 0, buttons: 0 }]]));
+  const onBike = c.bike > 0;
+  sim.step(new Map([[0, { mx: 1, my: 0, buttons: 4 }]]));
+  let stillAir = false;
+  for (let i = 0; i < 10; i++) { sim.step(new Map([[0, { mx: 1, my: 0, buttons: 0 }]])); if (!c.grounded && c.bike > 0) stillAir = true; }
+  check('自転車：乗ったままジャンプできる', onBike && stillAir);
+  for (let i = 0; i < 60 && !c.grounded; i++) sim.step(new Map([[0, { mx: 1, my: 0, buttons: 0 }]]));
+  check('自転車：着地しても乗ったまま', c.bike > 0);
+  // 弱い攻撃を少しずつ受ける：合計10%まではそのまま、こえたら降りる
+  const k = (sim as unknown as { knock(v: unknown, d: number, dmg: number, b: number, g: number, a: number, m: number, f: number): void }).knock.bind(sim);
+  k(c, 1, 4, 1, 1, 30, 1, 1); k(c, 1, 4, 1, 1, 30, 1, 1);
+  const after8 = c.bike > 0;
+  k(c, 1, 4, 1, 1, 30, 1, 1);
+  check('自転車：ダメージ合計10%をこえると降りる', after8 && c.bike === 0);
+}
+check('置き配の回復は6%', FOOD.heal === 6);
 
 if (fail) {
   console.log(`\n${fail} 件 NG`);

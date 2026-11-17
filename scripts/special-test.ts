@@ -39,12 +39,19 @@ check('全キャラ×全必殺技で異常値なし', true);
   for (let i = 0; i < 40; i++) { sim.step(new Map([[0, i === 0 ? { mx: 0, my: 0, buttons: BTN_B } : N]])); shots += sim.events.filter(e => e.k === 'shot').length; }
   check('DDoS で弾が3発', shots === 3, `${shots}発`);
 }
-// ハッカー：全体メール誤送信で3方向
+// ハッカー：Ctrl+Z（約2秒前の場所に戻り、その間のダメージの半分を消す）
 {
   const sim = make('hacker', 'guard');
+  const h = sim.fighters[0];
+  h.x = -4;
+  run(sim, 130); // 記録をためる（-4 の位置で約2秒）
+  const start = h.x;
+  h.x = 3;
+  h.damage = 40; // この間に40%受けた
   run(sim, 20, tap({ mx: 1, my: 0, buttons: BTN_B }));
-  const vys = sim.projectiles.map(p => p.vy.toFixed(1));
-  check('メール誤送信で3方向に飛ぶ', sim.projectiles.length === 3 && new Set(vys).size === 3, vys.join(','));
+  check('Ctrl+Z：約2秒前の場所に戻る', Math.abs(h.x - start) < 0.6, `${start.toFixed(1)} → ${h.x.toFixed(1)}`);
+  check('Ctrl+Z：その間のダメージの半分を消す', Math.abs(h.damage - 20) < 0.5, `${h.damage.toFixed(1)}`);
+  check('Ctrl+Z：使ったあと約6秒は使えない', h.cdS > 300, `${h.cdS}`);
 }
 // ハッカー：キャッシュ（罠）に相手が触れると爆発
 {

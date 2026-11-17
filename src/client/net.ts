@@ -28,6 +28,8 @@ export interface NetHandlers {
   onStamp(slot: number, name: string, id: number): void;
   /** 勝敗予想の一覧が変わった */
   onPredicts(list: { n: string; p: number }[]): void;
+  /** ステージおまかせのルーレット */
+  onRoulette(stageId: string): void;
   /** 乱入アイテムが落とされた */
   onDropped(name: string, kind: number, used: string[]): void;
 }
@@ -70,6 +72,8 @@ function saveRejoin(r: RejoinInfo): void {
 }
 
 /** つなぎ直す間隔（ms）。これを全部試してだめならあきらめる（合計 約45秒） */
+/** これだけサーバーから何も届かなければ、切れたとみなす（ms） */
+const PONG_TIMEOUT = 5000;
 const RECONNECT_DELAYS = [500, 1000, 2000, 3000, 4000, 5000, 6000, 8000, 8000, 8000];
 
 /** サーバーが本人の選手について返した、照合用の情報 */
@@ -104,6 +108,8 @@ export class NetClient {
   private meCache: Record<string, unknown> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   rtt = 0;
+  /** 最後にサーバーから何か届いた時刻 */
+  private lastPong = 0;
   slot = -1;
   private closedByUser = false;
   /** つなぎ直しに使う情報 */
@@ -152,9 +158,24 @@ export class NetClient {
       const fh = this.friendHash();
       this.send({ t: 'hello', v: PROTOCOL_VERSION, name: p.name, charId: p.charId, costume: p.costume, create: rejoin ? false : create, rejoin, spectate: p.spectate || undefined, ...(fh ? { fh } : {}) });
       // 往復の時間（r）もサーバーに伝える（当たり判定の巻き戻しに使う）
-      this.pingTimer = setInterval(() => this.send({ t: 'ping', c: performance.now(), r: Math.round(this.rtt) }), 1000);
+      this.lastPong = performance.now();
+      this.pingTimer = setInterval(() => {
+        // 5秒以上なにも返ってこない：電波が切れている（ブラウザが気づいていない）ので、自分から切ってつなぎ直す
+        if (performance.now() - this.lastPong > PONG_TIMEOUT && this.ws === ws) {
+          try {
+            ws.close();
+          } catch {
+            /* 切れている */
+          }
+          ws.onclose?.(new CloseEvent('close'));
+          ws.onclose = null;
+          return;
+        }
+        this.send({ t: 'ping', c: performance.now(), r: Math.round(this.rtt) });
+      }, 1000);
     };
     ws.onmessage = (ev) => {
+      this.lastPong = performance.now();
       let m: ServerMsg;
       try {
         m = JSON.parse(ev.data);
@@ -246,6 +267,9 @@ export class NetClient {
         break;
       case 'stamp':
         this.handlers.onStamp(m.slot, m.name, m.id);
+        break;
+      case 'roulette':
+        this.handlers.onRoulette(String(m.stageId));
         break;
       case 'dropped':
         this.handlers.onDropped(String(m.n ?? ''), Number(m.kind) | 0, Array.isArray(m.used) ? m.used : []);

@@ -62,6 +62,7 @@ export interface ShotSpec {
 
 export type SpecialKind =
   | 'shot'
+  | 'rewind'
   | 'dash'
   | 'recovery'
   | 'grab'
@@ -243,27 +244,14 @@ const SPECIALS: Record<string, Specials> = {
       growth: 0,
       angle: 0,
       air: true,
-      special: 'shot', cd: 60,
+      special: 'shot', cd: 90,
       shots: [0, 5, 10].map((at) => ({ at, kind: 'bullet' as const, x: 0.9, y: 1.0, vx: 16, vy: 0, life: 40, r: 0.25, dmg: 2.8, base: 2.8, growth: 2.2, angle: 25 })),
     },
-    // 全体メール誤送信：封筒が3方向に広がって飛ぶ
-    sspecial: {
-      startup: 12,
-      active: 1,
-      end: 20,
-      hitboxes: [],
-      dmg: 0,
-      base: 0,
-      growth: 0,
-      angle: 0,
-      air: true,
-      special: 'shot', cd: 40,
-      landLag: 10,
-      shots: [-3.5, 0, 3.5].map((vy) => ({ at: 0, kind: 'mail' as const, x: 0.8, y: 1.0, vx: 10, vy, life: 45, r: 0.35, dmg: 3.5, base: 4, growth: 5, angle: 35 })),
-    },
+    // Ctrl+Z：約2秒前の場所に戻り、その間に受けたダメージの半分を消す（空中でも使える）
+    sspecial: { startup: 6, active: 1, end: 12, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'rewind', cd: 360 },
     // キャッシュ：足元に罠を置く（1個まで）。触れると爆発
     // 置くのに少し時間がかかる。爆発したあと約2.5秒は置き直せない（cd は爆発したときから数える）
-    dspecial: { startup: 26, active: 1, end: 20, hitboxes: [], dmg: 12, base: 8, growth: 13, angle: 80, air: true, special: 'trap', cd: 150 },
+    dspecial: { startup: 26, active: 1, end: 20, hitboxes: [], dmg: 10, base: 8, growth: 13, angle: 80, air: true, special: 'trap', cd: 150 },
     // ポップアップ広告：足元に窓を出し、足場にして上昇
     uspecial: {
       startup: 4,
@@ -341,8 +329,9 @@ const SPECIALS: Record<string, Specials> = {
       growth: 0,
       angle: 0,
       air: true,
-      special: 'shot',
-      shots: [{ at: 0, kind: 'coin', x: 0.7, y: 1.3, vx: 10, vy: 9, gravity: 28, life: 80, r: 0.3, dmg: 6, base: 5, growth: 5, angle: 45 }],
+      special: 'shot', cd: 60,
+      // 少しゆっくり飛ぶ（届く距離はほぼ同じ）
+      shots: [{ at: 0, kind: 'coin', x: 0.7, y: 1.3, vx: 8.5, vy: 8.5, gravity: 24, life: 95, r: 0.3, dmg: 6, base: 5, growth: 5, angle: 45 }],
     },
     // 切り抜き：少し先へ瞬間移動して斬る
     sspecial: { startup: 10, active: 4, end: 18, hitboxes: [{ x: 0.6, y: 0.9, r: 0.85 }], dmg: 10, base: 6.5, growth: 9, angle: 40, air: true, special: 'teleport', landLag: 10, cd: 60 },
@@ -463,7 +452,7 @@ const SPECIALS: Record<string, Specials> = {
       shots: [{ at: 0, kind: 'bag', x: 0.8, y: 1.0, vx: 15, vy: 0, life: 150, r: 0.4, dmg: 6, base: 5, growth: 5, angle: 40, boomerang: 30 }],
     },
     // 自転車：乗ったまま走り回れる（ぶつかるとダメージ、ジャンプで降りる）
-    sspecial: { startup: 8, active: 1, end: 6, hitboxes: [], dmg: 6, base: 6, growth: 6.5, angle: 35, air: false, special: 'bike', cd: 60 },
+    sspecial: { startup: 8, active: 1, end: 6, hitboxes: [], dmg: 6, base: 6, growth: 6.5, angle: 35, air: false, special: 'bike', cd: 120 },
     // 置き配：拾うと回復する料理を置く（相手も拾える）
     dspecial: { startup: 12, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: false, special: 'food' },
     // 立ちこぎジャンプ：自転車ごと大ジャンプ
@@ -648,8 +637,8 @@ export const BIKE = {
   hitCooldown: 40,
   /** ぶつかる判定の大きさ */
   hitR: 0.85,
-  /** 自転車の耐久（%）：この分のダメージまでは、弱い攻撃を受けても降りない */
-  hp: 13,
+  /** 自転車の耐久（%）：受けたダメージの合計がこれをこえると降りる（弱い攻撃なら、こえるまでは降りない） */
+  hp: 10,
   /** これより強いふっとばしを受けたら、耐久が残っていても降ろされる */
   armorLimit: 12,
   /** 弱い攻撃を受けたときの減速 */
@@ -658,7 +647,7 @@ export const BIKE = {
   speedKb: 0.15,
 };
 /** 置き配：回復量、置いていられる時間、置いた本人が拾えるまでの時間 */
-export const FOOD = { heal: 12, life: 600, selfDelay: 60, r: 0.6 };
+export const FOOD = { heal: 6, life: 600, selfDelay: 60, r: 0.6 };
 /** ハルシネーション：分身の時間、攻撃した相手が目を回す時間 */
 export const DECOY = { life: 240, dizzy: 50 };
 /** API呼び出し：ワイヤーの届く距離と、引き寄せる速さ */
@@ -723,6 +712,10 @@ export const ITEMS = {
  * damage = はじめのダメージ%、hp = 体力制で残るHP、max = これを過ぎたらダメージの少ない人の勝ち
  */
 export const SUDDEN = { damage: 100, hp: 30, max: 60 * 60 };
+/** Ctrl+Z（ハッカー）：戻る時間（フレーム）、消すダメージの割合、戻ったあとの無敵 */
+export const REWIND = { frames: 120, heal: 0.5, invuln: 20 };
+/** ジャンプ攻撃（空中攻撃）のひるみ時間の倍率 */
+export const AIR_HITSTUN = 0.5;
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };
 

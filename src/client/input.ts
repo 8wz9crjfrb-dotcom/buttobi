@@ -62,15 +62,11 @@ export class InputManager {
     });
     const end = (e: PointerEvent) => {
       if (e.pointerId !== this.stickId) return;
-      this.stickId = null;
-      this.stick = { x: 0, y: 0 };
-      this.knob.style.transform = '';
-      this.base.classList.remove('active');
-      this.base.style.left = '';
-      this.base.style.top = '';
+      this.releaseStick();
     };
     zone.addEventListener('pointerup', end);
     zone.addEventListener('pointercancel', end);
+    zone.addEventListener('lostpointercapture', end);
 
     document.querySelectorAll<HTMLElement>('.pad-btn').forEach((el) => {
       const bit = Number(el.dataset.btn);
@@ -93,8 +89,47 @@ export class InputManager {
       };
       el.addEventListener('pointerup', up);
       el.addEventListener('pointercancel', up);
+      el.addEventListener('lostpointercapture', up);
       el.addEventListener('contextmenu', (e) => e.preventDefault());
     });
+
+    // 押しっぱなしの取り残しを防ぐ：指を離した知らせがボタンに届かなかった場合（別の指が触れた・画面が書きかわった等）でも、
+    // 画面のどこかで離した知らせを受けたら、その指の押下をすべて解除する
+    const release = (e: PointerEvent) => {
+      if (this.touchButtons.delete(e.pointerId)) this.syncPadClasses();
+      if (e.pointerId === this.stickId) end(e);
+    };
+    window.addEventListener('pointerup', release, true);
+    window.addEventListener('pointercancel', release, true);
+    // 画面に指が1本も触れていないなら、押されているボタンもスティックもないはず
+    const allUp = (e: TouchEvent) => {
+      if (e.touches.length > 0) return;
+      if (this.touchButtons.size) {
+        this.touchButtons.clear();
+        this.syncPadClasses();
+      }
+      if (this.stickId !== null) this.releaseStick();
+    };
+    window.addEventListener('touchend', allUp, true);
+    window.addEventListener('touchcancel', allUp, true);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.reset();
+    });
+  }
+
+  /** ボタンの見た目（押している印）を、今押されているものに合わせる */
+  private syncPadClasses(): void {
+    const held = new Set(this.touchButtons.values());
+    document.querySelectorAll<HTMLElement>('.pad-btn').forEach((el) => el.classList.toggle('down', held.has(Number(el.dataset.btn))));
+  }
+
+  private releaseStick(): void {
+    this.stickId = null;
+    this.stick = { x: 0, y: 0 };
+    this.knob.style.transform = '';
+    this.base.classList.remove('active');
+    this.base.style.left = '';
+    this.base.style.top = '';
   }
 
   private updateStick(cx: number, cy: number): void {

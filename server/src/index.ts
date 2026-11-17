@@ -146,6 +146,8 @@ interface StoredLobby {
 
 /** トーナメント：次の試合が自動で始まるまで（ms）。予想する人がいないとき */
 const TOUR_NEXT_MS = 15_000;
+/** ステージおまかせのルーレットを見せる時間（端末の ROULETTE_MS より少し長く） */
+const ROULETTE_WAIT_MS = 2600;
 /** 予想する人がいるとき：全員が予想し終えるのを待つ最長の時間（だれかが放置しても進むように） */
 const TOUR_VOTE_MS = 30_000;
 /** 全員が予想し終えてから試合が始まるまで（最後の票とオッズを見る時間） */
@@ -371,7 +373,7 @@ export class Room extends DurableObject<Env> {
     // CPU はキャラで見分けられる名前に（「CPU 配信者」など）
     nameCpus(players);
     const tour: TourInfo | undefined = l.tour ? { ...l.tour, nextIn: !this.sim && this.tourNextAt ? Math.max(0, this.tourNextAt - Date.now()) : 0, ...this.tourVotes() } : undefined;
-    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, tourThird: l.tourThird !== false, dropOn: l.dropOn !== false, ...(tour ? { tour } : {}) };
+    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim || !!this.rouletteSetup, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, tourThird: l.tourThird !== false, dropOn: l.dropOn !== false, ...(tour ? { tour } : {}) };
   }
 
   private pushLobby(): void {
@@ -407,6 +409,23 @@ export class Room extends DurableObject<Env> {
       if (msg.rejoin && this.lobby) {
         const r = msg.rejoin;
         const h = this.lobby.humans.find((x) => x.slot === r.slot && x.token === r.token);
+        // 前の接続がまだ残っている（電波が急に切れて、サーバーが切断に気づいていない）：合言葉が合っているので、新しい接続に置き換える
+        if (h && connected.has(h.slot)) {
+          for (const old of this.ctx.getWebSockets()) {
+            if (old === ws) continue;
+            const oa = old.deserializeAttachment() as Attachment | null;
+            if (oa && oa.slot === h.slot) {
+              old.serializeAttachment({ slot: -1 });
+              try {
+                old.close(1000, 'replaced');
+              } catch {
+                /* 切れている */
+              }
+            }
+          }
+          connected.delete(h.slot);
+          if (this.sim) this.queues.delete(h.slot);
+        }
         // 対戦中は、試合が終わるまでいつでも戻れる（アプリを閉じた・自分で抜けた人も）
         if (h && !connected.has(h.slot) && (h.goneAt === 0 || !!this.sim || Date.now() - h.goneAt < REJOIN_GRACE)) {
           h.goneAt = 0;
@@ -751,6 +770,7 @@ export class Room extends DurableObject<Env> {
   /** トーナメント：次の試合を始める。新しく始めるときは、いるメンバー（CPUも）で組み合わせを作る */
   private startTour(): boolean {
     const l = this.lobby!;
+    if (this.rouletteSetup) return false;
     this.clearTourTimer();
     if (!l.tour || l.tour.champion >= 0) {
       const players = this.lobbyInfo().players.filter((p) => p.cpu || p.connected);
@@ -793,7 +813,7 @@ export class Room extends DurableObject<Env> {
     });
     t.cur = nm;
     const seed = (Math.random() * 2 ** 31) | 0;
-    this.startMatch({ players, stageId: resolveStage(l.stageId, seed), rules: { ...l.rules, teams: false }, seed });
+    this.startWithRoulette({ players, stageId: resolveStage(l.stageId, seed), rules: { ...l.rules, teams: false }, seed });
     this.pushLobby();
     this.ctx.waitUntil(this.save());
     return true;
@@ -813,7 +833,7 @@ export class Room extends DurableObject<Env> {
   /** ロビーの設定（ステージ・ルール・CPU）で試合を始める。始められたら true */
   private startFromLobby(): boolean {
     const l = this.lobby;
-    if (!l || this.sim) return false;
+    if (!l || this.sim || this.rouletteSetup) return false;
     if (l.tourOn) return this.startTour();
     const info = this.lobbyInfo();
     const players = info.players.filter((p) => p.cpu || p.connected);
@@ -829,7 +849,7 @@ export class Room extends DurableObject<Env> {
       rules: l.rules,
       seed,
     };
-    this.startMatch(setup);
+    this.startWithRoulette(setup);
     // 「もう1戦したい」が消えたことを全員に伝える
     this.pushLobby();
     this.ctx.waitUntil(this.save());
@@ -837,7 +857,27 @@ export class Room extends DurableObject<Env> {
   }
 
   // ---------------------------------------------------------------
+  /** ステージおまかせのルーレット中（このあと始める試合） */
+  private rouletteSetup: MatchSetup | null = null;
+
+  /** ステージおまかせなら、先にルーレットを見せてから試合を始める */
+  private startWithRoulette(setup: MatchSetup): void {
+    if (this.lobby?.stageId !== RANDOM_STAGE) return this.startMatch(setup);
+    this.rouletteSetup = setup;
+    if (this.lobby) {
+      this.lobby.again = [];
+      for (const h of this.lobby.humans) h.ready = false;
+    }
+    this.broadcast({ t: 'roulette', stageId: setup.stageId });
+    setTimeout(() => {
+      if (this.rouletteSetup !== setup) return;
+      this.rouletteSetup = null;
+      if (!this.sim && this.lobby && this.connectedSlots().size > 0) this.startMatch(setup);
+    }, ROULETTE_WAIT_MS);
+  }
+
   private startMatch(setup: MatchSetup): void {
+    this.rouletteSetup = null;
     if (this.lobby) {
       this.lobby.again = [];
       // 次の試合に向けて「準備OK」は外す

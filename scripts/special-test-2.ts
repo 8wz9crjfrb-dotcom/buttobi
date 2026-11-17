@@ -152,7 +152,9 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   for (let i = 0; i < 60 && !hit; i++) { sim.step(new Map()); hit = sim.fighters[1].damage > 0; }
   check('走る自転車にぶつかると相手がダメージ', hit, `${sim.fighters[1].damage.toFixed(1)}%`);
   run(sim, 12, () => ({ mx: 0, my: 0, buttons: BTN_JUMP }));
-  check('ジャンプで自転車から降りる（ぶつかった直後に押しっぱなしでも）', sim.fighters[0].bike === 0 && !sim.fighters[0].grounded);
+  check('ジャンプしても自転車に乗ったまま（ぶつかった直後に押しっぱなしでも）', sim.fighters[0].bike > 0 && !sim.fighters[0].grounded);
+  run(sim, 3, at(0, { mx: 0, my: 0, buttons: BTN_A }));
+  check('空中で攻撃を押すと自転車から降りる', sim.fighters[0].bike === 0);
 }
 {
   const sim = make('courier', 'guard');
@@ -176,7 +178,7 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   const food = sim.entities.find((e) => e.kind === 'food')!;
   sim.fighters[1].x = food.x; sim.fighters[1].y = food.y;
   run(sim, 3);
-  check('料理を拾うと回復（相手も拾える）', sim.fighters[1].damage <= 18.01, `${sim.fighters[1].damage}%`);
+  check('料理を拾うと6%回復（相手も拾える）', Math.abs(sim.fighters[1].damage - 24) < 0.01, `${sim.fighters[1].damage}%`);
 }
 {
   const sim = make('courier', 'guard');
