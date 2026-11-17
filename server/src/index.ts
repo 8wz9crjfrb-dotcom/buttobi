@@ -588,6 +588,8 @@ export class Room extends DurableObject<Env> {
       }
       case 'start': {
         if (this.sim || slot !== l.hostSlot) return;
+        // トーナメントの途中は、ホストだけでは始められない（全員の「OK！」か、予想がそろうか、時間で始まる）
+        if (l.tourOn && l.tour && l.tour.champion < 0) return;
         this.startFromLobby();
         return;
       }
@@ -735,7 +737,8 @@ export class Room extends DurableObject<Env> {
         cur: null,
         champion: -1,
       };
-      // 最初の試合の前に、組み合わせ表を見せて予想を受け付ける
+      // 最初の試合の前に、組み合わせ表を見せて予想を受け付ける（「OK！」は数え直す）
+      l.again = [];
       this.predicts.clear();
       this.pushPredicts();
       this.planTourNext(true);

@@ -657,10 +657,11 @@ function showFriends(): void {
     .map((f) => {
       const status = f.room ? `<span class="fr-room">ルーム公開中 ${f.room.n}/${f.room.max}</span>` : f.online ? '<span class="fr-on">オンライン</span>' : '<span class="muted">オフライン</span>';
       // オンラインなら一緒に戦った回数、オフラインなら最後にアプリを開いていた時刻
-      const sub = f.online || f.room ? `一緒に戦った ${social.together(f.code)}回` : `最終ログイン ${f.seen ? agoText(f.seen) : '記録なし'}`;
+      // オフラインの人だけ、最後にアプリを開いていた時刻を添える
+      const sub = f.online || f.room ? '' : `・最終ログイン ${f.seen ? agoText(f.seen) : '記録なし'}`;
       return `<button type="button" class="fr-item ${friendPick === f.code ? 'on' : ''}" data-pick="${f.code}">
         <span class="fr-dot ${f.online || f.room ? 'on' : ''}"></span>${friendFace(f.name, f.prof)}
-        <span class="fr-txt"><b>${esc(f.name)}</b><small>${status}・${sub}</small></span></button>`;
+        <span class="fr-txt"><b>${esc(f.name)}</b><small>${status}${sub}</small></span></button>`;
     })
     .join('');
   const inbox = st.inbox.length
@@ -2022,9 +2023,10 @@ function updateTourInfo(): void {
   if (!el) return;
   el.innerHTML = t && lobby?.tourOn ? `${tourStatus(t)}${tourBracket(t)}` : '';
   bindPickButtons(el);
-  // 結果画面のホストのボタン
+  // 結果画面のホストのボタン（トーナメントの途中は出さず、全員の「OK！」で始める）
   const btn = screensEl.querySelector<HTMLElement>('#rematch');
-  if (btn && t && lobby?.tourOn) btn.textContent = t.champion >= 0 ? 'もう一度トーナメント' : '次の試合へ';
+  if (btn && t && lobby?.tourOn) btn.textContent = 'もう一度トーナメント';
+  updateAgainInfo();
   if (!tourTick) {
     tourTick = window.setInterval(() => {
       const left = screensEl.querySelector<HTMLElement>('[data-tour-left]');
@@ -2043,11 +2045,21 @@ function updateAgainInfo(): void {
   const want = (lobby.again ?? []).filter((s) => humans.some((h) => h.slot === s));
   const isHost = lobby.hostSlot === net.slot;
   const tour = lobby.tourOn && lobby.tour ? (lobby.tour.champion >= 0 ? 'again' : 'next') : null;
-  const label = tour === 'next' ? 'すぐ次の試合へ' : tour === 'again' ? 'もう一度トーナメント' : 'もう1戦したい';
-  el.textContent = want.length ? `${label}：${want.length}/${humans.length}人${isHost ? '' : '（全員そろうと始まります）'}` : isHost || tour === 'next' ? '' : '全員が押すか、ホストが始めると再戦します';
+  // トーナメントの途中：ホストも含めた全員の「OK！」で、待たずに次の試合へ
+  if (tour === 'next') {
+    el.textContent = `OK ${want.length}/${humans.length}人（全員が押すと、待たずに次の試合が始まります）`;
+  } else {
+    const label = tour === 'again' ? 'もう一度トーナメント' : 'もう1戦したい';
+    el.textContent = want.length ? `${label}：${want.length}/${humans.length}人${isHost ? '' : '（全員そろうと始まります）'}` : isHost ? '' : '全員が押すか、ホストが始めると再戦します';
+  }
+  const rematch = screensEl.querySelector<HTMLElement>('#rematch');
+  if (rematch) rematch.classList.toggle('hidden', tour === 'next');
   const btn = screensEl.querySelector<HTMLElement>('#want-again');
   if (btn) {
     const mine = want.includes(net.slot);
+    // ホストは、トーナメントの途中だけ「OK！」を出す（それ以外は「同じメンバーで再戦」などのボタン）
+    btn.classList.toggle('hidden', isHost && tour !== 'next');
+    const label = tour === 'next' ? 'OK' : tour === 'again' ? 'もう一度トーナメント' : 'もう1戦したい';
     btn.textContent = mine ? `${label}（取り消す）` : `${label}！`;
     btn.classList.toggle('primary', !mine);
   }
@@ -2143,7 +2155,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
        <div class="row" style="gap:8px">
          ${online ? '<button class="btn" id="lobby">ルームへ戻る</button>' : ''}
          ${online && lobby && lobby.hostSlot === net.slot ? '<button class="btn primary" id="rematch">同じメンバーで再戦</button>' : ''}
-         ${online && !(lobby && lobby.hostSlot === net.slot) && net.slot >= 0 ? '<button class="btn primary" id="want-again">もう1戦したい！</button>' : ''}
+         ${online && net.slot >= 0 ? '<button class="btn primary" id="want-again">もう1戦したい！</button>' : ''}
          ${!online ? '<button class="btn primary" id="again">もう一度</button>' : ''}
        </div>
      </div>`,
@@ -3584,7 +3596,7 @@ function showLobby(): void {
       <div data-pane="stage">${stageCards(l.stageId)}</div>
       <div data-pane="rule"><div class="setup-grid wide">
         <div class="opt opt-wide">対戦の形式 ${seg('fmt', [['all', '全員で'], ['tour', 'トーナメント']], tourOn ? 'tour' : 'all')}</div>
-        <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">ルームの全員（CPUも）で1対1の勝ち抜き戦。3人から。人数が半端ならシード（1回戦なし）ができます。始める前に組み合わせ表が出ます。試合に出ない人は勝敗を予想して観戦し、全員が予想すると次の試合が始まります（予想する人がいなければ15秒後、予想を待つのは最長30秒）。チーム戦の設定は使いません</span></div>
+        <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">ルームの全員（CPUも）で1対1の勝ち抜き戦。3人から。人数が半端ならシード（1回戦なし）ができます。始める前に組み合わせ表が出ます。試合に出ない人は勝敗を予想して観戦し、全員が予想すると次の試合が始まります（予想する人がいなければ15秒後、予想を待つのは最長30秒）。全員が「OK！」を押すと、待たずにすぐ始まります。チーム戦の設定は使いません</span></div>
         ${ruleControls(rules)}</div></div>
       <div data-pane="cpu"><div class="setup-grid wide">
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
@@ -3599,7 +3611,11 @@ function showLobby(): void {
   const allReady = humanN >= 2 && readyN === humanN;
   const meReady = !!l.players.find((p) => p.slot === net.slot)?.ready;
   const canStart = !l.inMatch && (tourLive || (tourOn ? l.players.length >= 3 : l.players.length >= 2 && (!l.rules.teams || teamCount >= 2)));
-  const startLabel = tourLive ? '次の試合へ！' : tourOn ? 'トーナメント開始！' : '対戦開始！';
+  const startLabel = tourOn ? 'トーナメント開始！' : '対戦開始！';
+  // トーナメントの途中：ホストの開始ボタンの代わりに、全員の「OK！」で次の試合へ
+  const okHumans = l.players.filter((p) => !p.cpu && p.connected);
+  const okN = (l.again ?? []).filter((s) => okHumans.some((h) => h.slot === s)).length;
+  const myOk = (l.again ?? []).includes(net.slot);
   const lobbyEl = showScreen(
     `<div data-lobby class="row" style="justify-content:space-between">
        <div><div style="font-size:12px;color:var(--muted)">ルームコード（友達に教えてください）</div><div class="code-big">${l.code}</div></div>
@@ -3614,7 +3630,7 @@ function showLobby(): void {
        <div>あなたのキャラ：<b>${getCharacter(me?.charId ?? settings.charId).name}</b></div>
        <button class="btn small" id="change-char">キャラを変える</button>`
        }
-       ${!net.spectating && !isHost ? `<button class="btn small ${meReady ? 'on-toggle' : 'primary'}" id="ready">${meReady ? '準備OK（取り消す）' : '準備OK'}</button>` : ''}
+       ${!net.spectating && !isHost && !tourLive ? `<button class="btn small ${meReady ? 'on-toggle' : 'primary'}" id="ready">${meReady ? '準備OK（取り消す）' : '準備OK'}</button>` : ''}
        <button class="btn small" id="invite">招待リンクを送る</button>
        ${isHost ? `<button class="btn small ${roomShared ? 'on-toggle' : ''}" id="share-friends">フレンドに公開：${roomShared ? 'する' : 'しない'}</button>` : ''}
        ${l.spectators ? `<span class="muted">観戦 ${l.spectators}人</span>` : ''}
@@ -3626,13 +3642,18 @@ function showLobby(): void {
        ${isHost && !tourOn && l.rules.teams && teamCount < 2 ? '<span class="muted">2チーム以上に分けてください</span>' : ''}
        ${isHost && tourOn && !tourLive && l.players.length < 3 ? '<span class="muted">トーナメントは3人から（CPUを足せます）</span>' : ''}
        ${isHost ? `<span class="rule-sum">${tourOn ? 'トーナメント・' : ''}${esc(ruleSummary(l.rules, l.stageId, cpus.length, cpuLevel))}</span>` : ''}
-       ${isHost ? `<span class="ready-count ${allReady ? 'all' : ''}">準備OK ${readyN}/${humanN}</span>` : ''}
-       ${isHost ? `<button class="btn primary ${allReady && canStart ? 'glow' : ''}" id="start" ${canStart ? '' : 'disabled'}>${startLabel}</button>` : ''}
+       ${isHost && !tourLive ? `<span class="ready-count ${allReady ? 'all' : ''}">準備OK ${readyN}/${humanN}</span>` : ''}
+       ${isHost && !tourLive ? `<button class="btn primary ${allReady && canStart ? 'glow' : ''}" id="start" ${canStart ? '' : 'disabled'}>${startLabel}</button>` : ''}
+       ${tourLive && !net.spectating ? `<span class="ready-count ${okN === okHumans.length ? 'all' : ''}">OK ${okN}/${okHumans.length}人</span><button class="btn ${myOk ? 'on-toggle' : 'primary'}" id="tour-ok">${myOk ? 'OK（取り消す）' : 'OK！'}</button>` : ''}
      </div>`,
     'overlay',
     (root) => {
       root.querySelector('#invite')!.addEventListener('click', () => void shareInvite(l.code));
       root.querySelector('#ready')?.addEventListener('click', () => net.setReady(!meReady));
+      root.querySelector('#tour-ok')?.addEventListener('click', () => {
+        net.again(!myOk);
+        sfx.click();
+      });
       bindStampBar(root);
       root.querySelector('#share-friends')?.addEventListener('click', () => {
         roomShared = !roomShared;
