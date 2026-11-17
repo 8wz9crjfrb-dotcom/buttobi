@@ -1,5 +1,5 @@
 // トーナメントの組み合わせ表：シード・勝ち上がり・優勝
-import { champion, makeBracket, nextMatch, roundName, setWinner } from '../src/shared/tournament';
+import { canHaveThird, champion, makeBracket, matchAt, nextMatch, roundName, setWinner, THIRD, type TourMatch } from '../src/shared/tournament';
 import { predictCoins, predictOdds, PREDICT_MAX_ODDS } from '../src/shared/protocol';
 
 let fail = 0;
@@ -45,6 +45,29 @@ for (let n = 2; n <= 8; n++) {
   check('3人：決勝はシードの人と勝った人', new Set([r[f[0]][f[1]].a, r[f[0]][f[1]].b]).size === 2 && [r[f[0]][f[1]].a, r[f[0]][f[1]].b].includes(m.a));
 }
 check('回戦の名前', roundName(0, 3) === '1回戦' && roundName(1, 3) === '準決勝' && roundName(2, 3) === '決勝');
+
+// 3位決定戦（決勝の前）
+for (let n = 3; n <= 8; n++) {
+  const rounds = makeBracket(Array.from({ length: n }, (_, i) => i));
+  const ok = canHaveThird(rounds);
+  check(`${n}人：3位決定戦を${n >= 4 ? '作れる' : '作れない'}`, ok === n >= 4);
+  if (!ok) continue;
+  const third: TourMatch = { a: -1, b: -1, w: -1 };
+  const order: string[] = [];
+  let nm = nextMatch(rounds, third);
+  let guard = 0;
+  while (nm && guard++ < 20) {
+    const m = matchAt(rounds, third, nm[0], nm[1])!;
+    order.push(roundName(nm[0], rounds.length));
+    setWinner(rounds, nm[0], nm[1], Math.min(m.a, m.b), third);
+    nm = nextMatch(rounds, third);
+  }
+  const ti = order.indexOf('3位決定戦');
+  check(`${n}人：3位決定戦は決勝の直前`, ti >= 0 && order[ti + 1] === '決勝' && ti === order.length - 2, order.join('→'));
+  check(`${n}人：試合数 ${n}（勝ち抜き${n - 1}＋3位決定戦1）`, order.length === n, `${order.length}`);
+  check(`${n}人：3位決定戦は準決勝で負けた2人`, third.a >= 0 && third.b >= 0 && third.a !== third.b && third.w >= 0 && champion(rounds) === 0);
+}
+check('3位決定戦の名前', roundName(THIRD, 3) === '3位決定戦');
 
 // 勝敗予想のオッズ
 {

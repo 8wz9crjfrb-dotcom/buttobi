@@ -28,6 +28,8 @@ export interface NetHandlers {
   onStamp(slot: number, name: string, id: number): void;
   /** 勝敗予想の一覧が変わった */
   onPredicts(list: { n: string; p: number }[]): void;
+  /** 乱入アイテムが落とされた */
+  onDropped(name: string, kind: number, used: string[]): void;
 }
 
 /** 対戦中のルームに戻るための情報（アプリを閉じても残す。30分で使えなくなる） */
@@ -245,6 +247,9 @@ export class NetClient {
       case 'stamp':
         this.handlers.onStamp(m.slot, m.name, m.id);
         break;
+      case 'dropped':
+        this.handlers.onDropped(String(m.n ?? ''), Number(m.kind) | 0, Array.isArray(m.used) ? m.used : []);
+        break;
       case 'predicts':
         this.handlers.onPredicts(Array.isArray(m.list) ? m.list : []);
         break;
@@ -340,8 +345,8 @@ export class NetClient {
     this.send({ t: 'team', team, slot });
   }
 
-  config(rules: MatchRules, stageId: string, cpuCount: number, cpuLevel: number, tour = false): void {
-    this.send({ t: 'config', rules, stageId, cpuCount, cpuLevel, tour });
+  config(rules: MatchRules, stageId: string, cpuCount: number, cpuLevel: number, tour = false, tourThird = true): void {
+    this.send({ t: 'config', rules, stageId, cpuCount, cpuLevel, tour, tourThird });
   }
 
   start(): void {
@@ -359,6 +364,11 @@ export class NetClient {
   }
 
   /** 結果画面の「もう1戦したい」 */
+  /** 乱入アイテムを落とす（試合に出ていないときだけ。1試合に1回） */
+  drop(kind: number): void {
+    this.send({ t: 'drop', kind });
+  }
+
   predict(slot: number): void {
     this.send({ t: 'predict', slot });
   }

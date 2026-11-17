@@ -29,7 +29,7 @@ import { DEFAULT_HP, DEFAULT_RULES, TEAM_COUNT, type GameEvent, type InputState,
 export { TransferBox } from './transfer';
 export { Social } from './social';
 import type { Social } from './social';
-import { champion, makeBracket, nextMatch, setWinner } from '../../src/shared/tournament';
+import { canHaveThird, champion, makeBracket, matchAt, nextMatch, setWinner } from '../../src/shared/tournament';
 
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
@@ -135,6 +135,8 @@ interface StoredLobby {
   again?: number[];
   /** 対戦の形式がトーナメント */
   tourOn?: boolean;
+  /** トーナメントの3位決定戦（なし = false） */
+  tourThird?: boolean;
   /** 進行中・終わったトーナメント（nextIn は送るときに計算する） */
   tour?: Omit<TourInfo, 'nextIn'>;
 }
@@ -207,6 +209,8 @@ export class Room extends DurableObject<Env> {
   /** 勝敗予想（予想した人 → 名前と勝つと思う選手）。人は "h<slot>"、観戦は "s<番号>" */
   private predicts = new Map<string, { n: string; p: number }>();
   private nextSid = 1;
+  /** この試合で乱入アイテムを落とした人（"h<slot>" / "s<番号>"） */
+  private dropUsed = new Set<string>();
 
   /** 今予想できる試合の選手（予想できないときは null） */
   private predictTargets(): number[] | null {
@@ -222,9 +226,9 @@ export class Room extends DurableObject<Env> {
     // トーナメントの合間：次の試合
     const t = l.tourOn ? l.tour : undefined;
     if (!t || t.champion >= 0) return null;
-    const nm = nextMatch(t.rounds);
+    const nm = nextMatch(t.rounds, t.third);
     if (!nm) return null;
-    const m = t.rounds[nm[0]][nm[1]];
+    const m = matchAt(t.rounds, t.third, nm[0], nm[1])!;
     return [m.a, m.b];
   }
 
@@ -364,7 +368,7 @@ export class Room extends DurableObject<Env> {
     // CPU はキャラで見分けられる名前に（「CPU 配信者」など）
     nameCpus(players);
     const tour: TourInfo | undefined = l.tour ? { ...l.tour, nextIn: !this.sim && this.tourNextAt ? Math.max(0, this.tourNextAt - Date.now()) : 0, ...this.tourVotes() } : undefined;
-    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, ...(tour ? { tour } : {}) };
+    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, tourThird: l.tourThird !== false, ...(tour ? { tour } : {}) };
   }
 
   private pushLobby(): void {
@@ -485,6 +489,20 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
+    if (msg.t === 'drop' && this.lobby && this.sim && this.setup && (slot >= 0 || slot === SPECTATOR)) {
+      // 乱入アイテム：試合に出ていない人だけ、1試合に1回
+      if (slot >= 0 && this.setup.players.some((p) => p.slot === slot)) return;
+      const key = slot >= 0 ? `h${slot}` : `s${att?.sid ?? 0}`;
+      if (this.dropUsed.has(key)) return;
+      const m = this.sim.stage.main;
+      // 落とす場所は、ステージの上のどこか（ランダム）
+      if (!this.sim.dropItem(Number(msg.kind) | 0, m.x1 + 1 + Math.random() * (m.x2 - m.x1 - 2))) return;
+      this.dropUsed.add(key);
+      const name = slot >= 0 ? this.lobby.humans.find((h) => h.slot === slot)?.name ?? '？' : (att as Attachment | null)?.name ?? '観戦';
+      this.broadcast({ t: 'dropped', n: name, kind: Number(msg.kind) | 0, used: [...this.dropUsed] });
+      return;
+    }
+
     if (msg.t === 'predict' && this.lobby && (slot >= 0 || slot === SPECTATOR)) {
       // 勝敗予想：試合に出ていない人だけ。決め直しはできる
       const targets = this.predictTargets();
@@ -581,6 +599,8 @@ export class Room extends DurableObject<Env> {
         l.cpuLevel = Math.max(1, Math.min(9, msg.cpuLevel | 0 || 3));
         // トーナメントをやめたら、進行中のものも終わりにする
         l.tourOn = msg.tour === true;
+        // 3位決定戦（初期は「あり」）。次に始めるトーナメントから
+        l.tourThird = msg.tourThird !== false;
         if (!l.tourOn && l.tour) {
           l.tour = undefined;
           this.clearTourTimer();
@@ -732,10 +752,13 @@ export class Room extends DurableObject<Env> {
         const j = Math.floor(Math.random() * (i + 1));
         [order[i], order[j]] = [order[j], order[i]];
       }
+      const rounds = makeBracket(order);
       l.tour = {
         id: (Math.random() * 2 ** 31) | 0,
         entrants: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel })),
-        rounds: makeBracket(order),
+        rounds,
+        // 3位決定戦（ルールで「あり」、準決勝で負ける人が2人いるとき）
+        ...(l.tourThird !== false && canHaveThird(rounds) ? { third: { a: -1, b: -1, w: -1 } } : {}),
         cur: null,
         champion: -1,
       };
@@ -749,9 +772,9 @@ export class Room extends DurableObject<Env> {
       return true;
     }
     const t = l.tour;
-    const nm = nextMatch(t.rounds);
+    const nm = nextMatch(t.rounds, t.third);
     if (!nm) return false;
-    const m = t.rounds[nm[0]][nm[1]];
+    const m = matchAt(t.rounds, t.third, nm[0], nm[1])!;
     const connected = this.connectedSlots();
     const players = [m.a, m.b].map((slot, i) => {
       const e = t.entrants.find((x) => x.slot === slot)!;
@@ -773,7 +796,7 @@ export class Room extends DurableObject<Env> {
     const t = this.lobby?.tour;
     if (!t || !t.cur) return;
     const win = results[0]?.slot ?? -1;
-    setWinner(t.rounds, t.cur[0], t.cur[1], win);
+    setWinner(t.rounds, t.cur[0], t.cur[1], win, t.third);
     t.cur = null;
     t.champion = champion(t.rounds);
     this.clearTourTimer();
@@ -815,6 +838,7 @@ export class Room extends DurableObject<Env> {
     this.setup = setup;
     // 新しい試合：本人の状態は最初にすべて送り直す（端末は start で覚えていた状態を捨てる）
     this.meSent = new WeakMap();
+    this.dropUsed.clear();
     // トーナメントの合間にした予想は、この試合の選手を選んでいれば引き継ぐ
     const inMatch = new Set(setup.players.map((p) => p.slot));
     for (const [k, v] of this.predicts) if (!inMatch.has(v.p) || (k.startsWith('h') && inMatch.has(Number(k.slice(1))))) this.predicts.delete(k);

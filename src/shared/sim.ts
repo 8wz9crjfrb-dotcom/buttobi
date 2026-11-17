@@ -1497,6 +1497,18 @@ export class Sim {
     this.addEntity('item', -1, x, m.top + 9, ITEMS.life, kind);
   }
 
+  /**
+   * 乱入アイテム：試合に出ていない人が落とす（kind = アイテムの種類、x = 落とす横の位置）。
+   * アイテムの「あり・なし」のルールに関係なく落とせる。落とせたら true
+   */
+  dropItem(kind: number, x: number): boolean {
+    if (this.finished || this.frame <= COUNTDOWN_FRAMES) return false;
+    const m = this.stage.main;
+    const cx = Math.max(m.x1 + 1, Math.min(m.x2 - 1, x));
+    this.addEntity('item', -1, cx, m.top + 9, ITEMS.life, ((kind % ITEMS.kinds) + ITEMS.kinds) % ITEMS.kinds);
+    return true;
+  }
+
   /** アイテムの効果（0=おにぎり：回復 1=スニーカー：倍速 2=砂時計：ほかの人が止まる 3=お守り：無敵） */
   private useItem(f: Fighter, kind: number): void {
     switch (kind) {

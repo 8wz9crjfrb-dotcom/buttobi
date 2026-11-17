@@ -48,6 +48,10 @@ export interface Profile {
   wins: number;
   horde: number;
   costumes: number;
+  /** 勝敗予想：予想した回数・当たった回数・予想でもらったコイン（予想ランキングに使う） */
+  pn?: number;
+  ph?: number;
+  pc?: number;
 }
 
 const int = (v: unknown, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v)) || 0));
@@ -66,6 +70,9 @@ export function sanitizeProfile(raw: unknown, charIds: string[]): Profile | null
     wins: int(r.wins, 999999),
     horde: int(r.horde, 100),
     costumes: int(r.costumes, 9999),
+    pn: int(r.pn, 999999),
+    ph: Math.min(int(r.ph, 999999), int(r.pn, 999999)),
+    pc: int(r.pc, 99999999),
   };
 }
 

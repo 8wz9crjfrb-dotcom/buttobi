@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 29;
+export const PROTOCOL_VERSION = 30;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -72,6 +72,8 @@ export interface LobbyInfo {
   again?: number[];
   /** 対戦の形式がトーナメント（ホストが選ぶ） */
   tourOn?: boolean;
+  /** トーナメントの3位決定戦（決勝の前に行う） */
+  tourThird?: boolean;
   /** 進行中・終わったトーナメント */
   tour?: TourInfo;
 }
@@ -90,7 +92,9 @@ export interface TourInfo {
   id: number;
   entrants: TourEntrant[];
   rounds: TourMatch[][];
-  /** 今戦っている試合 [回戦, 番号]（試合と試合の間は null） */
+  /** 3位決定戦（準決勝で負けた2人。なしのときは無い） */
+  third?: TourMatch;
+  /** 今戦っている試合 [回戦, 番号]（3位決定戦は [-1, 0]。試合と試合の間は null） */
   cur: [number, number] | null;
   /** 優勝した人の slot（まだなら -1） */
   champion: number;
@@ -108,7 +112,7 @@ export type ClientMsg =
   | { t: 'char'; charId: string; costume?: string }
   /** チーム戦のチームを変える（自分の枠。ホストは slot でCPUの枠も変えられる） */
   | { t: 'team'; team: number; slot?: number }
-  | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number; tour?: boolean }
+  | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number; tour?: boolean; tourThird?: boolean }
   | { t: 'start' }
   /** 結果画面の「もう1戦したい」（on = 押した / 取り消した）。人が全員押すと再戦が始まる */
   | { t: 'again'; on: boolean }
@@ -116,6 +120,8 @@ export type ClientMsg =
   | { t: 'ready'; on: boolean }
   /** 定型文のスタンプ（STAMPS の番号） */
   | { t: 'stamp'; id: number }
+  /** 乱入アイテム（アイテムの種類）。試合に出ていない人が、1試合に1回だけ落とせる */
+  | { t: 'drop'; kind: number }
   /** 勝敗予想（勝つと思う選手の slot）。試合に出ていない人だけ */
   | { t: 'predict'; slot: number }
   /** 入力。s = 最初の入力の通し番号、i = 1フレームごとの [mx, my, ボタン] */
@@ -139,6 +145,8 @@ export type ServerMsg =
   | { t: 'notice'; msg: string }
   /** だれかが送ったスタンプ */
   | { t: 'stamp'; slot: number; name: string; id: number }
+  /** 乱入アイテムが落とされた（n = 落とした人、kind = 種類）。used = この試合でもう落とした人（端末のボタンを消すため） */
+  | { t: 'dropped'; n: string; kind: number; used: string[] }
   /** 勝敗予想の一覧（n = 予想した人の名前、p = 勝つと思う選手の slot） */
   | { t: 'predicts'; list: { n: string; p: number }[] }
   | { t: 'pong'; c: number }

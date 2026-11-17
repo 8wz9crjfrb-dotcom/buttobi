@@ -4,7 +4,7 @@ import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, getCharacter, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
-import { roundName } from '../shared/tournament';
+import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
 import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
@@ -299,7 +299,10 @@ function startSession(s: Session): void {
   if (!(s instanceof LocalSession && s.training && tutorialStarting)) stopTutorial();
   session = s;
   resultsShown = false;
-  if (s.kind !== 'net') hidePredict();
+  if (s.kind !== 'net') {
+    hidePredict();
+    hideDrop();
+  }
   lastView = null;
   renderer.setMatch(s.setup, getStage(s.setup.stageId));
   input.reset();
@@ -587,6 +590,9 @@ function myProfile(): Profile {
     wins: progress.totals.wins,
     horde: progress.hordeBest?.kos ?? 0,
     costumes: ownedCostumeCount(),
+    pn: progress.pred?.n ?? 0,
+    ph: progress.pred?.hit ?? 0,
+    pc: progress.pred?.coins ?? 0,
   };
 }
 
@@ -656,7 +662,6 @@ function showFriends(): void {
   const rows = sorted
     .map((f) => {
       const status = f.room ? `<span class="fr-room">ルーム公開中 ${f.room.n}/${f.room.max}</span>` : f.online ? '<span class="fr-on">オンライン</span>' : '<span class="muted">オフライン</span>';
-      // オンラインなら一緒に戦った回数、オフラインなら最後にアプリを開いていた時刻
       // オフラインの人だけ、最後にアプリを開いていた時刻を添える
       const sub = f.online || f.room ? '' : `・最終ログイン ${f.seen ? agoText(f.seen) : '記録なし'}`;
       return `<button type="button" class="fr-item ${friendPick === f.code ? 'on' : ''}" data-pick="${f.code}">
@@ -682,7 +687,7 @@ function showFriends(): void {
     : `${profileCard(settings.name || 'あなた', social.code || '…', me)}
        <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
   showScreen(
-    `<div class="fr-head"><button class="btn small" id="back">もどる</button><h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2></div>
+    `<div class="fr-head"><button class="btn small" id="back">もどる</button><h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2><button class="btn small" id="pred-rank">${predictMark(true)}予想ランキング</button></div>
      <div class="fr-wrap">
        <div class="fr-left">
          <button type="button" class="fr-item me ${friendPick === 'me' ? 'on' : ''}" data-pick="me">${friendFace(settings.name || 'あなた', me)}<span class="fr-txt"><b>自分のプロフィール</b><small>見る・編集する</small></span></button>
@@ -712,6 +717,7 @@ function showFriends(): void {
         }),
       );
       root.querySelector('#pf-edit')?.addEventListener('click', () => showProfileEdit());
+      root.querySelector('#pred-rank')?.addEventListener('click', () => showPredRanking());
       root.querySelector('#fr-copy')?.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(social.code);
@@ -1645,6 +1651,38 @@ function pickCpuChar(i: number, onPick: (id: string) => void): void {
   screensEl.appendChild(el);
 }
 
+/** 予想ランキング：自分とフレンドの、勝敗予想でもらったコインの順（同じなら当たった回数の順） */
+function showPredRanking(): void {
+  const rows = [
+    { name: settings.name || 'あなた', me: true, n: progress.pred?.n ?? 0, h: progress.pred?.hit ?? 0, c: progress.pred?.coins ?? 0 },
+    ...social.state.friends.map((f) => ({ name: f.name, me: false, n: f.prof?.pn ?? 0, h: f.prof?.ph ?? 0, c: f.prof?.pc ?? 0 })),
+  ].sort((a, b) => b.c - a.c || b.h - a.h || a.n - b.n);
+  let rank = 0;
+  let prev = '';
+  const body = rows
+    .map((r, i) => {
+      const key = `${r.c}/${r.h}/${r.n}`;
+      if (key !== prev) rank = i + 1;
+      prev = key;
+      const rate = r.n ? Math.round((r.h / r.n) * 100) : 0;
+      return `<div class="pr-rank-row ${r.me ? 'me' : ''}"><span class="pr-rank-no">${rank}</span><b class="grow">${esc(r.name)}${r.me ? '（あなた）' : ''}</b><span class="pr-rank-c">${r.c.toLocaleString()}<small>コイン</small></span><span class="pr-rank-h">${r.h}/${r.n}回<small>的中率 ${rate}%</small></span></div>`;
+    })
+    .join('');
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.innerHTML = `<div class="modal-box">
+      <h3>${predictMark(true)}予想ランキング</h3>
+      <p class="muted small-note">勝敗予想でもらったコインの合計の順です。フレンドの成績は、そのフレンドがアプリを開いたときに更新されます。</p>
+      <div class="modal-body pr-rank">${body}</div>
+      <div class="footer"><button class="btn" data-close>閉じる</button></div>
+    </div>`;
+  el.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (t === el || t.closest('[data-close]')) el.remove();
+  });
+  screensEl.appendChild(el);
+}
+
 /** 100人組手を始める（自分＋敵3人。敵は倒されると次の敵が出てくる） */
 function startHorde(): void {
   cpuSpec = null;
@@ -1769,6 +1807,45 @@ function updateRoomShare(): void {
   const l = lobby;
   if (!l || net.spectating || l.hostSlot !== net.slot || !roomShared) return social.shareRoom(null);
   social.shareRoom({ code: l.code, n: l.players.length, max: MAX_PLAYERS, match: l.inMatch });
+}
+
+// ---------------------------------------------------------------------------
+// 乱入アイテム：試合に出ていない人（トーナメントの待ち・観戦）が、1試合に1回だけアイテムを落とせる
+const dropEl = document.createElement('div');
+dropEl.id = 'dropbar';
+dropEl.className = 'hidden';
+document.getElementById('app')!.appendChild(dropEl);
+let dropUsed = false;
+let dropTimer = 0;
+
+function hideDrop(): void {
+  dropEl.classList.add('hidden');
+  clearTimeout(dropTimer);
+}
+
+function renderDrop(): void {
+  if (session?.kind !== 'net' || session.mySlot !== -1 || session.setup.rules.horde || resultsShown) return hideDrop();
+  dropEl.classList.remove('hidden');
+  dropEl.innerHTML = dropUsed
+    ? `<div class="drop-title">乱入アイテム</div><div class="drop-done">投入済み</div>`
+    : `<div class="drop-title">乱入アイテム<small>1試合に1回</small></div>${ITEM_NAMES.map((n, i) => `<button type="button" class="drop-btn" data-drop="${i}"><b>${n}</b><small>${ITEM_INFO[i].short}</small></button>`).join('')}`;
+  dropEl.querySelectorAll<HTMLButtonElement>('[data-drop]').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (dropUsed) return;
+      dropUsed = true;
+      net.drop(Number(b.dataset.drop));
+      sfx.click();
+      renderDrop();
+    }),
+  );
+}
+
+/** 試合が始まった：試合に出ていなければ、カウントダウンのあとに乱入アイテムのボタンを出す */
+function onDropStart(setup: MatchSetup): void {
+  dropUsed = false;
+  hideDrop();
+  if (setup.players.some((p) => p.slot === net.slot && net.slot >= 0) || setup.rules.horde) return;
+  dropTimer = window.setTimeout(renderDrop, (COUNTDOWN_FRAMES / 60) * 1000);
 }
 
 // ---------------------------------------------------------------------------
@@ -1914,6 +1991,17 @@ function onPredictEnd(results: ResultEntry[]): void {
       saveWallet(wallet);
     }
     predictResult = { pick: myPick, hit, odds, coins, list };
+    // 予想の成績を記録して、フレンドの予想ランキングに出す。称号も調べる
+    const pr = (progress.pred ??= { n: 0, hit: 0, coins: 0 });
+    pr.n++;
+    if (hit) {
+      pr.hit++;
+      pr.coins += coins;
+    }
+    for (const t of checkTitles(progress, wallet)) toast(`称号「${t.name}」を手に入れた！ +${t.coins}`, 3500);
+    saveProgress(progress);
+    saveWallet(wallet);
+    social.setProfile(myProfile());
   } else if (list.length) {
     predictResult = { pick: -1, hit: false, odds: 0, coins: 0, list };
   }
@@ -1974,7 +2062,12 @@ function tourBracket(t: TourInfo): string {
         })
         .join('')}</div></div>`,
     )
-    .join('')}</div>`;
+    .join('')}${
+    // 3位決定戦（決勝の前に行う）：いちばん右の列に、決勝の下に並べる
+    t.third
+      ? `<div class="tb-col tb-third"><div class="tb-round">${roundName(THIRD, t.rounds.length)}</div><div class="tb-ms"><div class="tb-match ${t.cur && t.cur[0] === THIRD ? 'now' : ''}">${cell(t.third.a, t.third, THIRD, false)}${cell(t.third.b, t.third, THIRD, false)}</div>${t.third.w >= 0 ? '<div class="tb-third-note">3位</div>' : ''}</div></div>`
+      : ''
+  }</div>`;
 }
 
 /** 次の試合の説明（だれとだれ・あと何秒） */
@@ -1984,25 +2077,23 @@ function tourStatus(t: TourInfo): string {
     return `<div class="tour-status champ">${championMark()}優勝：${esc(e?.name ?? '？')}${t.champion === net.slot ? '（あなた）' : ''}</div>`;
   }
   if (t.cur) return `<div class="tour-status">試合中…</div>`;
-  for (let r = 0; r < t.rounds.length; r++) {
-    for (const m of t.rounds[r]) {
-      if (m.w >= 0 || m.a < 0 || m.b < 0) continue;
-      const nm = (slot: number) => esc(t.entrants.find((x) => x.slot === slot)?.name ?? '？');
-      const left = tourDeadline ? Math.max(0, Math.ceil((tourDeadline - Date.now()) / 1000)) : 0;
-      const mine = m.a === net.slot || m.b === net.slot;
-      // 自分が出ない試合は、勝敗を予想できる
-      const ents = [m.a, m.b].map((slot) => t.entrants.find((x) => x.slot === slot)!).filter(Boolean);
-      // 試合に出る人には、だれがどちらに予想したかを見せる（押せない）
-      const need = t.need ?? 0;
-      const voted = t.voted ?? 0;
-      const head = mine ? `みんなの予想（${voted}/${need}人）` : `勝つのはだれ？（${PREDICT_NOTE}）`;
-      const pick = need > 0 || !mine ? `<div class="pr-btns tour-pick"><span class="muted">${predictMark(true)}${head}</span>${pickButtons(ents, !mine, true)}</div>` : '';
-      const vote = need > 0 ? (voted >= need ? '全員が予想しました。まもなく開始！' : `予想 ${voted}/${need}人（全員そろうと始まります）`) : '';
-      tourLeftLabel = need > 0 && voted < need ? '締め切り' : '開始';
-      return `<div class="tour-status ${mine ? 'mine' : ''}">次の試合（${roundName(r, t.rounds.length)}）：${nm(m.a)} vs ${nm(m.b)}${mine ? '　← あなたの出番！' : ''}${vote ? `<span class="tour-vote">${vote}</span>` : ''}<span class="tour-left" data-tour-left>${left ? `あと${left}秒で${tourLeftLabel}` : ''}</span></div>${pick}`;
-    }
-  }
-  return '';
+  const next = nextMatch(t.rounds, t.third);
+  const m = next ? matchAt(t.rounds, t.third, next[0], next[1]) : undefined;
+  const r = next ? next[0] : 0;
+  if (!m) return '';
+  const nm = (slot: number) => esc(t.entrants.find((x) => x.slot === slot)?.name ?? '？');
+  const left = tourDeadline ? Math.max(0, Math.ceil((tourDeadline - Date.now()) / 1000)) : 0;
+  const mine = m.a === net.slot || m.b === net.slot;
+  // 自分が出ない試合は、勝敗を予想できる
+  const ents = [m.a, m.b].map((slot) => t.entrants.find((x) => x.slot === slot)!).filter(Boolean);
+  // 試合に出る人には、だれがどちらに予想したかを見せる（押せない）
+  const need = t.need ?? 0;
+  const voted = t.voted ?? 0;
+  const head = mine ? `みんなの予想（${voted}/${need}人）` : `勝つのはだれ？（${PREDICT_NOTE}）`;
+  const pick = need > 0 || !mine ? `<div class="pr-btns tour-pick"><span class="muted">${predictMark(true)}${head}</span>${pickButtons(ents, !mine, true)}</div>` : '';
+  const vote = need > 0 ? (voted >= need ? '全員が予想しました。まもなく開始！' : `予想 ${voted}/${need}人（全員そろうと始まります）`) : '';
+  tourLeftLabel = need > 0 && voted < need ? '締め切り' : '開始';
+  return `<div class="tour-status ${mine ? 'mine' : ''}">次の試合（${roundName(r, t.rounds.length)}）：${nm(m.a)} vs ${nm(m.b)}${mine ? '　← あなたの出番！' : ''}${vote ? `<span class="tour-vote">${vote}</span>` : ''}<span class="tour-left" data-tour-left>${left ? `あと${left}秒で${tourLeftLabel}` : ''}</span></div>${pick}`;
 }
 
 /** ロビーの情報が届いたとき：自動開始の時刻と、優勝のごほうび */
@@ -3411,9 +3502,11 @@ const net = new NetClient({
   onStart(setup) {
     startSession(new NetSession(setup, setup.players.find((p) => p.slot === net.slot) ? net.slot : -1, net));
     onPredictStart(setup);
+    onDropStart(setup);
   },
   onEnd(results) {
     onPredictEnd(results);
+    hideDrop();
     // 一緒に戦ったフレンドの回数を数える（観戦は数えない）
     if (session?.kind === 'net' && net.slot >= 0 && lobby) {
       const inMatch = new Set(session.setup.players.map((p) => p.slot));
@@ -3473,6 +3566,14 @@ const net = new NetClient({
   onStamp(slot, name, id) {
     showStamp(slot, name, STAMPS[id] ?? '');
   },
+  onDropped(name, kind, used) {
+    // だれが何を落としたかを全員に知らせる
+    toast(`${name} さんが乱入アイテム「${ITEM_NAMES[kind] ?? '？'}」を投入！`, 2500);
+    if (net.slot >= 0 && used.includes(`h${net.slot}`) && !dropUsed) {
+      dropUsed = true;
+      renderDrop();
+    }
+  },
   onPredicts(list) {
     predicts = list;
     if (predictSetup) renderPredict();
@@ -3482,6 +3583,7 @@ const net = new NetClient({
     toast('サーバーとの接続が切れました', 3500);
     lobby = null;
     hidePredict();
+    hideDrop();
     if (session?.kind === 'net') endToMenu();
     else showMenu();
   },
@@ -3598,13 +3700,14 @@ function showLobby(): void {
       <div data-pane="stage">${stageCards(l.stageId)}</div>
       <div data-pane="rule"><div class="setup-grid wide">
         <div class="opt opt-wide">対戦の形式 ${seg('fmt', [['all', '全員で'], ['tour', 'トーナメント']], tourOn ? 'tour' : 'all')}</div>
-        <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">ルームの全員（CPUも）で1対1の勝ち抜き戦。3人から。人数が半端ならシード（1回戦なし）ができます。始める前に組み合わせ表が出ます。試合に出ない人は勝敗を予想して観戦し、全員が予想すると次の試合が始まります（予想する人がいなければ15秒後、予想を待つのは最長30秒）。全員が「OK！」を押すと、待たずにすぐ始まります。チーム戦の設定は使いません</span></div>
+        <div class="opt" data-fmt-help ${tourOn ? '' : 'hidden'}>3位決定戦 ${seg('third', [['on', 'あり'], ['off', 'なし']], l.tourThird !== false ? 'on' : 'off')}</div>
+        <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">ルームの全員（CPUも）で1対1の勝ち抜き戦。3人から。人数が半端ならシード（1回戦なし）ができます。始める前に組み合わせ表が出ます。試合に出ない人は勝敗を予想して観戦し、全員が予想すると次の試合が始まります（予想する人がいなければ15秒後、予想を待つのは最長30秒）。全員が「OK！」を押すと、待たずにすぐ始まります。3位決定戦（4人以上のとき）は、決勝の前に準決勝で負けた2人で戦います（次に始めるトーナメントから）。チーム戦の設定は使いません</span></div>
         ${ruleControls(rules)}</div></div>
       <div data-pane="cpu"><div class="setup-grid wide">
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
       </div></div>`
-    : `<p class="help">${tourOn ? '<b>トーナメント</b>（1対1の勝ち抜き戦） ／ ' : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
+    : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
   const teamCount = new Set(l.players.map((p) => p.team ?? 0)).size;
   // 準備OK：人（CPU以外）のうち押している数。全員そろうとホストの開始ボタンが光る
   const humanList = l.players.filter((p) => !p.cpu && p.connected);
@@ -3643,7 +3746,7 @@ function showLobby(): void {
        <button class="btn" id="leave">抜ける</button>
        ${isHost && !tourOn && l.rules.teams && teamCount < 2 ? '<span class="muted">2チーム以上に分けてください</span>' : ''}
        ${isHost && tourOn && !tourLive && l.players.length < 3 ? '<span class="muted">トーナメントは3人から（CPUを足せます）</span>' : ''}
-       ${isHost ? `<span class="rule-sum">${tourOn ? 'トーナメント・' : ''}${esc(ruleSummary(l.rules, l.stageId, cpus.length, cpuLevel))}</span>` : ''}
+       ${isHost ? `<span class="rule-sum">${tourOn ? `トーナメント（3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}）・` : ''}${esc(ruleSummary(l.rules, l.stageId, cpus.length, cpuLevel))}</span>` : ''}
        ${isHost && !tourLive ? `<span class="ready-count ${allReady ? 'all' : ''}">準備OK ${readyN}/${humanN}</span>` : ''}
        ${isHost && !tourLive ? `<button class="btn primary ${allReady && canStart ? 'glow' : ''}" id="start" ${canStart ? '' : 'disabled'}>${startLabel}</button>` : ''}
        ${tourLive && !net.spectating ? `<span class="ready-count ${okN === okHumans.length ? 'all' : ''}">OK ${okN}/${okHumans.length}人</span><button class="btn ${myOk ? 'on-toggle' : 'primary'}" id="tour-ok">${myOk ? 'OK（取り消す）' : 'OK！'}</button>` : ''}
@@ -3696,7 +3799,12 @@ function showLobby(): void {
         let lv = cpuLevel;
         let stageId = l.stageId;
         let fmtTour = tourOn;
-        const push = () => net.config(rules, stageId, cpuCount, lv, fmtTour);
+        let third = l.tourThird !== false;
+        const push = () => net.config(rules, stageId, cpuCount, lv, fmtTour, third);
+        bindSeg(root, 'third', (v) => {
+          third = v === 'on';
+          push();
+        });
         bindSeg(root, 'fmt', (v) => {
           // 進行中のトーナメントがあれば終わりになるので、確かめる
           if (v !== 'tour' && tourLive && !confirm('進行中のトーナメントを終わりにしますか？')) return showLobby();
