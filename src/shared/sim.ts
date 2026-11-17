@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { CLOSE, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { CLOSE, CROWN, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -27,6 +27,10 @@ import {
   type MatchSetup,
   type AreaView,
   type BallView,
+  type CrownView,
+  type VaultView,
+  isNoStock,
+  isTwoTeam,
   type AreaZone,
   type MoveId,
   type ResultEntry,
@@ -102,7 +106,7 @@ const SNAPSHOT_KEYS = [
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeAir', 'bikeHp', 'bikeHitCd', 'wallHit', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
-  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'goals', 'closeCall', 'size', 'warpCd', 'moveAim',
+  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'moveAim',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -187,6 +191,10 @@ export class Fighter {
   lockFree = 0;
   /** 玉入れ：今出している技が、もうボールに当たった */
   ballHit = false;
+  /** 金庫まもり：今の技がもう金庫に当たった（1つの技で1回だけ） */
+  vaultHit = false;
+  /** 金庫まもり：相手の金庫に与えたダメージ */
+  vaultDmg = 0;
   /** 玉入れ：入れたゴールの数 */
   goals = 0;
   /** 課金の残り時間 */
@@ -524,10 +532,10 @@ export class Sim {
       f.y = sp.y;
       f.groundRef = sp.y > this.stage.main.top ? this.findPlatformAt(sp.x, sp.y) : -1;
       f.facing = sp.x > 0 ? -1 : 1;
-      f.stocks = setup.rules.mode === 'time' || setup.rules.mode === 'area' || setup.rules.mode === 'ball' ? 0 : setup.rules.stocks;
+      f.stocks = isNoStock(setup.rules.mode) ? 0 : setup.rules.stocks;
       if (setup.rules.teams || setup.rules.horde) f.team = setup.rules.horde ? (i === 0 ? 0 : 1) : Math.max(0, Math.min(3, p.team ?? 0));
       // 玉入れはいつも赤と青の2チーム（チーム戦でなければ順番に赤・青）
-      if (setup.rules.mode === 'ball') f.team = (setup.rules.teams ? p.team ?? i : i) % 2;
+      if (isTwoTeam(setup.rules.mode)) f.team = (setup.rules.teams ? p.team ?? i : i) % 2;
       // 100人組手の敵は倒されても次々に出てくる（残りの人数は hordeLeft で数える）
       if (setup.rules.horde && f.team !== 0) {
         f.stocks = 1;
@@ -542,6 +550,158 @@ export class Sim {
     });
     if (setup.rules.mode === 'area') this.setupArea();
     if (setup.rules.mode === 'ball') this.resetBall();
+    if (setup.rules.mode === 'crown') this.resetCrown();
+    if (setup.rules.mode === 'vault') this.setupVaults();
+  }
+
+  // ---------------------------------------------------------------- 王冠うばい
+  crown = { x: 0, y: 0, vy: 0, holder: -1, on: false, timer: 0, cd: 0, last: -1 };
+  /** 王冠を持っていた時間（フレーム）。番号はチーム戦ならチーム、個人戦なら slot */
+  crownPts = new Map<number, number>();
+
+  get crownGoalFrames(): number {
+    return (this.setup.rules.crownGoal ?? CROWN.goal) * 60;
+  }
+
+  crownKey(f: Fighter): number {
+    return this.setup.rules.teams ? f.team : f.slot;
+  }
+
+  /** 王冠をステージの中央の上に出す（timer フレーム後に出てくる） */
+  private resetCrown(timer = 0): void {
+    const m = this.stage.main;
+    this.crown = { x: (m.x1 + m.x2) / 2, y: m.top + 5, vy: 0, holder: -1, on: timer === 0, timer, cd: 0, last: -1 };
+  }
+
+  private updateCrown(): void {
+    const c = this.crown;
+    if (!c.on) {
+      if (--c.timer <= 0) {
+        this.resetCrown();
+        this.events.push({ k: 'poof', x: c.x, y: c.y });
+      }
+      return;
+    }
+    if (c.cd > 0) c.cd--;
+    const h = c.holder >= 0 ? this.fighter(c.holder) : undefined;
+    if (h) {
+      // 持っている人が撃墜された：王冠は中央に出直す
+      if (!h.alive || h.out) return this.resetCrown(CROWN.respawn);
+      c.x = h.x;
+      c.y = h.y + h.h + 0.3;
+      if (h.state !== 'respawn') {
+        const k = this.crownKey(h);
+        this.crownPts.set(k, (this.crownPts.get(k) ?? 0) + 1);
+      }
+      return;
+    }
+    // だれも持っていない：落ちてきて床や足場に乗り、触れた人が拾う
+    const py = c.y;
+    c.vy = Math.max(-12, c.vy - 25 * DT);
+    c.y += c.vy * DT;
+    const m = this.stage.main;
+    if (c.x >= m.x1 && c.x <= m.x2 && py >= m.top && c.y <= m.top) {
+      c.y = m.top;
+      c.vy = 0;
+    }
+    for (const sp of this.stage.platforms) {
+      const p = platformAt(sp, this.frame);
+      if (c.x >= p.x1 && c.x <= p.x2 && py >= p.prevY - 0.001 && c.y <= p.y) {
+        c.y = p.y;
+        c.vy = 0;
+      }
+    }
+    if (c.y < this.stage.blast.bottom) return this.resetCrown(CROWN.respawn);
+    const taker = this.fighters.find(
+      (v) => v.alive && !v.out && v.state !== 'respawn' && v.state !== 'grabbed' && !(c.cd > 0 && v.slot === c.last) && circleHitsBox(c.x, c.y + 0.3, CROWN.r, v),
+    );
+    if (taker) {
+      c.holder = taker.slot;
+      this.events.push({ k: 'crown', s: taker.slot, x: c.x, y: c.y });
+    }
+  }
+
+  /** 王冠を持っている人が相手の攻撃を受けた：王冠は攻撃した人に移る */
+  private crownSteal(v: Fighter, from: number): void {
+    const c = this.crown;
+    if (c.holder !== v.slot || c.cd > 0 || from < 0 || from === v.slot) return;
+    const a = this.fighter(from);
+    if (!a || !a.alive || a.out || this.friendly(from, v)) return;
+    c.holder = a.slot;
+    c.cd = CROWN.stealCd;
+    c.last = v.slot;
+    this.events.push({ k: 'crown', s: a.slot, x: v.x, y: v.y + v.h });
+  }
+
+  private crownView(): CrownView {
+    return { x: this.crown.x, y: this.crown.y, holder: this.crown.holder, on: this.crown.on, pts: [...this.crownPts.entries()], goal: this.crownGoalFrames };
+  }
+
+  // ---------------------------------------------------------------- 金庫まもり
+  /** 0 = 赤チーム（左）の金庫、1 = 青チーム（右）の金庫 */
+  vaults: { x: number; y: number; hp: number; max: number }[] = [];
+
+  private setupVaults(): void {
+    const m = this.stage.main;
+    // 人数が多いほど早く壊れるので、多いほうのチームの人数に合わせて耐久を増やす
+    const size = Math.max(1, ...[0, 1].map((t) => this.fighters.filter((f) => f.team % 2 === t).length));
+    const hp = Math.round((this.setup.rules.vaultHp ?? VAULT.hp) * (1 + VAULT.perPlayer * (size - 1)));
+    this.vaults = [
+      { x: m.x1 + VAULT.inset, y: m.top, hp, max: hp },
+      { x: m.x2 - VAULT.inset, y: m.top, hp, max: hp },
+    ];
+  }
+
+  /** 円が金庫に触れているか */
+  private circleHitsVault(i: number, cx: number, cy: number, r: number): boolean {
+    const v = this.vaults[i];
+    const nx = Math.max(v.x - VAULT.w / 2, Math.min(cx, v.x + VAULT.w / 2));
+    const ny = Math.max(v.y, Math.min(cy, v.y + VAULT.h));
+    return (cx - nx) ** 2 + (cy - ny) ** 2 <= r * r;
+  }
+
+  private hitVault(i: number, dmg: number, by: number, x: number, y: number): void {
+    const v = this.vaults[i];
+    if (v.hp <= 0 || dmg <= 0) return;
+    v.hp = Math.max(0, v.hp - dmg);
+    const f = this.fighter(by);
+    if (f) f.vaultDmg += dmg;
+    this.events.push({ k: 'vhit', x, y, t: i, p: dmg });
+    if (v.hp <= 0) this.events.push({ k: 'vbreak', x: v.x, y: v.y + VAULT.h / 2, t: i });
+  }
+
+  private updateVaults(): void {
+    // 攻撃が当たる：相手チームの金庫だけ（1つの技で1回）
+    for (const a of this.fighters) {
+      if (a.state !== 'attack' || !a.move || a.vaultHit || a.hitlag > 0 || !a.alive) continue;
+      const md = this.moveDef(a);
+      if (md.hitboxes.length === 0 || md.dmg <= 0) continue;
+      const t = moveTiming(md, a);
+      if (a.moveFrame < t.s || a.moveFrame >= t.s + t.a) continue;
+      const i = 1 - (a.team % 2);
+      const s = a.def.scale;
+      for (const hb of md.hitboxes) {
+        const cx = a.x + hb.x * a.facing * s;
+        const cy = a.y + hb.y * s;
+        if (!this.circleHitsVault(i, cx, cy, hb.r * s)) continue;
+        a.vaultHit = true;
+        this.hitVault(i, md.dmg * this.powerMul(a).dmg, a.slot, cx, cy);
+        break;
+      }
+    }
+    // 飛び道具が当たる：相手チームの金庫に当たったら消える
+    for (const p of this.projectiles) {
+      const o = this.fighter(p.owner);
+      if (!o || p.life <= 0) continue;
+      const i = 1 - (o.team % 2);
+      if (!this.circleHitsVault(i, p.x, p.y, p.r)) continue;
+      this.hitVault(i, p.dmg, p.owner, p.x, p.y);
+      p.life = 0;
+    }
+  }
+
+  private vaultView(): VaultView {
+    return { hp: [this.vaults[0]?.hp ?? 0, this.vaults[1]?.hp ?? 0], max: this.vaults[0]?.max ?? VAULT.hp };
   }
 
   // ---------------------------------------------------------------- 玉入れ
@@ -894,6 +1054,8 @@ export class Sim {
     if (this.setup.rules.mode === 'stamina') for (const f of this.fighters) this.checkHp(f);
     if (playing && !this.solo && this.setup.rules.mode === 'area') this.updateArea();
     if (playing && !this.solo && this.setup.rules.mode === 'ball') this.updateBall();
+    if (playing && !this.solo && this.setup.rules.mode === 'crown') this.updateCrown();
+    if (playing && !this.solo && this.setup.rules.mode === 'vault') this.updateVaults();
     for (const f of this.fighters) this.updateAntiLock(f);
     if (this.lagComp.size) {
       this.posHist.push(new Map(this.fighters.map((f) => [f.slot, { x: f.x, y: f.y }])));
@@ -1420,6 +1582,7 @@ export class Sim {
     if (id !== 'sspecial') f.chain = 0;
     f.redirected = false;
     f.ballHit = false;
+    f.vaultHit = false;
     f.rushQueued = false;
     f.crit = false;
     f.tetherOn = false;
@@ -2958,6 +3121,8 @@ export class Sim {
   }
 
   private knock(v: Fighter, dir: number, dmg: number, base: number, growth: number, angle: number, kbMul: number, from: number): void {
+    // 王冠うばい：王冠を持っている人に当てたら奪う
+    if (this.setup.rules.mode === 'crown') this.crownSteal(v, from);
     // 学習データ（AIエンジニア）：同じ相手からの攻撃ほどダメージが減る
     if (v.def.id === 'ai' && from >= 0 && from < v.learnHits.length) {
       dmg *= 1 - 0.05 * Math.min(5, v.learnHits[from]);
@@ -3327,7 +3492,7 @@ export class Sim {
       return;
     }
     // サドンデスはどのルールでも1ストック（落ちたら退場）
-    if (this.sudden || (rules.mode !== 'time' && rules.mode !== 'area' && rules.mode !== 'ball')) {
+    if (this.sudden || !isNoStock(rules.mode)) {
       f.stocks--;
       if (f.stocks <= 0) {
         f.out = true;
@@ -3399,7 +3564,10 @@ export class Sim {
     if (rules.mode === 'area' && [...this.areaGauge.values()].some((v) => v >= this.areaGoal)) over = true;
     // 玉入れ：どちらかのチームが先取点に届いたら終わり（ゴールのあと少し間をおく）
     if (rules.mode === 'ball' && this.ballScore.some((v) => v >= this.ballTarget) && this.ball.timer < BALL.respawn - 45) over = true;
-    if (rules.mode !== 'time' && rules.mode !== 'area' && rules.mode !== 'ball' && this.fighters.length > 1) {
+    // 王冠うばい：だれかが目標の時間まで持ったら終わり。金庫まもり：どちらかの金庫が壊れたら終わり
+    if (rules.mode === 'crown' && [...this.crownPts.values()].some((v) => v >= this.crownGoalFrames)) over = true;
+    if (rules.mode === 'vault' && this.vaults.some((v) => v.hp <= 0)) over = true;
+    if (!isNoStock(rules.mode) && this.fighters.length > 1) {
       // 残っているチーム（チーム戦でなければ選手）が1つ以下になったら終わり
       const teams = new Set(this.fighters.filter((f) => !f.out).map((f) => f.team));
       if (teams.size <= 1) over = true;
@@ -3416,9 +3584,21 @@ export class Sim {
     const time = this.setup.rules.mode === 'time';
     const area = this.setup.rules.mode === 'area';
     const ball = this.setup.rules.mode === 'ball';
+    const crown = this.setup.rules.mode === 'crown';
+    const vault = this.setup.rules.mode === 'vault';
     const gauge = (f: Fighter) => this.areaGauge.get(this.areaKey(f)) ?? 0;
+    const held = (f: Fighter) => this.crownPts.get(this.crownKey(f)) ?? 0;
+    /** そのチームが相手の金庫に与えたダメージ */
+    const broke = (team: number) => {
+      const v = this.vaults[1 - (team % 2)];
+      return v ? v.max - v.hp : 0;
+    };
     const score = (f: Fighter) =>
-      ball
+      crown
+        ? held(f) * 1000 + (f.kos - f.falls)
+        : vault
+        ? f.vaultDmg * 1000 + (f.kos - f.falls)
+        : ball
         ? f.goals * 1000 + (f.kos - f.falls)
         : area
         ? Math.floor(gauge(f)) * 1000 + (f.kos - f.falls)
@@ -3429,7 +3609,11 @@ export class Sim {
     const teamScore = new Map<number, number>();
     for (const f of this.fighters) {
       const members = this.fighters.filter((o) => o.team === f.team);
-      const v = ball
+      const v = crown
+        ? held(f) * 1000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
+        : vault
+        ? broke(f.team) * 100000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
+        : ball
         ? this.ballScore[f.team] * 100000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
         : area
         ? Math.floor(gauge(f)) * 1000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
@@ -3461,13 +3645,15 @@ export class Sim {
         throws: e.f.throws,
         ...(area ? { area: Math.floor((gauge(e.f) / this.areaGoal) * 100) } : {}),
         ...(ball ? { goals: e.f.goals, teamGoals: this.ballScore[e.f.team] } : {}),
+        ...(crown ? { crown: Math.floor(held(e.f) / 60) } : {}),
+        ...(vault ? { vaultDmg: Math.round(e.f.vaultDmg), vaultBroke: Math.round((broke(e.f.team) / (this.vaults[0]?.max || 1)) * 100) } : {}),
       };
     });
   }
 
   /** チームで順位を決める（チーム戦・100人組手） */
   get teamMode(): boolean {
-    return !!(this.setup.rules.teams || this.setup.rules.horde || this.setup.rules.mode === 'ball');
+    return !!(this.setup.rules.teams || this.setup.rules.horde || isTwoTeam(this.setup.rules.mode));
   }
 
   toView(): ViewState {
@@ -3510,6 +3696,8 @@ export class Sim {
       ended: this.ended,
       horde: this.setup.rules.horde ? this.hordeDefeated : undefined,
       area: this.setup.rules.mode === 'area' ? this.areaView() : undefined,
+      crown: this.setup.rules.mode === 'crown' ? this.crownView() : undefined,
+      vault: this.setup.rules.mode === 'vault' ? this.vaultView() : undefined,
       sudden: this.sudden || undefined,
       ball: this.setup.rules.mode === 'ball' ? this.ballView() : undefined,
     };

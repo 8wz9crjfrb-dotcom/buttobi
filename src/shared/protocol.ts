@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 33;
+export const PROTOCOL_VERSION = 34;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -171,6 +171,10 @@ export interface EncodedState {
   b?: number[];
   /** サドンデス中 */
   sd?: 1;
+  /** 王冠うばい：[x, y, 持っている人, 出ている(1/0), 勝ちの時間, 番号, 時間, 番号, 時間...] */
+  c?: number[];
+  /** 金庫まもり：[赤の耐久, 青の耐久, 最大] */
+  v?: number[];
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -205,6 +209,8 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
     n: v.entities.map((e) => [ENTITY_KINDS.indexOf(e.kind), Math.round(e.x * 100), Math.round(e.y * 100), e.owner, e.life, e.dir]),
     ev: events.map((e) => ('x' in e ? { ...e, x: r2(e.x), y: r2(e.y) } : e)),
     ...(v.sudden ? { sd: 1 as const } : {}),
+    ...(v.crown ? { c: [Math.round(v.crown.x * 100), Math.round(v.crown.y * 100), v.crown.holder, v.crown.on ? 1 : 0, v.crown.goal, ...v.crown.pts.flat()] } : {}),
+    ...(v.vault ? { v: [Math.round(v.vault.hp[0] * 10) / 10, Math.round(v.vault.hp[1] * 10) / 10, v.vault.max] } : {}),
     ...(v.ball ? { b: [Math.round(v.ball.x * 100), Math.round(v.ball.y * 100), Math.round(v.ball.vx * 10), v.ball.on ? 1 : 0, v.ball.score[0], v.ball.score[1], v.ball.target] } : {}),
     ...(v.area
       ? {
@@ -250,6 +256,17 @@ export function decodeState(s: EncodedState): ViewState {
     entities: (s.n ?? []).map((a) => ({ kind: ENTITY_KINDS[a[0]] ?? 'wall', x: a[1] / 100, y: a[2] / 100, owner: a[3], life: a[4], dir: a[5] ?? 1 })),
     events: s.ev,
     sudden: s.sd === 1 || undefined,
+    crown: s.c
+      ? {
+          x: s.c[0] / 100,
+          y: s.c[1] / 100,
+          holder: s.c[2],
+          on: s.c[3] === 1,
+          goal: s.c[4],
+          pts: Array.from({ length: Math.floor((s.c.length - 5) / 2) }, (_, k) => [s.c![5 + k * 2], s.c![6 + k * 2]] as [number, number]),
+        }
+      : undefined,
+    vault: s.v ? { hp: [s.v[0], s.v[1]], max: s.v[2] } : undefined,
     ball: s.b ? { x: s.b[0] / 100, y: s.b[1] / 100, vx: s.b[2] / 10, on: s.b[3] === 1, score: [s.b[4], s.b[5]], target: s.b[6] } : undefined,
     area: s.a
       ? {

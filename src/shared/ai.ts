@@ -129,6 +129,11 @@ export class CpuController {
       const go = this.areaMove(sim, f, lv);
       if (go) return go;
     }
+    // 王冠うばい：落ちている王冠を拾いに行く。持っているときは相手から離れる
+    if (sim.setup.rules.mode === 'crown') {
+      const go = this.crownMove(sim, f, lv);
+      if (go) return go;
+    }
     // 玉入れ：ボールの後ろに回って、かごまでの距離に合う技で打つ
     if (sim.setup.rules.mode === 'ball') {
       const go = this.ballMove(sim, f, lv);
@@ -330,6 +335,36 @@ export class CpuController {
    * かごまで4〜6.5mなら弱攻撃、7.5〜12mなら横攻撃で山なりに打ち込む（上から入ったときだけ点）。
    * 近すぎ・遠すぎるときは、ボールを体で押して（ドリブル）ちょうどいい距離まで運ぶ
    */
+  private crownMove(sim: Sim, f: Fighter, lv: number): InputState | null {
+    const c = sim.crown;
+    const m = sim.stage.main;
+    if (!c.on || !f.grounded) return null;
+    if (c.holder < 0) {
+      // 拾いに行く（上にあればジャンプ）
+      const dx = c.x - f.x;
+      if (c.y - f.y > 1.5 && Math.abs(dx) < 2.5) return { mx: Math.sign(dx) * 0.6, my: 0, buttons: BTN_JUMP };
+      if (Math.abs(dx) > 0.4) return { mx: Math.sign(dx), my: 0, buttons: 0 };
+      return null;
+    }
+    if (c.holder !== f.slot) return null;
+    // 持っている：近くの相手からは離れる（すぐ近くなら戦う）。強いCPUほど上手に逃げる
+    let near: Fighter | null = null;
+    let nd = Infinity;
+    for (const o of sim.fighters) {
+      if (o === f || !o.alive || o.out || sim.sameTeam(o, f)) continue;
+      const d = Math.abs(o.x - f.x);
+      if (d < nd) {
+        nd = d;
+        near = o;
+      }
+    }
+    if (!near || nd < 1.8 || nd > 7 || !this.rng.chance(0.25 + lv * 0.07)) return null;
+    let dir = f.x < near.x ? -1 : 1;
+    // 端に追いつめられたら、相手を飛び越える
+    if ((dir < 0 && f.x - m.x1 < 2) || (dir > 0 && m.x2 - f.x < 2)) return { mx: -dir, my: 0, buttons: BTN_JUMP };
+    return { mx: dir, my: 0, buttons: 0 };
+  }
+
   private ballMove(sim: Sim, f: Fighter, lv: number): InputState | null {
     const b = sim.ball;
     const t = this.target(sim, f);
@@ -419,6 +454,22 @@ export class CpuController {
 
   /** いちばん近い相手。分身（ハルシネーション）にもだまされる */
   private target(sim: Sim, f: Fighter): Target | null {
+    const rules = sim.setup.rules;
+    // 王冠うばい：相手が王冠を持っていたら、その人をねらう
+    if (rules.mode === 'crown' && sim.crown.holder >= 0 && sim.crown.holder !== f.slot) {
+      const h = sim.fighter(sim.crown.holder);
+      if (h && h.alive && !sim.sameTeam(h, f)) return h;
+    }
+    // 金庫まもり：近くに相手がいなければ、相手の金庫をねらう
+    if (rules.mode === 'vault' && sim.vaults.length === 2) {
+      const v = sim.vaults[1 - (f.team % 2)];
+      const mine = sim.vaults[f.team % 2];
+      // 守り：自分の金庫に相手が近づいていて、自分のほうが自分の金庫に近ければ、その相手をねらう
+      const raider = sim.fighters.find((o) => o.alive && !o.out && !sim.sameTeam(o, f) && Math.abs(o.x - mine.x) < 3.5);
+      if (raider && Math.abs(f.x - mine.x) < Math.abs(f.x - v.x)) return raider;
+      const foeNear = sim.fighters.some((o) => o !== f && o.alive && !o.out && !sim.sameTeam(o, f) && Math.abs(o.x - f.x) < 2.2 && Math.abs(o.y - f.y) < 1.6);
+      if (v.hp > 0 && !foeNear) return { x: v.x, y: v.y, state: 'idle', damage: 0, grounded: true };
+    }
     let best: Target | null = null;
     let bestD = Infinity;
     for (const o of sim.fighters) {

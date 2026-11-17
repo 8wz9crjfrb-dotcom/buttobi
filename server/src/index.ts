@@ -25,7 +25,7 @@ import { LAG_COMP_MAX, Sim } from '../../src/shared/sim';
 import { isFriendHash } from '../../src/shared/social';
 import { MAX_BYTES, makeTransferCode, normalizeTransferCode, TransferBox } from './transfer';
 import { RANDOM_STAGE, resolveStage, STAGES } from '../../src/shared/stages';
-import { DEFAULT_HP, DEFAULT_RULES, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup } from '../../src/shared/types';
+import { DEFAULT_HP, DEFAULT_RULES, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup } from '../../src/shared/types';
 
 export { TransferBox } from './transfer';
 export { Social } from './social';
@@ -225,7 +225,7 @@ export class Room extends DurableObject<Env> {
       const r = this.setup.rules;
       // チームで勝ち負けが決まるルールと100人組手は予想しない
       // トーナメントの試合は、試合と試合の間にだけ予想する（試合が始まったら締め切り）
-      if (r.teams || r.mode === 'ball' || r.horde || l.tourOn || this.sim.frame >= PREDICT_FRAMES) return null;
+      if (r.teams || isTwoTeam(r.mode) || r.horde || l.tourOn || this.sim.frame >= PREDICT_FRAMES) return null;
       return this.setup.players.map((p) => p.slot);
     }
     // トーナメントの合間：次の試合
@@ -602,7 +602,9 @@ export class Room extends DurableObject<Env> {
         if (this.sim || slot !== l.hostSlot) return;
         const r = msg.rules;
         l.rules = {
-          mode: r?.mode === 'time' ? 'time' : r?.mode === 'stamina' ? 'stamina' : r?.mode === 'area' ? 'area' : r?.mode === 'ball' ? 'ball' : 'stock',
+          mode: (['time', 'stamina', 'area', 'ball', 'crown', 'vault'] as const).find((m) => m === r?.mode) ?? 'stock',
+          crownGoal: [20, 30, 45].includes(Number(r?.crownGoal)) ? Number(r.crownGoal) : 30,
+          vaultHp: [250, 400, 600].includes(Number(r?.vaultHp)) ? Number(r.vaultHp) : 400,
           stocks: Math.max(1, Math.min(5, r?.stocks | 0 || 3)),
           area: r?.area === 'fix2' ? 'fix2' : r?.area === 'random' ? 'random' : 'move',
           goals: Math.max(1, Math.min(9, (Number(r?.goals) | 0) || 5)),
@@ -615,8 +617,8 @@ export class Room extends DurableObject<Env> {
           itemRate: r?.itemRate === 'low' || r?.itemRate === 'high' ? r.itemRate : 'mid',
           gimmicks: r?.gimmicks === true,
           hp: Math.max(50, Math.min(300, (r?.hp ?? 0) | 0 || DEFAULT_HP)),
-          // 玉入れはいつも赤・青の2チーム（チームは選べる）
-          teams: r?.mode === 'ball' ? true : r?.teams === true,
+          // 玉入れ・金庫まもりはいつも赤・青の2チーム（チームは選べる）
+          teams: isTwoTeam(r?.mode) ? true : r?.teams === true,
           friendlyFire: r?.friendlyFire === true,
         };
         if (msg.stageId === RANDOM_STAGE || STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;
@@ -840,7 +842,7 @@ export class Room extends DurableObject<Env> {
     if (players.length < 2) return false;
     // チーム戦は2チーム以上いないと始められない
     // 玉入れは赤・青の2チーム（チームの番号を2で割った余り）
-    if (l.rules.teams && new Set(players.map((p) => (l.rules.mode === 'ball' ? (p.team ?? 0) % 2 : p.team ?? 0))).size < 2) return false;
+    if (l.rules.teams && new Set(players.map((p) => (isTwoTeam(l.rules.mode) ? (p.team ?? 0) % 2 : p.team ?? 0))).size < 2) return false;
     const seed = (Math.random() * 2 ** 31) | 0;
     const setup: MatchSetup = {
       players: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel, costume: p.costume, team: p.team ?? 0 })),

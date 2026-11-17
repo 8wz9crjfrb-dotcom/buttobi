@@ -5,7 +5,7 @@ import { areaColor, getCharacter, ITEM_COLORS, ITEM_INFO, ITEM_NAMES, playerColo
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
 import { BALL, ballBaskets, COUNTDOWN_FRAMES, gimmickAt, gimmickPhase, isSlippery, ROULETTE, WARP, warpSpots } from '../shared/sim';
-import { GIMMICK } from '../shared/moves';
+import { GIMMICK, VAULT } from '../shared/moves';
 import { FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
 import { getCostume } from '../shared/costumes';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -166,6 +166,8 @@ export class GameRenderer {
     this.buildStage(stage);
     this.buildModels();
     if (setup.rules.mode === 'ball') this.buildBall(stage);
+    if (setup.rules.mode === 'crown') this.buildCrown();
+    if (setup.rules.mode === 'vault') this.buildVaults(stage);
     const m = stage.main;
     this.camLook.set((m.x1 + m.x2) / 2, 3, 0);
     this.camPos.set(this.camLook.x, 5, 26);
@@ -198,6 +200,14 @@ export class GameRenderer {
     if (this.ballObj) {
       this.disposeBeam(this.ballObj.root);
       this.ballObj = null;
+    }
+    if (this.crownObj) {
+      this.disposeBeam(this.crownObj.root);
+      this.crownObj = null;
+    }
+    if (this.vaultObj) {
+      this.disposeBeam(this.vaultObj.root);
+      this.vaultObj = null;
     }
     for (const z of this.areaMeshes) this.disposeBeam(z.g);
     this.areaMeshes = [];
@@ -690,6 +700,8 @@ export class GameRenderer {
       this.updateEntrances(view);
       this.updateAreaZones(view);
       this.updateBall(view, dt);
+      this.updateCrown(view);
+      this.updateVaults(view);
       for (const f of view.fighters) {
         const m = this.models.get(f.slot);
         if (!m) continue;
@@ -1056,6 +1068,32 @@ export class GameRenderer {
       this.shake = Math.max(this.shake, 0.5);
       return;
     }
+    if (e.k === 'crown') {
+      // 王冠を手に入れた・奪った
+      this.spawn(this.ringGeo, 0xffd84a, e.x, e.y, 0, 0, 0.3, 14, 0.1);
+      this.props.showText('王冠ゲット！', '#ffd84a', e.x, e.y + 1.2, false, 50);
+      return;
+    }
+    if (e.k === 'vhit') {
+      // 金庫に当たった：火花
+      for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2;
+        this.spawn(this.sparkGeo, i % 2 ? 0xffd84a : 0xffffff, e.x, e.y, Math.cos(a) * 4, Math.sin(a) * 4 + 2, 0.12, 12, -0.004);
+      }
+      return;
+    }
+    if (e.k === 'vbreak') {
+      // 金庫が壊れた：大きな爆発と、金貨が飛び散る
+      for (let i = 0; i < 22; i++) {
+        const a = Math.random() * Math.PI;
+        const sp = 4 + Math.random() * 7;
+        this.spawn(this.sparkGeo, i % 3 ? 0xffd23f : 0xffffff, e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.25, 30, -0.004);
+      }
+      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.5, 20, 0.14);
+      this.props.showText('金庫破壊！', '#ffd23f', e.x, e.y + 2, true, 90);
+      this.shake = Math.max(this.shake, 0.8);
+      return;
+    }
     if (e.k === 'rewind') {
       // Ctrl+Z：元いた場所と戻った先に緑の輪、戻った先に「Ctrl+Z」の文字
       this.spawn(this.ringGeo, 0x39ff88, e.x, e.y, 0, 0, 0.3, 14, 0.1);
@@ -1396,6 +1434,141 @@ export class GameRenderer {
       const hgt = Math.max(0, b.y - this.stage.main.top);
       o.shadow.scale.setScalar(Math.max(0.3, 1 - hgt * 0.12));
     }
+  }
+
+  // ---------------------------------------------------------------- 王冠うばいの王冠
+  private crownObj: { root: THREE.Group; crown: THREE.Group; ring: THREE.Mesh } | null = null;
+
+  private buildCrown(): void {
+    const root = new THREE.Group();
+    this.scene.add(root);
+    const gold = new THREE.MeshToonMaterial({ color: 0xffd23f, emissive: 0x6a4a00, emissiveIntensity: 0.6 });
+    const crown = new THREE.Group();
+    // 輪っか（帯）と、5本のとがり。とがりの先に赤い玉
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.3, 0.2, 20, 1, true), gold);
+    (band.material as THREE.Material).side = THREE.DoubleSide;
+    crown.add(band);
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.26, 6), gold);
+      spike.position.set(Math.cos(a) * 0.31, 0.22, Math.sin(a) * 0.31);
+      crown.add(spike);
+      const gem = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: k % 2 ? 0x4f9dff : 0xff4a5a }));
+      gem.position.set(Math.cos(a) * 0.31, 0.37, Math.sin(a) * 0.31);
+      crown.add(gem);
+    }
+    const ol = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.33, 0.24, 20, 1, true), new THREE.MeshBasicMaterial({ color: 0x1b1b28, side: THREE.BackSide }));
+    crown.add(ol);
+    root.add(crown);
+    // 落ちているときの、足元の光る輪（拾える場所の目印）
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.62, 28), new THREE.MeshBasicMaterial({ color: 0xffd84a, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2;
+    root.add(ring);
+    this.crownObj = { root, crown, ring };
+  }
+
+  private updateCrown(view: ViewState): void {
+    const o = this.crownObj;
+    const c = view.crown;
+    if (!o || !c) return;
+    o.crown.visible = c.on;
+    const held = c.holder >= 0;
+    o.ring.visible = c.on && !held;
+    const t = this.time;
+    if (held) {
+      // 持っている人の頭の上で、少しゆれる
+      o.crown.position.set(c.x, c.y + 0.1 + Math.sin(t * 6) * 0.04, 0.2);
+      o.crown.rotation.set(0, t * 2, 0.15);
+      o.crown.scale.setScalar(1);
+    } else {
+      // 落ちているときは大きめで、くるくる回って光る
+      o.crown.position.set(c.x, c.y + 0.45 + Math.sin(t * 3) * 0.08, 0.3);
+      o.crown.rotation.set(0, t * 1.5, 0);
+      o.crown.scale.setScalar(1.3);
+      o.ring.position.set(c.x, c.y + 0.03, 0.3);
+      (o.ring.material as THREE.MeshBasicMaterial).opacity = 0.45 + 0.3 * Math.sin(t * 5);
+    }
+  }
+
+  // ---------------------------------------------------------------- 金庫まもりの金庫
+  private vaultObj: { root: THREE.Group; boxes: THREE.Group[]; bars: THREE.Mesh[]; dials: THREE.Mesh[]; hp: number[] } | null = null;
+
+  private buildVaults(stage: StageDef): void {
+    const root = new THREE.Group();
+    this.scene.add(root);
+    const m = stage.main;
+    const boxes: THREE.Group[] = [];
+    const bars: THREE.Mesh[] = [];
+    const dials: THREE.Mesh[] = [];
+    [m.x1 + VAULT.inset, m.x2 - VAULT.inset].forEach((x, t) => {
+      const col = TEAM_COLORS[t];
+      const g = new THREE.Group();
+      g.position.set(x, m.top, -0.3);
+      // 鉄の箱（チームの色の帯）、正面のダイヤル、取っ手、足
+      const body = new THREE.Mesh(new THREE.BoxGeometry(VAULT.w, VAULT.h, 1.1), new THREE.MeshToonMaterial({ color: 0x5a6070 }));
+      body.position.y = VAULT.h / 2;
+      g.add(body);
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(VAULT.w * 1.04, VAULT.h * 1.03, 1.12), new THREE.MeshBasicMaterial({ color: 0x1b1b28, side: THREE.BackSide }));
+      edge.position.y = VAULT.h / 2;
+      g.add(edge);
+      for (const y of [0.18, VAULT.h - 0.18]) {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(VAULT.w + 0.02, 0.16, 1.14), new THREE.MeshToonMaterial({ color: col }));
+        stripe.position.y = y;
+        g.add(stripe);
+      }
+      const door = new THREE.Mesh(new THREE.BoxGeometry(VAULT.w * 0.78, VAULT.h * 0.7, 0.06), new THREE.MeshToonMaterial({ color: 0x737a8c }));
+      door.position.set(0, VAULT.h / 2, 0.57);
+      g.add(door);
+      const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 20), new THREE.MeshToonMaterial({ color: 0xd9b44a }));
+      dial.rotation.x = Math.PI / 2;
+      dial.position.set(0, VAULT.h / 2 + 0.1, 0.62);
+      g.add(dial);
+      dials.push(dial);
+      const knob = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.06), new THREE.MeshToonMaterial({ color: 0xd9b44a }));
+      knob.position.set(0.28 * (t === 0 ? 1 : -1), VAULT.h / 2 - 0.3, 0.62);
+      g.add(knob);
+      // 上に耐久のバー（チームの色）
+      // 背景は不透明にする（半透明だと、あとから描かれて色のバーを隠してしまう）
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.16), new THREE.MeshBasicMaterial({ color: 0x1b1b28 }));
+      back.position.set(0, VAULT.h + 0.4, 0.6);
+      g.add(back);
+      const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.44, 0.11), new THREE.MeshBasicMaterial({ color: col }));
+      bar.position.set(0, VAULT.h + 0.4, 0.63);
+      g.add(bar);
+      bars.push(bar);
+      root.add(g);
+      boxes.push(g);
+    });
+    this.vaultObj = { root, boxes, bars, dials, hp: [1, 1] };
+  }
+
+  private updateVaults(view: ViewState): void {
+    const o = this.vaultObj;
+    const v = view.vault;
+    if (!o || !v) return;
+    v.hp.forEach((hp, t) => {
+      const r = Math.max(0, hp / v.max);
+      // 耐久のバーは左から減る
+      o.bars[t].scale.x = Math.max(0.001, r);
+      o.bars[t].position.x = -0.72 * (1 - r);
+      // 当たったら少しゆれる・壊れたら傾いて沈む
+      const hit = r < o.hp[t];
+      o.hp[t] = r;
+      const g = o.boxes[t];
+      if (hit) g.userData.shake = 0.25;
+      const sh = (g.userData.shake as number | undefined) ?? 0;
+      g.userData.shake = Math.max(0, sh - 0.016);
+      const base = this.stage ? (t === 0 ? this.stage.main.x1 + VAULT.inset : this.stage.main.x2 - VAULT.inset) : g.position.x;
+      g.position.x = base + (sh > 0 ? Math.sin(this.time * 60) * 0.06 * (sh / 0.25) : 0);
+      if (r <= 0) {
+        g.rotation.z = (t === 0 ? 1 : -1) * 0.25;
+        g.scale.y = 0.6;
+      } else {
+        g.rotation.z = 0;
+        g.scale.y = 1;
+      }
+      o.dials[t].rotation.y = this.time * (1 - r) * 4;
+    });
   }
 
   // ---------------------------------------------------------------- エリアバトルのエリア

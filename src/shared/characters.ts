@@ -1,6 +1,6 @@
 // キャラクター定義（職業がそのままキャラクター）
 
-import type { MatchSetup } from './types';
+import { isTwoTeam, type MatchSetup } from './types';
 import { ITEMS, SPEEDUP } from './moves';
 
 export interface CharacterDef {
@@ -317,7 +317,7 @@ export function playerColor(setup: MatchSetup | null | undefined, slot: number):
   const p = setup?.players.find((x) => x.slot === slot);
   if (rules?.horde && p) return setup!.players[0] === p ? SLOT_COLORS[0] : HORDE_COLOR;
   // 玉入れはいつも赤と青の2チーム（チーム戦でなければ順番に赤・青。sim.ts と同じ決め方）
-  if (rules?.mode === 'ball' && p) return TEAM_COLORS[(rules.teams ? p.team ?? setup!.players.indexOf(p) : setup!.players.indexOf(p)) % 2];
+  if (rules && isTwoTeam(rules.mode) && p) return TEAM_COLORS[(rules.teams ? p.team ?? setup!.players.indexOf(p) : setup!.players.indexOf(p)) % 2];
   if (rules?.teams && p) return TEAM_COLORS[(p.team ?? 0) % TEAM_COLORS.length];
   return SLOT_COLORS[slot % SLOT_COLORS.length];
 }

@@ -103,7 +103,17 @@ export const MOVE_IDS: MoveId[] = [
 ];
 
 /** stock = 残機制、time = タイム制、stamina = 体力制（HPが0になるか場外で撃墜） */
-export type RuleMode = 'stock' | 'time' | 'stamina' | 'area' | 'ball';
+export type RuleMode = 'stock' | 'time' | 'stamina' | 'area' | 'ball' | 'crown' | 'vault';
+
+/** 赤・青の2チームで戦うルール（玉入れ・金庫まもり）。チームはいつも2つで、選んだ番号を2で割った余りで決まる */
+export function isTwoTeam(mode: RuleMode | undefined): boolean {
+  return mode === 'ball' || mode === 'vault';
+}
+
+/** 残機を使わない（何度でも復活する）ルール */
+export function isNoStock(mode: RuleMode | undefined): boolean {
+  return mode === 'time' || mode === 'area' || mode === 'ball' || mode === 'crown' || mode === 'vault';
+}
 /** エリアバトルのエリアの形：移動する1つ／動かない2つ／おまかせ（試合ごとにどちらか） */
 export type AreaShape = 'move' | 'fix2' | 'random';
 
@@ -134,6 +144,10 @@ export interface MatchRules {
   goals?: number;
   /** 玉入れ：相手チームに攻撃が当たる（false ならボールにだけ当たる。未指定は当たる） */
   pvp?: boolean;
+  /** 王冠うばい：王冠を合計何秒持ったら勝ちか */
+  crownGoal?: number;
+  /** 金庫まもり：金庫の耐久 */
+  vaultHp?: number;
 }
 
 /** 体力制のHP（未指定のとき） */
@@ -195,6 +209,11 @@ export type GameEvent =
   | { k: 'item'; s: number; t: number; x: number; y: number }
   /** Ctrl+Z（ハッカー）：(x, y) から (tx, ty) へ戻った */
   | { k: 'rewind'; x: number; y: number; tx: number; ty: number; s: number }
+  /** 王冠うばい：王冠を手に入れた・奪った */
+  | { k: 'crown'; s: number; x: number; y: number }
+  /** 金庫まもり：金庫に攻撃が当たった（t = 金庫の番号、p = ダメージ）・壊れた */
+  | { k: 'vhit'; x: number; y: number; t: number; p: number }
+  | { k: 'vbreak'; x: number; y: number; t: number }
   /** サドンデスが始まった */
   | { k: 'sudden' }
   /** メガホン（アイテム）の衝撃波 */
@@ -283,8 +302,32 @@ export interface ViewState {
   area?: AreaView;
   /** 玉入れの状態 */
   ball?: BallView;
+  /** 王冠うばいの状態 */
+  crown?: CrownView;
+  /** 金庫まもりの状態 */
+  vault?: VaultView;
   /** サドンデス中（1位が同点のときの延長戦） */
   sudden?: boolean;
+}
+
+/** 王冠うばいの画面用の状態 */
+export interface CrownView {
+  x: number;
+  y: number;
+  /** 持っている人の slot（-1 = だれも持っていない） */
+  holder: number;
+  /** 出ている（撃墜されたあとは、しばらく消えてから中央に出直す） */
+  on: boolean;
+  /** 持っていた時間（フレーム）。[番号, 値]（番号はチーム戦ならチーム、個人戦なら slot） */
+  pts: [number, number][];
+  /** 勝ちになる時間（フレーム） */
+  goal: number;
+}
+
+/** 金庫まもりの画面用の状態（0 = 赤チームの金庫、1 = 青チームの金庫） */
+export interface VaultView {
+  hp: [number, number];
+  max: number;
 }
 
 /** 玉入れの画面用の状態 */
@@ -334,6 +377,12 @@ export interface ResultEntry {
   goals?: number;
   /** 玉入れ：チームの点 */
   teamGoals?: number;
+  /** 王冠うばい：王冠を持っていた秒数（チーム戦はチームの合計） */
+  crown?: number;
+  /** 金庫まもり：相手の金庫に与えたダメージ（自分） */
+  vaultDmg?: number;
+  /** 金庫まもり：相手の金庫をどれだけ壊したか（%。チーム） */
+  vaultBroke?: number;
   /** 投げた回数 */
   throws?: number;
 }

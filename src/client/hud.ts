@@ -3,7 +3,7 @@
 import { areaColor, ballTeamOf, getCharacter, playerColor, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { COUNTDOWN_FRAMES } from '../shared/sim';
 import { clashMark } from './icons';
-import { DEFAULT_HP, FX_ARMOR, FX_POWER, FX_SPEED, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
+import { DEFAULT_HP, isTwoTeam, FX_ARMOR, FX_POWER, FX_SPEED, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
@@ -28,6 +28,10 @@ export class Hud {
   private noLimit = false;
   /** 玉入れ：タイマーの下の点数 */
   private ball: { root: HTMLElement; red: HTMLElement; blue: HTMLElement; last: string } | null = null;
+  /** 王冠うばい：人（チーム）ごとの持っていた時間のゲージ */
+  private crownHud: { bars: Map<number, { root: HTMLElement; fill: HTMLElement; num: HTMLElement }>; notice: HTMLElement; names: Map<number, string>; teams: boolean; teamOf: Map<number, number>; last: string } | null = null;
+  /** 金庫まもり：赤・青の金庫の耐久 */
+  private vaultHud: { fills: HTMLElement[]; nums: HTMLElement[] } | null = null;
   /** 自分の枠に出す、必殺技の待ち時間（B・横B・下B・上B） */
   private cdRow: { root: HTMLElement; bars: HTMLElement[] } | null = null;
   private lastCd = '';
@@ -77,7 +81,7 @@ export class Hud {
       stk.className = 'stk';
       const nm = document.createElement('div');
       nm.className = 'pnm';
-      const team = setup.rules.mode === 'ball' ? `${TEAM_NAMES[ballTeamOf(setup, p.slot)]}・` : setup.rules.teams ? `${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}・` : '';
+      const team = isTwoTeam(setup.rules.mode) ? `${TEAM_NAMES[ballTeamOf(setup, p.slot)]}・` : setup.rules.teams ? `${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}・` : '';
       nm.textContent = `${team}${p.name}`;
       if (portraits[p.slot]) {
         const face = document.createElement('img');
@@ -113,6 +117,43 @@ export class Hud {
     this.lastCenter = '';
     this.area = null;
     this.ball = null;
+    this.crownHud = null;
+    this.vaultHud = null;
+    if (setup.rules.mode === 'crown') {
+      // タイマーの下に、持っていた時間のゲージを横に並べる（チーム戦はチームごと、個人戦は人ごと）
+      const box = document.createElement('div');
+      box.className = 'hud-area';
+      const keys = setup.rules.teams ? [...new Set(setup.players.map((p) => p.team ?? 0))].sort((a, b) => a - b) : setup.players.map((p) => p.slot);
+      const bars = new Map<number, { root: HTMLElement; fill: HTMLElement; num: HTMLElement }>();
+      for (const k of keys) {
+        const root = document.createElement('div');
+        root.className = 'ab';
+        root.style.setProperty('--ac', hex(areaColor(setup, k)));
+        const fill = document.createElement('i');
+        const num = document.createElement('b');
+        num.textContent = '0';
+        root.append(fill, num);
+        box.appendChild(root);
+        bars.set(k, { root, fill, num });
+      }
+      box.classList.toggle('many', keys.length >= 5);
+      const notice = document.createElement('div');
+      notice.className = 'hud-area-notice crown';
+      this.el.append(box, notice);
+      const names = new Map(setup.players.map((p) => [p.slot, p.name] as [number, string]));
+      const teamOf = new Map(setup.players.map((p) => [p.slot, p.team ?? 0] as [number, number]));
+      this.crownHud = { bars, notice, names, teams: !!setup.rules.teams, teamOf, last: '' };
+    }
+    if (setup.rules.mode === 'vault') {
+      // タイマーの下に、赤と青の金庫の耐久
+      const box = document.createElement('div');
+      box.className = 'hud-vault';
+      box.innerHTML = [0, 1]
+        .map((t) => `<div class="vb" style="--ac:${hex(TEAM_COLORS[t])}"><small>${TEAM_NAMES[t]}の金庫</small><div class="bar"><i></i><b>100%</b></div></div>`)
+        .join('');
+      this.el.appendChild(box);
+      this.vaultHud = { fills: [...box.querySelectorAll<HTMLElement>('.bar i')], nums: [...box.querySelectorAll<HTMLElement>('.bar b')] };
+    }
     if (setup.rules.mode === 'ball') {
       // タイマーの下に「赤 0 - 0 青」と先取点
       const root = document.createElement('div');
@@ -144,6 +185,37 @@ export class Hud {
       this.el.append(box, notice);
       this.area = { setup, teams: !!setup.rules.teams, bars, box, notice, last: '' };
     }
+  }
+
+  /** 王冠うばい：持っていた時間（秒）と、だれが持っているか */
+  private updateCrown(v: ViewState): void {
+    const c = this.crownHud;
+    if (!c || !v.crown) return;
+    const holderKey = v.crown.holder < 0 ? null : c.teams ? c.teamOf.get(v.crown.holder) ?? null : v.crown.holder;
+    const pts = new Map(v.crown.pts);
+    for (const [k, bar] of c.bars) {
+      const val = pts.get(k) ?? 0;
+      bar.fill.style.width = `${Math.min(100, (val / v.crown.goal) * 100)}%`;
+      bar.num.textContent = `${Math.floor(val / 60)}`;
+      bar.root.classList.toggle('on', k === holderKey);
+    }
+    const name = v.crown.holder >= 0 ? c.names.get(v.crown.holder) ?? '' : '';
+    const msg = v.ended ? '' : name ? `王冠：${name}` : v.crown.on ? '王冠を拾え！' : '';
+    if (msg !== c.last) {
+      c.notice.textContent = msg;
+      c.last = msg;
+    }
+  }
+
+  /** 金庫まもり：赤と青の金庫の耐久 */
+  private updateVault(v: ViewState): void {
+    const h = this.vaultHud;
+    if (!h || !v.vault) return;
+    v.vault.hp.forEach((hp, t) => {
+      const pct = Math.max(0, Math.ceil((hp / v.vault!.max) * 100));
+      h.fills[t].style.width = `${pct}%`;
+      h.nums[t].textContent = `${pct}%`;
+    });
   }
 
   /** エリアバトル：ゲージとエリアの予告 */
@@ -246,6 +318,8 @@ export class Hud {
       }
     }
     this.updateArea(v);
+    this.updateCrown(v);
+    this.updateVault(v);
     if (this.ball && v.ball) {
       const key = v.ball.score.join('-');
       if (key !== this.ball.last) {

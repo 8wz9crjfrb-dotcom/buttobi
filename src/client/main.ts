@@ -8,7 +8,7 @@ import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
 import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
-import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
+import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { championMark, chatMark, diceMark, ICONS, iconTile, predictMark, rewardMark } from './icons';
@@ -507,6 +507,9 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'boom' || e.k === 'shout') sfx.boom();
     else if (e.k === 'sudden') sfx.finish();
     else if (e.k === 'rewind') sfx.warp();
+    else if (e.k === 'crown') sfx.buff();
+    else if (e.k === 'vhit') sfx.hit(Math.min(20, e.p));
+    else if (e.k === 'vbreak') sfx.boom();
     else if (e.k === 'kick') sfx.kick(e.p);
     else if (e.k === 'goal') sfx.goal();
     else if (e.k === 'flash') sfx.shutter();
@@ -1269,13 +1272,23 @@ function ruleText(r: MatchRules): string {
           ? `エリアバトル（${shape}）${r.timeLimit / 60}分`
           : r.mode === 'ball'
             ? `玉入れ（${r.goals ?? 5}点先取・相手への攻撃${r.pvp === false ? 'なし' : 'あり'}）${r.timeLimit / 60}分`
-            : `タイム ${r.timeLimit / 60}分`;
-  return r.teams && r.mode !== 'ball' ? `${base}・チーム戦（味方への攻撃${r.friendlyFire ? 'あり' : 'なし'}）` : base;
+            : r.mode === 'crown'
+              ? `王冠うばい（${r.crownGoal ?? 30}秒持ったら勝ち）${r.timeLimit / 60}分`
+              : r.mode === 'vault'
+                ? `金庫まもり（耐久${r.vaultHp ?? 400}）${r.timeLimit / 60}分`
+                : `タイム ${r.timeLimit / 60}分`;
+  return r.teams && !isTwoTeam(r.mode) ? `${base}・チーム戦（味方への攻撃${r.friendlyFire ? 'あり' : 'なし'}）` : base;
 }
 
 function ruleControls(rules: MatchRules): string {
   return `
-    <div class="opt opt-wide">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ']], rules.mode)}</div>
+    <div class="opt opt-wide">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ'], ['crown', '王冠'], ['vault', '金庫']], rules.mode)}</div>
+    <div class="opt" data-show="crown">勝ちになる時間 ${seg('cgoal', [[20, '20秒'], [30, '30秒'], [45, '45秒']], rules.crownGoal ?? 30)}</div>
+    <div class="opt" data-show="crown">時間 ${seg('ctime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
+    <div class="opt opt-wide" data-show="crown"><span class="muted">王冠を持っている間だけ時間がたまります。持っている人に攻撃を当てると王冠を奪えます。決めた時間だけ持つか、時間切れのときに一番長く持っていた人の勝ち</span></div>
+    <div class="opt" data-show="vault">金庫の耐久 ${seg('vhp', [[250, '少ない'], [400, '普通'], [600, '多い']], rules.vaultHp ?? 400)}</div>
+    <div class="opt" data-show="vault">時間 ${seg('vtime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
+    <div class="opt opt-wide" data-show="vault"><span class="muted">赤・青の2チームで、自分のチームの金庫を守り、相手の金庫を攻撃で壊します（飛び道具も当たります）。先に壊すか、時間切れのときに多く壊していたチームの勝ち。チームはタップで選べます</span></div>
     <div class="opt" data-show="ball">先取点 ${seg('goals', [[3, '3点'], [5, '5点'], [7, '7点']], rules.goals ?? 5)}</div>
     <div class="opt" data-show="ball">時間 ${seg('btime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="ball">相手への攻撃 ${seg('pvp', [['on', '当たる'], ['off', '当たらない']], rules.pvp === false ? 'off' : 'on')}</div>
@@ -1295,7 +1308,7 @@ function ruleControls(rules: MatchRules): string {
 
 function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): void {
   // 玉入れはいつもチームを選ぶ（前の版で保存したルールも）
-  if (rules.mode === 'ball') rules.teams = true;
+  if (isTwoTeam(rules.mode)) rules.teams = true;
   let prevMode = rules.mode;
   const sync = () => {
     root.querySelectorAll<HTMLElement>('[data-show]').forEach((el) => el.classList.toggle('hidden', !el.dataset.show!.split(' ').includes(rules.mode)));
@@ -1304,23 +1317,27 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     root.querySelectorAll<HTMLElement>('[data-items]').forEach((el) => el.classList.toggle('hidden', !rules.items));
     // 玉入れは「味方への攻撃」の設定を使わない（相手への攻撃の設定がある）
     root.querySelectorAll<HTMLElement>('[data-ff]').forEach((el) => el.classList.toggle('hidden', !rules.teams || rules.mode === 'ball'));
+    // 金庫まもりは「チーム戦 あり／なし」を選ばない（いつも2チーム）
+    root.querySelectorAll<HTMLElement>('[data-seg="teams"]').forEach((el) => el.closest('.opt')?.classList.toggle('hidden', isTwoTeam(rules.mode)));
   };
   sync();
   bindSeg(root, 'mode', (v) => {
     rules.mode = v as MatchRules['mode'];
     // ストック制は時間制限なし（0）。体力制は7分
-    rules.timeLimit = rules.mode === 'time' ? 180 : rules.mode === 'area' || rules.mode === 'ball' ? 120 : rules.mode === 'stock' ? 0 : 420;
+    rules.timeLimit = rules.mode === 'time' ? 180 : rules.mode === 'area' || rules.mode === 'ball' || rules.mode === 'crown' || rules.mode === 'vault' ? 120 : rules.mode === 'stock' ? 0 : 420;
+    if (rules.mode === 'crown') rules.crownGoal ??= 30;
+    if (rules.mode === 'vault') rules.vaultHp ??= 400;
     if (rules.mode === 'area') rules.area ??= 'move';
     // 玉入れはいつも赤・青の2チーム（チームはタップで選ぶ）。玉入れから別のルールに変えたら、チーム戦は「なし」に戻す
-    const wasBall = prevMode === 'ball';
-    if (rules.mode === 'ball') {
-      rules.goals ??= 5;
+    const wasBall = isTwoTeam(prevMode);
+    if (isTwoTeam(rules.mode)) {
+      if (rules.mode === 'ball') rules.goals ??= 5;
       rules.teams = true;
     } else if (wasBall) rules.teams = false;
     prevMode = rules.mode;
     root.querySelectorAll<HTMLElement>('[data-seg="teams"] button').forEach((b) => b.classList.toggle('on', b.dataset.v === (rules.teams ? 'on' : 'off')));
     // 時間の選択肢の表示を、選び直した時間に合わせる
-    root.querySelectorAll<HTMLElement>('[data-seg="time"] button, [data-seg="atime"] button, [data-seg="btime"] button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === rules.timeLimit));
+    root.querySelectorAll<HTMLElement>('[data-seg="time"] button, [data-seg="atime"] button, [data-seg="btime"] button, [data-seg="ctime"] button, [data-seg="vtime"] button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === rules.timeLimit));
     sync();
     onChange();
   });
@@ -1353,6 +1370,20 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     rules.timeLimit = Number(v);
     onChange();
   });
+  bindSeg(root, 'cgoal', (v) => {
+    rules.crownGoal = Number(v);
+    onChange();
+  });
+  bindSeg(root, 'vhp', (v) => {
+    rules.vaultHp = Number(v);
+    onChange();
+  });
+  for (const k of ['ctime', 'vtime']) {
+    bindSeg(root, k, (v) => {
+      rules.timeLimit = Number(v);
+      onChange();
+    });
+  }
   bindSeg(root, 'goals', (v) => {
     rules.goals = Number(v);
     onChange();
@@ -1706,7 +1737,7 @@ function showLocalRules(): void {
         teamBox.innerHTML =
           `<div class="opt-label">チーム分け（タップで変える）</div>` +
           names.map((n, i) => {
-            const t = rules.mode === 'ball' ? localTeams[i] % 2 : localTeams[i];
+            const t = isTwoTeam(rules.mode) ? localTeams[i] % 2 : localTeams[i];
             return `<button type="button" class="team-chip" data-i="${i}" style="--tc:${hex(TEAM_COLORS[t])}">${n}<b>${TEAM_NAMES[t]}</b></button>`;
           }).join('');
       };
@@ -1716,7 +1747,7 @@ function showLocalRules(): void {
         if (!b) return;
         const i = Number(b.dataset.i);
         // 玉入れは赤・青の2チームだけ
-        localTeams[i] = rules.mode === 'ball' ? ((localTeams[i] % 2) + 1) % 2 : (localTeams[i] + 1) % TEAM_COUNT;
+        localTeams[i] = isTwoTeam(rules.mode) ? ((localTeams[i] % 2) + 1) % 2 : (localTeams[i] + 1) % TEAM_COUNT;
         sfx.click();
         drawTeams();
       });
@@ -1764,8 +1795,8 @@ function showLocalRules(): void {
       });
       root.querySelector('#start')!.addEventListener('click', () => {
         settings.rules = { ...rules };
-        if (rules.mode === 'ball') rules.teams = true;
-        const teamsUsed = new Set(localTeams.slice(0, settings.cpuCount + 1).map((t) => (rules.mode === 'ball' ? t % 2 : t)));
+        if (isTwoTeam(rules.mode)) rules.teams = true;
+        const teamsUsed = new Set(localTeams.slice(0, settings.cpuCount + 1).map((t) => (isTwoTeam(rules.mode) ? t % 2 : t)));
         if (rules.teams && teamsUsed.size < 2) return toast('チーム戦は2チーム以上に分けてください');
         saveSettings(settings);
         const players: MatchSetup['players'] = [{ slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0, costume: myCostume(settings.charId), team: localTeams[0] }];
@@ -1943,6 +1974,13 @@ function resultTitle(results: ResultEntry[], setup: MatchSetup, winner: PlayerSe
     if (red === blue) return `引き分け！ <small>${red} - ${blue}</small>`;
     return `${TEAM_NAMES[red > blue ? 0 : 1]}チームの勝ち！ <small>${red} - ${blue}</small>`;
   }
+  if (setup.rules.mode === 'vault') {
+    // 金庫まもり：どちらのチームの金庫が多く壊れたか（壊した%）
+    const red = results.find((r) => ballTeamOf(setup, r.slot) === 0)?.vaultBroke ?? 0;
+    const blue = results.find((r) => ballTeamOf(setup, r.slot) === 1)?.vaultBroke ?? 0;
+    if (red === blue) return `引き分け！ <small>${red}% - ${blue}%</small>`;
+    return `${TEAM_NAMES[red > blue ? 0 : 1]}チームの勝ち！ <small>壊した ${red}% - ${blue}%</small>`;
+  }
   if (!winner) return '結果';
   return setup.rules.teams ? `${TEAM_NAMES[(winner.team ?? 0) % TEAM_NAMES.length]}チームの勝ち！` : esc(winner.name) + ' の勝ち！';
 }
@@ -2047,7 +2085,7 @@ let predictShowUntil = 0;
 /** この試合で予想できるか（個人戦で、自分が出ていない） */
 function canPredictMatch(setup: MatchSetup): boolean {
   const r = setup.rules;
-  return !r.teams && r.mode !== 'ball' && !r.horde && !setup.players.some((p) => p.slot === net.slot && net.slot >= 0);
+  return !r.teams && !isTwoTeam(r.mode) && !r.horde && !setup.players.some((p) => p.slot === net.slot && net.slot >= 0);
 }
 
 function hidePredict(): void {
@@ -2367,6 +2405,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
   };
   if (results.length >= 2) {
     if (setup.rules.mode === 'ball') award('ゴールゲッター', (r) => r.goals ?? 0);
+    if (setup.rules.mode === 'vault') award('金庫破り', (r) => r.vaultDmg ?? 0, 1);
     award('最多撃墜', (r) => r.kos);
     award('最大ダメージ', (r) => r.dealt ?? 0, 30);
     award('投げ名人', (r) => r.throws ?? 0, 2);
@@ -2379,8 +2418,8 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
       const badges = (awards.get(r.slot) ?? []).map((a) => `<span class="award">${a}</span>`).join('');
       return `<div class="res-row ${r.rank === 1 ? 'first' : ''}">
         <div class="rank">${r.rank}</div>
-        <div><span style="color:${hex(playerColor(setup, p.slot))}">●</span> ${setup.rules.mode === 'ball' ? `<small>${TEAM_NAMES[ballTeamOf(setup, p.slot)]}</small> ` : setup.rules.teams ? `<small>${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}</small> ` : ''}${esc(p.name)} <small style="color:var(--muted)">${c.name}</small>${badges ? `<div class="awards">${badges}</div>` : ''}</div>
-        <div style="font-size:12px;color:var(--muted);text-align:right">${r.area !== undefined ? `<b class="res-area">エリア ${r.area}%</b><br/>` : ''}${r.goals !== undefined ? `<b class="res-area">ゴール ${r.goals}</b><br/>` : ''}撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
+        <div><span style="color:${hex(playerColor(setup, p.slot))}">●</span> ${isTwoTeam(setup.rules.mode) ? `<small>${TEAM_NAMES[ballTeamOf(setup, p.slot)]}</small> ` : setup.rules.teams ? `<small>${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}</small> ` : ''}${esc(p.name)} <small style="color:var(--muted)">${c.name}</small>${badges ? `<div class="awards">${badges}</div>` : ''}</div>
+        <div style="font-size:12px;color:var(--muted);text-align:right">${r.area !== undefined ? `<b class="res-area">エリア ${r.area}%</b><br/>` : ''}${r.goals !== undefined ? `<b class="res-area">ゴール ${r.goals}</b><br/>` : ''}${r.crown !== undefined ? `<b class="res-area">王冠 ${r.crown}秒</b><br/>` : ''}${r.vaultDmg !== undefined ? `<b class="res-area">金庫に ${r.vaultDmg}</b><br/>` : ''}撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
     })
     .join('');
   const win = results.find((r) => r.rank === 1);
@@ -2563,7 +2602,9 @@ function showHowTo(): void {
        <p><b>ギリギリで耐える：</b>そこまで強くない攻撃なら、場外の線の手前でギリギリ踏んばって止まることがあります。止まったあとは自分で台へ戻りましょう。強い攻撃や、%がとても高いときはそのまま飛ばされます。</p>
        <p><b>ハメ防止：</b>攻撃を受け続けて、ほとんど動けない状態（少しだけ動けてもすぐまた当てられる状態を含む）が約1.5秒続くと、すぐに動けるようになり、少しの間（約0.75秒）無敵になって抜け出せます。また、突撃する技・引き寄せる技・入れ替える技・連射しやすい技には、使ったあと少しの待ち時間があります（キャラ選択で技を長押しすると確認できます）。</p>
        <p><b>エリアバトル：</b>エリアに自分（チーム）だけが立っている間ゲージが溜まり、先に満タンにするか、時間切れでゲージの多い人の勝ち。敵が1人でもエリアにいると止まります。味方が多いほど少し速く溜まります。ふっとばされても復活します。</p>
-       <p><b>玉入れ：</b>赤と青の2チームに分かれ（参加した順に交互）、ボールを攻撃でふっとばして、相手チームのかご（赤は右、青は左）に上から入れると1点。先取点（3・5・7点）か、時間切れで点の多いチームの勝ち。ルールで「相手への攻撃：当たらない」にすると、攻撃はボールにだけ当たります。弱攻撃はかごまで4〜6mくらい、横攻撃は8〜12mくらいから入りやすいです。<b>ねらい方：</b>スティックを斜め上に入れながら攻撃すると山なりに高く（かごに入れやすい）、斜め下に入れながら攻撃すると低く速く飛びます。</p>
+       <p><b>王冠うばい：</b>ステージに出る王冠を拾い、持っている間だけ時間がたまります。持っている人に攻撃を当てると王冠を奪えます（奪われた直後は少しの間取り返せません）。持っている人が撃墜されると、王冠は中央に出直します。決めた時間（20・30・45秒）だけ持つか、時間切れで一番長く持っていた人の勝ち。何人でも遊べます。</p>
+       <p><b>金庫まもり：</b>赤と青の2チームに分かれ、ステージの端にある自分のチームの金庫を守りながら、相手の金庫を攻撃で壊します（飛び道具も当たります）。先に相手の金庫を壊すか、時間切れのときに多く壊していたチームの勝ち。金庫の耐久は人数が多いほど増えます。ふっとばされても復活します。</p>
+       <p><b>玉入れ：</b>赤と青の2チームに分かれ（タップで選べます）、ボールを攻撃でふっとばして、相手チームのかご（赤は右、青は左）に上から入れると1点。先取点（3・5・7点）か、時間切れで点の多いチームの勝ち。ルールで「相手への攻撃：当たらない」にすると、攻撃はボールにだけ当たります。弱攻撃はかごまで4〜6mくらい、横攻撃は8〜12mくらいから入りやすいです。<b>ねらい方：</b>スティックを斜め上に入れながら攻撃すると山なりに高く（かごに入れやすい）、斜め下に入れながら攻撃すると低く速く飛びます。</p>
        <p><b>体力制：</b>%のかわりにHPで戦います。HPが0になるとその場で撃墜。ふっとびは小さめなので、HPを削り切るのが基本です。</p>
        <p><b>チーム戦：</b>CPU戦はルール画面、オンラインはルームの枠をタップしてチームを分けます。「味方への攻撃：当たらない」なら、味方には攻撃も飛び道具も当たりません。</p>
        <p><b>100人組手：</b>1機だけで、次々に出てくる敵を100人倒すとクリア。10人倒すごとに少し回復し、30人倒すと敵が3人に増えます。</p>
@@ -3884,7 +3925,7 @@ function showLobby(): void {
     const tags = [p.slot === l.hostSlot ? '★' : '', p.slot === net.slot ? '（あなた）' : '', !p.cpu && !p.connected ? '（通信が切れています）' : ''].join('');
     // チーム戦：自分の枠（ホストは全員の枠）をタップするとチームが変わる
     // 玉入れは赤・青の2チーム
-    const team = l.rules.mode === 'ball' ? (p.team ?? 0) % 2 : p.team ?? 0;
+    const team = isTwoTeam(l.rules.mode) ? (p.team ?? 0) % 2 : p.team ?? 0;
     const canTap = !!l.rules.teams && !l.inMatch && (p.slot === net.slot || isHost);
     const dot = l.rules.teams ? TEAM_COLORS[team % TEAM_COLORS.length] : SLOT_COLORS[i];
     const teamTag = l.rules.teams ? `<span class="team-tag" style="--tc:${hex(dot)}">${TEAM_NAMES[team % TEAM_NAMES.length]}${canTap ? ' ⇄' : ''}</span>` : '';
@@ -3910,7 +3951,7 @@ function showLobby(): void {
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
       </div></div>`
     : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'} ／ 乱入アイテム${l.dropOn !== false ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
-  const teamCount = new Set(l.players.map((p) => (l.rules.mode === 'ball' ? (p.team ?? 0) % 2 : p.team ?? 0))).size;
+  const teamCount = new Set(l.players.map((p) => (isTwoTeam(l.rules.mode) ? (p.team ?? 0) % 2 : p.team ?? 0))).size;
   // 準備OK：人（CPU以外）のうち押している数。全員そろうとホストの開始ボタンが光る
   const humanList = l.players.filter((p) => !p.cpu && p.connected);
   const readyN = humanList.filter((p) => p.ready).length;
@@ -3972,7 +4013,7 @@ function showLobby(): void {
         el.addEventListener('click', () => {
           const slot = Number(el.dataset.slot);
           sfx.click();
-          net.setTeam((Number(el.dataset.tm) + 1) % (l.rules.mode === 'ball' ? 2 : TEAM_COUNT), slot === net.slot ? undefined : slot);
+          net.setTeam((Number(el.dataset.tm) + 1) % (isTwoTeam(l.rules.mode) ? 2 : TEAM_COUNT), slot === net.slot ? undefined : slot);
         }),
       );
       root.querySelector('#change-char')?.addEventListener('click', () =>

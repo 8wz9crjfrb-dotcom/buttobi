@@ -716,6 +716,10 @@ export const SUDDEN = { damage: 100, hp: 30, max: 60 * 60 };
 export const REWIND = { frames: 120, heal: 0.5, invuln: 20 };
 /** 飛び道具が当たったときのひるみ時間の倍率 */
 export const SHOT_HITSTUN = 0.5;
+/** 王冠うばい：勝ちになる時間（秒・初期値）、奪われた直後に奪い返せない時間、消えてから出直すまで、王冠の大きさ */
+export const CROWN = { goal: 30, stealCd: 45, respawn: 90, r: 0.6 };
+/** 金庫まもり：耐久（1対1のときの初期値）、大きさ、ステージの端からの距離、1チームの人数が1人増えるごとに増える耐久の割合 */
+export const VAULT = { hp: 400, w: 1.4, h: 1.8, inset: 1.7, perPlayer: 0.5 };
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };
 
