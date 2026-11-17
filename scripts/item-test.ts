@@ -48,7 +48,7 @@ check('アイテムの種類は7つ（名前・説明・色がそろっている
   let stunned = false;
   for (let i = 0; i < 30; i++) {
     sim.step(new Map([[0, N]]));
-    if (b.state === 'hitstun' || b.state === 'tumble') stunned = true;
+    if (b.hitstun > 0 || b.tumble) stunned = true;
   }
   check('傘：弱攻撃を受けてもひるまない', !stunned && b.damage > 0, `ダメージ ${b.damage.toFixed(1)}`);
 }
