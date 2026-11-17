@@ -393,8 +393,8 @@ function hash32(a: number, b: number): number {
   h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
   return (h ^ (h >>> 16)) >>> 0;
 }
-/** 飽き性（ドパガキ）：違う技を1つ続けるごとの威力アップと、その回数の上限（最大 1 + 0.08×3 = 1.24倍） */
-const DOPA_STEP = 0.08;
+/** 飽き性（ドパガキ）：違う技を1つ続けるごとの威力アップと、その回数の上限（最大 1 + 0.1×3 = 1.3倍） */
+const DOPA_STEP = 0.1;
 const DOPA_STREAK_MAX = 3;
 /** 24時間ジムの清掃タイム（床がすべる）のフレーム数と、すべるときのブレーキの効き（1 = ふつう） */
 export const GYM_SLIP = 300;

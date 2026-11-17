@@ -88,7 +88,7 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   const a4 = hit(down);
   const a5 = hit(down);
   check('飽き性：違う技を続けるほど威力が上がる', a2.mul > a1.mul && a3.mul > a2.mul && a4.mul > a3.mul && a3.dmg > a1.dmg, [a1, a2, a3, a4].map((x) => x.mul.toFixed(2)).join(' → '));
-  check('飽き性：上がり方には上限がある（約1.25倍）', a4.mul <= 1.25);
+  check('飽き性：上がり方には上限がある（1.3倍）', a4.mul <= 1.3 + 1e-9);
   check('飽き性：同じ技を出すと元に戻る（下がりはしない）', a5.mul === 1, `${a5.mul}`);
 }
 // ---- ガチャ廃人

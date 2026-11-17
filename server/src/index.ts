@@ -615,8 +615,8 @@ export class Room extends DurableObject<Env> {
           itemRate: r?.itemRate === 'low' || r?.itemRate === 'high' ? r.itemRate : 'mid',
           gimmicks: r?.gimmicks === true,
           hp: Math.max(50, Math.min(300, (r?.hp ?? 0) | 0 || DEFAULT_HP)),
-          // 玉入れは参加した順に赤・青に分かれる（チーム戦の設定は使わない）
-          teams: r?.teams === true && r?.mode !== 'ball',
+          // 玉入れはいつも赤・青の2チーム（チームは選べる）
+          teams: r?.mode === 'ball' ? true : r?.teams === true,
           friendlyFire: r?.friendlyFire === true,
         };
         if (msg.stageId === RANDOM_STAGE || STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;

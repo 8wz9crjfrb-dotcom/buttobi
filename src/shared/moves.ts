@@ -336,7 +336,7 @@ const SPECIALS: Record<string, Specials> = {
     // 切り抜き：少し先へ瞬間移動して斬る
     sspecial: { startup: 10, active: 4, end: 18, hitboxes: [{ x: 0.6, y: 0.9, r: 0.85 }], dmg: 10, base: 6.5, growth: 9, angle: 40, air: true, special: 'teleport', landLag: 10, cd: 60 },
     // 強制アップデート：近くの相手をしばらく動けなくする
-    dspecial: { startup: 10, active: 4, end: 24, hitboxes: [{ x: 0, y: 0.9, r: 1.6 }], dmg: 2, base: 0, growth: 0, angle: 0, air: true, special: 'sleep', cd: 150 },
+    dspecial: { startup: 10, active: 4, end: 24, hitboxes: [{ x: 0, y: 0.9, r: 1.8 }], dmg: 2, base: 0, growth: 0, angle: 0, air: true, special: 'sleep', cd: 150 },
     // スパチャ読み：上昇しながら周りにお礼の文字を飛ばす
     uspecial: {
       startup: 4,
@@ -404,8 +404,8 @@ const SPECIALS: Record<string, Specials> = {
       active: 4,
       end: 18,
       hitboxes: [{ x: 0.9, y: 0.9, r: 0.7 }],
-      dmg: 6,
-      base: 5,
+      dmg: 7,
+      base: 5.5,
       growth: 6,
       angle: 38,
       air: true,
@@ -627,7 +627,7 @@ export const WALL = { life: 80, w: 0.35, h: 2.4, offset: 1.1, hit: { dmg: 4, bas
 /** 一時的な足場（ポップアップ広告）の設定 */
 export const POPUP = { life: 200, w: 2.4 };
 /** 倍速再生の効果時間（6秒）と、効果が切れてから次に使えるまでの時間（7秒）（フレーム） */
-export const SPEEDUP = { duration: 360, cooldown: 420, speed: 1.35, frame: 0.75 };
+export const SPEEDUP = { duration: 360, cooldown: 330, speed: 1.35, frame: 0.75 };
 /** 課金：増えるダメージ%、効果時間、攻撃力・ふっとばし力の倍率 */
 export const PAY = { cost: 8, duration: 360, dmg: 1.3, kb: 1.15 };
 /** 自転車：乗っていられる時間、速さ、ぶつかったときに同じ相手へ再び当たるまで */
@@ -661,7 +661,7 @@ export const PULL = { range: 4.5, speed: 11 };
 /** ガチャの天井（外れがこの回数続くと次は必ず大当たり） */
 export const PITY = 6;
 /** 10連ガチャの出る確率（SSR・SR・R・N・回復。残りが爆死） */
-export const GACHA_RATES = { ssr: 0.06, sr: 0.14, r: 0.25, n: 0.29, heal: 0.05 };
+export const GACHA_RATES = { ssr: 0.06, sr: 0.14, r: 0.28, n: 0.29, heal: 0.05 };
 /** 単発ガチャの大当たりの確率 */
 export const GACHA1_CRIT = 0.25;
 /** 無限スクロールの3回目（最後）の一撃：威力の倍率と、ふっとばし */

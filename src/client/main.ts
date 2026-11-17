@@ -1276,8 +1276,8 @@ function ruleControls(rules: MatchRules): string {
     <div class="opt" data-show="stamina">HP ${seg('hp', [[100, '100'], [150, '150'], [200, '200'], [300, '300']], rules.hp ?? DEFAULT_HP)}</div>
     <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>
     <div class="opt" data-hide="ball">チーム戦 ${seg('teams', [['on', 'あり'], ['off', 'なし']], rules.teams ? 'on' : 'off')}</div>
-    <div class="opt opt-wide" data-show="ball"><span class="muted">玉入れは、参加した順に赤・青の2チームに分かれます。スティック斜め上＋攻撃で山なり、斜め下＋攻撃で低く速く打てます</span></div>
-    <div class="opt" data-team>味方への攻撃 ${seg('ff', [['off', '当たらない'], ['on', '当たる']], rules.friendlyFire ? 'on' : 'off')}</div>
+    <div class="opt opt-wide" data-show="ball"><span class="muted">玉入れは赤・青の2チーム。チームはタップで選べます。スティック斜め上＋攻撃で山なり、斜め下＋攻撃で低く速く打てます</span></div>
+    <div class="opt" data-team data-ff>味方への攻撃 ${seg('ff', [['off', '当たらない'], ['on', '当たる']], rules.friendlyFire ? 'on' : 'off')}</div>
     <div class="opt">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
     <div class="opt" data-items>アイテムの頻度 ${seg('irate', [['low', '少ない'], ['mid', '普通'], ['high', '多い']], rules.itemRate ?? 'mid')}</div>
     <div class="opt opt-wide" data-items>出るアイテム（乱入アイテムも同じ）<div class="item-chips">${ITEM_NAMES.map((n, i) => `<button type="button" class="ichip ${(rules.itemKinds ?? ITEM_NAMES.map((_, k) => k)).includes(i) ? 'on' : ''}" data-ikind="${i}"><b>${n}</b><small>${ITEM_INFO[i].short}</small></button>`).join('')}</div></div>
@@ -1285,11 +1285,16 @@ function ruleControls(rules: MatchRules): string {
 }
 
 function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): void {
+  // 玉入れはいつもチームを選ぶ（前の版で保存したルールも）
+  if (rules.mode === 'ball') rules.teams = true;
+  let prevMode = rules.mode;
   const sync = () => {
     root.querySelectorAll<HTMLElement>('[data-show]').forEach((el) => el.classList.toggle('hidden', !el.dataset.show!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-hide]').forEach((el) => el.classList.toggle('hidden', el.dataset.hide!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.classList.toggle('hidden', !rules.teams));
     root.querySelectorAll<HTMLElement>('[data-items]').forEach((el) => el.classList.toggle('hidden', !rules.items));
+    // 玉入れは「味方への攻撃」の設定を使わない（相手への攻撃の設定がある）
+    root.querySelectorAll<HTMLElement>('[data-ff]').forEach((el) => el.classList.toggle('hidden', !rules.teams || rules.mode === 'ball'));
   };
   sync();
   bindSeg(root, 'mode', (v) => {
@@ -1297,12 +1302,14 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     // ストック制は時間制限なし（0）。体力制は7分
     rules.timeLimit = rules.mode === 'time' ? 180 : rules.mode === 'area' || rules.mode === 'ball' ? 120 : rules.mode === 'stock' ? 0 : 420;
     if (rules.mode === 'area') rules.area ??= 'move';
-    // 玉入れは参加した順に赤・青に分かれる（チーム戦の設定は使わない）
+    // 玉入れはいつも赤・青の2チーム（チームはタップで選ぶ）。玉入れから別のルールに変えたら、チーム戦は「なし」に戻す
+    const wasBall = prevMode === 'ball';
     if (rules.mode === 'ball') {
       rules.goals ??= 5;
-      rules.teams = false;
-      root.querySelectorAll<HTMLElement>('[data-seg="teams"] button').forEach((b) => b.classList.toggle('on', b.dataset.v === 'off'));
-    }
+      rules.teams = true;
+    } else if (wasBall) rules.teams = false;
+    prevMode = rules.mode;
+    root.querySelectorAll<HTMLElement>('[data-seg="teams"] button').forEach((b) => b.classList.toggle('on', b.dataset.v === (rules.teams ? 'on' : 'off')));
     // 時間の選択肢の表示を、選び直した時間に合わせる
     root.querySelectorAll<HTMLElement>('[data-seg="time"] button, [data-seg="atime"] button, [data-seg="btime"] button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === rules.timeLimit));
     sync();
@@ -1644,14 +1651,18 @@ function showLocalRules(): void {
         const names = ['あなた', ...Array.from({ length: settings.cpuCount }, (_, i) => `CPU${i + 1}`)];
         teamBox.innerHTML =
           `<div class="opt-label">チーム分け（タップで変える）</div>` +
-          names.map((n, i) => `<button type="button" class="team-chip" data-i="${i}" style="--tc:${hex(TEAM_COLORS[localTeams[i]])}">${n}<b>${TEAM_NAMES[localTeams[i]]}</b></button>`).join('');
+          names.map((n, i) => {
+            const t = rules.mode === 'ball' ? localTeams[i] % 2 : localTeams[i];
+            return `<button type="button" class="team-chip" data-i="${i}" style="--tc:${hex(TEAM_COLORS[t])}">${n}<b>${TEAM_NAMES[t]}</b></button>`;
+          }).join('');
       };
       drawTeams();
       teamBox.addEventListener('click', (e) => {
         const b = (e.target as HTMLElement).closest<HTMLElement>('.team-chip');
         if (!b) return;
         const i = Number(b.dataset.i);
-        localTeams[i] = (localTeams[i] + 1) % TEAM_COUNT;
+        // 玉入れは赤・青の2チームだけ
+        localTeams[i] = rules.mode === 'ball' ? ((localTeams[i] % 2) + 1) % 2 : (localTeams[i] + 1) % TEAM_COUNT;
         sfx.click();
         drawTeams();
       });
@@ -1699,7 +1710,8 @@ function showLocalRules(): void {
       });
       root.querySelector('#start')!.addEventListener('click', () => {
         settings.rules = { ...rules };
-        const teamsUsed = new Set(localTeams.slice(0, settings.cpuCount + 1));
+        if (rules.mode === 'ball') rules.teams = true;
+        const teamsUsed = new Set(localTeams.slice(0, settings.cpuCount + 1).map((t) => (rules.mode === 'ball' ? t % 2 : t)));
         if (rules.teams && teamsUsed.size < 2) return toast('チーム戦は2チーム以上に分けてください');
         saveSettings(settings);
         const players: MatchSetup['players'] = [{ slot: 0, name: settings.name || 'あなた', charId: settings.charId, cpu: false, cpuLevel: 0, costume: myCostume(settings.charId), team: localTeams[0] }];
@@ -3817,7 +3829,8 @@ function showLobby(): void {
     const c = getCharacter(p.charId);
     const tags = [p.slot === l.hostSlot ? '★' : '', p.slot === net.slot ? '（あなた）' : '', !p.cpu && !p.connected ? '（通信が切れています）' : ''].join('');
     // チーム戦：自分の枠（ホストは全員の枠）をタップするとチームが変わる
-    const team = p.team ?? 0;
+    // 玉入れは赤・青の2チーム
+    const team = l.rules.mode === 'ball' ? (p.team ?? 0) % 2 : p.team ?? 0;
     const canTap = !!l.rules.teams && !l.inMatch && (p.slot === net.slot || isHost);
     const dot = l.rules.teams ? TEAM_COLORS[team % TEAM_COLORS.length] : SLOT_COLORS[i];
     const teamTag = l.rules.teams ? `<span class="team-tag" style="--tc:${hex(dot)}">${TEAM_NAMES[team % TEAM_NAMES.length]}${canTap ? ' ⇄' : ''}</span>` : '';
@@ -3843,7 +3856,7 @@ function showLobby(): void {
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
       </div></div>`
     : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'} ／ 乱入アイテム${l.dropOn !== false ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
-  const teamCount = new Set(l.players.map((p) => p.team ?? 0)).size;
+  const teamCount = new Set(l.players.map((p) => (l.rules.mode === 'ball' ? (p.team ?? 0) % 2 : p.team ?? 0))).size;
   // 準備OK：人（CPU以外）のうち押している数。全員そろうとホストの開始ボタンが光る
   const humanList = l.players.filter((p) => !p.cpu && p.connected);
   const readyN = humanList.filter((p) => p.ready).length;
@@ -3905,7 +3918,7 @@ function showLobby(): void {
         el.addEventListener('click', () => {
           const slot = Number(el.dataset.slot);
           sfx.click();
-          net.setTeam((Number(el.dataset.tm) + 1) % TEAM_COUNT, slot === net.slot ? undefined : slot);
+          net.setTeam((Number(el.dataset.tm) + 1) % (l.rules.mode === 'ball' ? 2 : TEAM_COUNT), slot === net.slot ? undefined : slot);
         }),
       );
       root.querySelector('#change-char')?.addEventListener('click', () =>
