@@ -4603,3 +4603,124 @@ table.rec td:first-child {
   border: 1.5px solid rgba(255, 110, 110, 0.7);
   color: #ff8a8a;
 }
+
+/* アップデートのお知らせ */
+.m-news {
+  position: relative;
+}
+.m-news .m-dot {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+.news-box {
+  max-width: 560px;
+}
+.news-box h3 svg {
+  width: 1.2em;
+  height: 1.2em;
+  vertical-align: -0.2em;
+  margin-right: 6px;
+}
+.news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.news-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.news-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.news-head small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.news-new {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #ff5a5a;
+  color: #fff;
+}
+.news-item ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+}
+.news-item li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  line-height: 1.45;
+}
+.news-tag {
+  flex: none;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-top: 1px;
+  color: #1b1f3b;
+}
+.news-tag.new {
+  background: #ffd84a;
+}
+.news-tag.buff {
+  background: #4fd18b;
+}
+.news-tag.nerf {
+  background: #ff8a8a;
+}
+.news-tag.fix {
+  background: #9fb8ff;
+}
+
+/* 新しいバージョンのお知らせ（画面の下） */
+#update-bar {
+  position: fixed;
+  left: 50%;
+  top: calc(12px + var(--safe-t));
+  transform: translateX(-50%);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 16px;
+  border-radius: 999px;
+  background: rgba(10, 12, 30, 0.95);
+  border: 1.5px solid #ffd84a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+#update-bar.hidden {
+  display: none;
+}
+#update-bar .btn {
+  padding: 6px 14px;
+}
+/* 狭い画面：上の真ん中はロゴやボタンで埋まるので、ロゴの下（左）に出す */
+@media (max-width: 760px) {
+  #update-bar {
+    left: calc(12px + var(--safe-l));
+    top: calc(52px + var(--safe-t));
+    transform: none;
+    font-size: 12px;
+    padding: 6px 8px 6px 12px;
+  }
+}

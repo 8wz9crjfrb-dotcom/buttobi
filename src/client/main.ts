@@ -12,6 +12,7 @@ import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, TEAM_COUNT, type GameEvent, type Inpu
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { championMark, chatMark, diceMark, ICONS, iconTile, predictMark, rewardMark } from './icons';
+import { markNewsSeen, NEWS, NEWS_LABEL, newsSeen, unreadNews } from './changelog';
 import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
 import { InputManager } from './input';
@@ -46,6 +47,14 @@ preventZoomGestures();
 
 const settings: Settings = loadSettings();
 const wallet = loadWallet();
+// はじめて遊ぶ人には、これまでのアップデートのお知らせは出さない（遊んだことがある人だけに出す）
+let firstLaunch = false;
+try {
+  firstLaunch = !localStorage.getItem('buttobi-progress-v1');
+} catch {
+  /* 読めない環境 */
+}
+if (firstLaunch && !newsSeen()) markNewsSeen();
 const progress = loadProgress();
 
 /** 対戦中の自分の行動を数える（ミッション・戦績用） */
@@ -1437,6 +1446,35 @@ function showTitle(): void {
  * メニュー（レイアウトA）：左に選んでいるキャラ（3D・タップで変更）、右に大きなボタン4つ。
  * 「ひとりで」「みんなで」は、右の列がそのまま小さなメニューに切り替わる。
  */
+/** アップデートのお知らせ（新しい順。まだ読んでいないものに「NEW」） */
+function showNews(): void {
+  const seen = newsSeen();
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.innerHTML = `<div class="modal-box news-box">
+      <h3>${ICONS.news}アップデートのお知らせ</h3>
+      <div class="modal-body news-list">${NEWS.map(
+        (n) => `<section class="news-item">
+          <div class="news-head"><b>${esc(n.title)}</b><small>${n.date}</small>${n.id > seen ? '<span class="news-new">NEW</span>' : ''}</div>
+          <ul>${n.items.map((it) => `<li><span class="news-tag ${it.kind}">${NEWS_LABEL[it.kind]}</span>${esc(it.text)}</li>`).join('')}</ul>
+        </section>`,
+      ).join('')}</div>
+      <div class="footer"><button class="btn primary" data-close>閉じる</button></div>
+    </div>`;
+  el.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (t === el || t.closest('[data-close]')) {
+      el.remove();
+      // メニューのベルの赤い点を消す
+      screensEl.querySelector('#news .m-dot')?.remove();
+    }
+  });
+  markNewsSeen();
+  screensEl.appendChild(el);
+}
+/** 起動してから、まだ読んでいないお知らせを自動で出したか */
+let newsShownOnce = false;
+
 function showMenu(sub: 'solo' | 'multi' | null = null): void {
   const online = !!settings.serverUrl;
   refreshMissions(progress);
@@ -1477,6 +1515,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
        <div class="grow"></div>
        ${coinBadge()}
        ${canInstall() ? `<button class="m-icon" id="install" title="ホーム画面に追加">${ICONS.install}</button>` : ''}
+       <button class="m-icon m-news" id="news" title="お知らせ">${ICONS.news}${unreadNews().length ? '<span class="m-dot"></span>' : ''}</button>
        <button class="m-icon" id="howto" title="遊び方">${ICONS.help}</button>
        <button class="m-icon" id="settings" title="設定">${ICONS.settings}</button>
      </div>
@@ -1504,6 +1543,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
       on('gacha', showGacha);
       on('records', () => showRecords('missions'));
       on('howto', showHowTo);
+      on('news', () => showNews());
       on('settings', showSettings);
       on('install', () => void promptInstall().then(() => showMenu()));
       // 下の衣装名の札：タップするとキャラ・衣装の変更へ
@@ -1550,6 +1590,13 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
     },
   );
   renderer.setMenuChar(settings.charId, myCostume(settings.charId));
+  // 新しいアップデートがあれば、起動して最初のメニューで1回だけお知らせを出す（ログインボーナスが出ているときは次の機会に）
+  if (!newsShownOnce && !sub && unreadNews().length && !screensEl.querySelector('.lb-pop')) {
+    newsShownOnce = true;
+    setTimeout(() => {
+      if (screensEl.querySelector('.menu-screen') && !screensEl.querySelector('.modal')) showNews();
+    }, 400);
+  }
 }
 
 /** ログインボーナスの知らせ（7日分のうち、今日が何日目か） */
@@ -4001,6 +4048,37 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 新しいバージョンのお知らせ：公開中の version.json をときどき読み、この版と違えば「更新する」ボタンを出す
+const updateBar = document.createElement('div');
+updateBar.id = 'update-bar';
+updateBar.className = 'hidden';
+updateBar.innerHTML = `<span>新しいバージョンがあります</span><button type="button" class="btn small primary">更新する</button>`;
+document.getElementById('app')!.appendChild(updateBar);
+updateBar.querySelector('button')!.addEventListener('click', () => location.reload());
+let newVersion = false;
+async function checkVersion(): Promise<void> {
+  if (newVersion || !import.meta.env.PROD) return;
+  try {
+    const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const v = (await res.json()) as { id?: string };
+    if (v.id && v.id !== __BUILD_ID__) newVersion = true;
+  } catch {
+    /* つながらないときは何もしない */
+  }
+}
+// 試合中は出さない（メニュー・ルーム・結果画面のときだけ）
+setInterval(() => {
+  const playing = !!session && session.kind !== 'demo' && !resultsShown;
+  updateBar.classList.toggle('hidden', !newVersion || playing);
+}, 1000);
+setInterval(() => void checkVersion(), 60_000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) void checkVersion();
+});
+setTimeout(() => void checkVersion(), 5000);
+
 startDemo();
 showTitle();
 requestAnimationFrame(loop);

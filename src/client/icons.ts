@@ -89,6 +89,8 @@ export const ICONS: Record<string, string> = {
      <path d="M17 23l-4 4a6.4 6.4 0 0 0 9 9l4-4"/>
      <path d="M31 25l4-4a6.4 6.4 0 0 0-9-9l-4 4"/>`,
   ),
+  // お知らせ：ベル
+  news: svg(`<path d="M24 7a11 11 0 0 0-11 11v8.5L9 33h30l-4-6.5V18A11 11 0 0 0 24 7z"/><path d="M19.5 37.5a4.5 4.5 0 0 0 9 0"/>`),
   // ホーム画面に追加：スマホと下向き矢印
   install: svg(`<rect x="13" y="5" width="22" height="38" rx="5"/><path d="M24 14v14"/><path d="M18.5 23l5.5 5.5 5.5-5.5"/><path d="M21 37h6"/>`),
 };
