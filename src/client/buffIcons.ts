@@ -6,13 +6,14 @@ export type BuffKind = 'atk' | 'spd';
 const UP_COLOR = '#3ce07a';
 const DOWN_COLOR = '#4fa8ff';
 
-/** 剣（ななめ）とブーツの形（48×48 の中に描く SVG のパス） */
-const SWORD = `<path d="M30 6 L40 6 L40 16 L20 36 L12 28 Z" fill="#e8eef6" stroke="#1b1f3b" stroke-width="2.5" stroke-linejoin="round"/>
-<path d="M9 25 L23 39" stroke="#ffd23f" stroke-width="5" stroke-linecap="round"/>
-<path d="M14 34 L7 41" stroke="#8a5a2a" stroke-width="5" stroke-linecap="round"/>`;
-const BOOT = `<path d="M12 6 L26 6 L26 26 L38 30 Q42 32 42 36 L42 40 L8 40 L8 34 L12 32 Z" fill="#c8743a" stroke="#1b1f3b" stroke-width="2.5" stroke-linejoin="round"/>
-<path d="M8 36 L42 36" stroke="#1b1f3b" stroke-width="2.5"/>
-<path d="M12 12 L26 12" stroke="#ffe0b0" stroke-width="3"/>`;
+/** 剣とブーツは白（↑↓だけ色を付ける） */
+const SWORD = `<path d="M30 6 L40 6 L40 16 L20 36 L12 28 Z" fill="#ffffff" stroke="#1b1f3b" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M9 25 L23 39" stroke="#1b1f3b" stroke-width="7" stroke-linecap="round"/>
+<path d="M9 25 L23 39" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>
+<path d="M14 34 L7 41" stroke="#1b1f3b" stroke-width="7" stroke-linecap="round"/>
+<path d="M14 34 L7 41" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round"/>`;
+const BOOT = `<path d="M12 6 L26 6 L26 26 L38 30 Q42 32 42 36 L42 40 L8 40 L8 34 L12 32 Z" fill="#ffffff" stroke="#1b1f3b" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M8 36 L42 36" stroke="#1b1f3b" stroke-width="2.5"/>`;
 
 function arrowSvg(up: boolean): string {
   const c = up ? UP_COLOR : DOWN_COLOR;
