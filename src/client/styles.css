@@ -3262,6 +3262,20 @@ table.rec td:first-child {
 .hud-p .buffs .bf.arm {
   background: #b48cff;
 }
+/* 攻撃力・スピードの上がり下がり（剣・ブーツに↑↓） */
+.hud-p .buffs .bf-ico {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(20, 16, 36, 0.8);
+  animation: bf-pulse 0.8s ease-in-out infinite alternate;
+}
+.hud-p .buffs .bf-ico.down {
+  box-shadow: 0 0 0 1.5px #4fa8ff;
+}
+.hud-p .buffs .bf-ico.up {
+  box-shadow: 0 0 0 1.5px #3ce07a;
+}
 @keyframes bf-pulse {
   to {
     opacity: 0.6;
@@ -4952,6 +4966,12 @@ table.rec td:first-child {
     opacity: 0;
     transform: scale(0.6);
   }
+}
+#debut .db-dip {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
 }
 #debut .db-flash {
   position: absolute;

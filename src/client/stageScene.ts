@@ -2,6 +2,7 @@
 // 当たり判定は shared/stages.ts の数値で決まっていて、ここは見た目だけ。
 
 import * as THREE from 'three';
+import { heartGeometry } from './heartShape';
 import type { StageDef } from '../shared/stages';
 import type { Quality } from './renderer';
 import {
@@ -1944,8 +1945,8 @@ function buildRoom(kit: Kit): void {
     [7.4, th.accentA],
     [9.2, 0xffffff],
   ] as const) {
-    for (const sx of [-0.3, 0.3]) kit.mesh(new THREE.SphereGeometry(0.42, 12, 10), kit.toon(col), cx + x + sx, m.top + 2.3, -9.4);
-    kit.mesh(new THREE.ConeGeometry(0.6, 0.7, 4), kit.toon(col), cx + x, m.top + 1.85, -9.4).rotation.z = Math.PI;
+    // ハートのクッション（少し後ろに倒す）
+    kit.mesh(heartGeometry(0.62, 0.55), kit.toon(col), cx + x, m.top + 2.15, -9.4).rotation.x = -0.25;
   }
   const bear = new THREE.Group();
   bear.position.set(cx + 12.2, m.top + 2.4, -8.6);
@@ -2013,8 +2014,7 @@ function buildRoom(kit: Kit): void {
       const hg = new THREE.Group();
       hg.position.set(0, 0.9, -0.6);
       g.add(hg);
-      for (const sx of [-0.28, 0.28]) kit.mesh(new THREE.SphereGeometry(0.34, 12, 10), kit.glow(th.accentA, 0.9), sx, 0.1, 0, hg);
-      kit.mesh(new THREE.ConeGeometry(0.5, 0.6, 4), kit.glow(th.accentA, 0.9), 0, -0.3, 0, hg).rotation.z = Math.PI;
+      kit.mesh(heartGeometry(0.55, 0.3), kit.glow(th.accentA, 0.9), 0, 0, 0, hg);
       kit.anim((t) => hg.scale.setScalar(1 + Math.max(0, Math.sin(t * 5)) * 0.08));
     }
   });

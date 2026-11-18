@@ -20,6 +20,10 @@ import {
   FX_YAMI,
   FX_AWK,
   FX_HEAVY,
+  FX_ATK_UP,
+  FX_ATK_DOWN,
+  FX_SPD_UP,
+  FX_SPD_DOWN,
   FX_CHARGED,
   FX_JOB_SHIFT,
   FX_CONFUSED,
@@ -116,7 +120,7 @@ const SNAPSHOT_KEYS = [
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
   'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'warpSlow', 'moveAim',
-  'leashT', 'leashBy', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'dereCd', 'floatT', 'heavyT',
+  'leashT', 'leashBy', 'leashDmg', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'dereCd', 'floatT', 'heavyT',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -236,6 +240,8 @@ export class Fighter {
   /** 赤い糸（メンヘラ）でつながれている残り時間と、つないだ人 */
   leashT = 0;
   leashBy = -1;
+  /** 赤い糸でつながれている間に受けたダメージ（糸が切れたときに一気に加わる） */
+  leashDmg = 0;
   /** 鬼電（メンヘラ）の印：爆発までの残り時間と、印を付けた人 */
   callT = 0;
   callBy = -1;
@@ -1872,10 +1878,11 @@ export class Sim {
     else if (f.floatT > 0) f.floatT--;
     if (f.leashT > 0) {
       const o = this.fighter(f.leashBy);
-      // つないだ人がいなくなった・自分が撃墜された・強くふっとばされた・つないだ人が場外に出たら、糸は切れる
-      // （つないだまま一緒に場外へ落ちて道連れにする使い方を防ぐ）
-      if (!o || !o.alive || o.out || !f.alive || f.tumble || this.outsideStage(o)) f.leashT = 0;
+      // つないだ人がいなくなった・自分が撃墜された・強くふっとばされたら、糸は切れる
+      if (!o || !o.alive || o.out || !f.alive || f.tumble) f.leashT = 0;
       else f.leashT--;
+      // 糸が切れた：つながれている間に受けたダメージが一気に加わる
+      if (f.leashT === 0) this.releaseLeashDamage(f);
     }
     if (f.callT > 0) {
       if (!f.alive) {
@@ -1886,7 +1893,7 @@ export class Sim {
     }
   }
 
-  /** 重い愛のハート（深夜のワンルームのギミック） */
+  /** 重い愛のハート（深夜のワンルームのギミック）。ゆっくり落ちてきて、床を通りぬけて消える */
   heart: { x: number; y: number; vy: number; life: number } | null = null;
 
   /** ジャンプの高さの倍率（重い愛のハートで重いと低い） */
@@ -1905,19 +1912,12 @@ export class Sim {
       this.heart = null;
       return;
     }
-    const py = h.y;
-    h.vy = Math.max(-8, h.vy - 18 * DT);
+    // ゆっくり落ちてくる。床や足場では止まらず、そのまま通りぬけて消えていく
+    h.vy = -H.fall;
     h.y += h.vy * DT;
-    if (h.x >= m.x1 && h.x <= m.x2 && py >= m.top && h.y <= m.top) {
-      h.y = m.top;
-      h.vy = 0;
-    }
-    for (const sp of this.stage.platforms) {
-      const p = platformAt(sp, this.frame);
-      if (h.x >= p.x1 && h.x <= p.x2 && py >= p.prevY - 0.001 && h.y <= p.y) {
-        h.y = p.y;
-        h.vy = 0;
-      }
+    if (h.y < m.top - 3) {
+      this.heart = null;
+      return;
     }
     const taker = this.fighters.find((v) => v.alive && !v.out && v.state !== 'grabbed' && circleHitsBox(h.x, h.y + 0.5, H.r, v));
     if (taker) {
@@ -1927,10 +1927,31 @@ export class Sim {
     }
   }
 
-  /** 台の外（左右の端より外か、台の高さより下）にいるか */
-  private outsideStage(f: Fighter): boolean {
-    const m = this.stage.main;
-    return f.x < m.x1 - 0.2 || f.x > m.x2 + 0.2 || f.y < m.top - 0.8;
+  /** 攻撃力・スピードの上がり下がり（画面の目印用。どのキャラでも共通） */
+  private buffBits(f: Fighter): number {
+    const atkUp =
+      f.powerBuff > 0 ||
+      f.jobBuff > 0 ||
+      f.absorbCharge ||
+      f.buzz > 0 ||
+      (f.def.id === 'menhera' && (f.lonely >= MENHERA.lonely || this.fighters.some((v) => v !== f && v.leashT > 0 && v.leashBy === f.slot)));
+    return (atkUp ? FX_ATK_UP : 0) | (f.awkward > 0 ? FX_ATK_DOWN : 0) | (f.speedBuff > 0 || f.dere > 0 ? FX_SPD_UP : 0) | (f.heavyT > 0 ? FX_SPD_DOWN : 0);
+  }
+
+  /** 赤い糸の時間：つながれた相手の%が高いほど短い（つないだまま場外へ道連れにしやすくなりすぎないように） */
+  private leashFrames(v: Fighter, base: number): number {
+    const L = MENHERA.leashTime;
+    return Math.round(base * Math.max(L.min, 1 - v.damage * L.perPct));
+  }
+
+  /** 赤い糸が切れた：ためていたダメージを一気に加える */
+  private releaseLeashDamage(f: Fighter): void {
+    if (f.leashDmg <= 0) return;
+    const d = f.leashDmg;
+    f.leashDmg = 0;
+    if (!f.alive) return;
+    f.damage = Math.min(999, f.damage + d);
+    this.events.push({ k: 'leashDmg', s: f.slot, x: f.x, y: f.y + f.h + 0.4, p: Math.round(d) });
   }
 
   /** 鬼電の爆発：着信音でダメージとふっとばし（ガード中なら盾が減るだけ） */
@@ -3039,6 +3060,7 @@ export class Sim {
     f.bike = 0;
     f.confused = 0;
     f.leashT = 0;
+    f.leashDmg = 0;
     f.callT = 0;
     f.awkward = 0;
     f.lonely = 0;
@@ -3545,7 +3567,9 @@ export class Sim {
         dmg *= HORDE.taken;
       }
     }
-    v.damage = Math.min(999, v.damage + dmg);
+    // 赤い糸でつながれている間は、ダメージをためておく（糸が切れたときに一気に加わる）
+    if (v.leashT > 0) v.leashDmg += dmg;
+    else v.damage = Math.min(999, v.damage + dmg);
     if (from >= 0 && from !== v.slot) {
       const att = this.fighter(from);
       if (att) {
@@ -3822,12 +3846,14 @@ export class Sim {
             if (p.confuse > 0) v.confused = Math.max(v.confused, p.confuse);
             // 赤い糸：つながる。鬼電：着信中の印（すでに印があれば付け直さない）
             if (p.leash) {
-              v.leashT = p.leash;
+              v.leashT = this.leashFrames(v, p.leash);
               v.leashBy = p.owner;
             }
             if (p.call && v.callT <= 0) {
               v.callT = p.call;
               v.callBy = p.owner;
+              // 鬼電：爆発してから2秒たつまで、次は投げられない
+              if (owner) owner.cdS = Math.max(owner.cdS, p.call + MENHERA.callCd);
             }
             if (p.poison > 0) {
               v.poison = Math.max(v.poison, p.poison);
@@ -4126,6 +4152,7 @@ export class Sim {
           (f.def.id === 'menhera' && f.lonely >= MENHERA.lonely ? FX_YAMI : 0) |
           (f.awkward > 0 ? FX_AWK : 0) |
           (f.heavyT > 0 ? FX_HEAVY : 0) |
+          this.buffBits(f) |
           (f.job << FX_JOB_SHIFT) |
           (f.buzz << 5),
       })),

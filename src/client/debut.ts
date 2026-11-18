@@ -64,7 +64,14 @@ interface Shot {
 }
 
 /** 映像の長さ（名前のカードが出きって、ボタンが出るまで） */
-const END = 20;
+/** 時刻（秒）：技の場面は1つ MOVE 秒。そのあと衣装の早着替え、UR、名前のカード */
+const MOVE0 = 4;
+const MOVE = 2.4;
+const T_COS = MOVE0 + MOVE * 4;
+const COS = 1.35;
+const T_UR = T_COS + COS * 3;
+const T_CARD = T_UR + 3;
+const END = T_CARD + 2;
 
 export class DebutSession {
   kind = 'demo' as const;
@@ -84,6 +91,7 @@ export class DebutSession {
   private caption: HTMLElement;
   private black: HTMLElement;
   private flash: HTMLElement;
+  private dip: HTMLElement;
   private vignette: HTMLElement;
   private card: HTMLElement;
   private sounds: number[] = [];
@@ -114,6 +122,7 @@ export class DebutSession {
       <div class="db-vignette"></div>
       <div class="db-black"><div class="db-phone"><i></i><span>${def.intro}</span></div></div>
       <div class="db-flash"></div>
+      <div class="db-dip"></div>
       <div class="db-caption"></div>
       <img class="db-logo" src="${logoUrl}" alt="トバセ！" draggable="false"/>
       <button class="db-skip" type="button">スキップ ▶▶</button>
@@ -128,6 +137,7 @@ export class DebutSession {
     this.caption = el.querySelector('.db-caption')!;
     this.black = el.querySelector('.db-black')!;
     this.flash = el.querySelector('.db-flash')!;
+    this.dip = el.querySelector('.db-dip')!;
     this.vignette = el.querySelector('.db-vignette')!;
     this.card = el.querySelector('.db-card')!;
     el.querySelector('.db-skip')!.addEventListener('click', () => this.skip());
@@ -157,8 +167,11 @@ export class DebutSession {
   private makeShots(): Shot[] {
     const close = (me: Fighter, z: number, dy = 1.2) => ({ x: me.x, y: me.y + dy + 0.15, z, lx: me.x, ly: me.y + dy });
     const pair = (me: Fighter, foe: Fighter, z: number) => {
-      const cx = (me.x + foe.x) / 2;
-      const cy = Math.max(me.y, foe.y) * 0.6 + Math.min(me.y, foe.y) * 0.4 + 1.1;
+      // 相手が大きく吹っ飛んでも、カメラが追いかけすぎないようにする（吹っ飛んでいく様子を見せる）
+      const fx = Math.max(me.x - 5, Math.min(me.x + 5, foe.x));
+      const fy = Math.min(me.y + 2.5, Math.max(me.y - 1, foe.y));
+      const cx = (me.x + fx) / 2;
+      const cy = Math.max(me.y, fy) * 0.6 + Math.min(me.y, fy) * 0.4 + 1.1;
       return { x: cx, y: cy + 0.6, z, lx: cx, ly: cy };
     };
     const moves = this.def.moves;
@@ -172,10 +185,10 @@ export class DebutSession {
         input: (f) => [f === 30 ? { mx: 1, my: 0, buttons: 0 } : N, N],
         cam: (me, _f, u) => close(me, 3.6 - u * 0.6, 1.3),
       },
-      // 4〜11秒：技を1つずつ（それぞれ約1.75秒）
+      // 4〜13.6秒：技を1つずつ（それぞれ約2.4秒）
       {
-        t0: 4,
-        t1: 5.75,
+        t0: MOVE0,
+        t1: MOVE0 + MOVE,
         fresh: true,
         caption: moves[0],
         init: (me, foe) => ((me.x = -2.2), (me.facing = 1), (foe.x = 0.8), (foe.facing = -1)),
@@ -184,8 +197,8 @@ export class DebutSession {
         cam: (me, foe, u) => pair(me, foe, 9 - u * 1.2),
       },
       {
-        t0: 5.75,
-        t1: 7.5,
+        t0: MOVE0 + MOVE,
+        t1: MOVE0 + MOVE * 2,
         fresh: true,
         caption: moves[1],
         init: (me, foe) => ((me.x = -2.8), (me.facing = 1), (foe.x = 1.2), (foe.facing = -1)),
@@ -194,11 +207,12 @@ export class DebutSession {
           if (foe.callT > 40) foe.callT = 40;
           return [f === 6 ? press(1, 0) : N, N];
         },
-        cam: (me, foe, u) => pair(me, foe, 8.5 - u * 1.5),
+        // 爆発で吹っ飛んでいく相手を、カメラは追わずに見送る
+        cam: (me, _foe, u) => pair(me, { x: me.x + 4, y: me.y } as Fighter, 8.5 - u * 1.2),
       },
       {
-        t0: 7.5,
-        t1: 9.25,
+        t0: MOVE0 + MOVE * 2,
+        t1: MOVE0 + MOVE * 3,
         fresh: true,
         caption: moves[2],
         init: (me, foe) => ((me.x = -0.6), (me.facing = 1), (foe.x = 1.1), (foe.facing = -1)),
@@ -206,8 +220,8 @@ export class DebutSession {
         cam: (me, foe, u) => pair(me, foe, 6.5 - u * 0.8),
       },
       {
-        t0: 9.25,
-        t1: 11,
+        t0: MOVE0 + MOVE * 3,
+        t1: T_COS,
         fresh: true,
         caption: moves[3],
         init: (me, foe) => ((me.x = -2.5), (me.facing = 1), (foe.x = 8.6)),
@@ -215,10 +229,10 @@ export class DebutSession {
         input: (f) => [f === 6 ? press(0, 1) : f > 30 ? { mx: 1, my: 0, buttons: 0 } : N, N],
         cam: (me, _f, u) => ({ x: me.x + 0.3, y: me.y + 1.2, z: 8 + u * 0.5, lx: me.x + 0.3, ly: me.y + 1.0 }),
       },
-      // 11〜15秒：衣装の早着替え（SR・SR・SSR）
-      { t0: 11, t1: 15, fresh: true, init: (me, foe) => ((me.x = 0), (me.facing = 1), (foe.x = 8.6)), cam: (me, _f, u) => ({ ...close(me, 5.2 - u * 0.6, 1.0), x: me.x + Math.sin(u * 3) * 0.8 }) },
-      // 15〜18秒：トリの UR。暗くして、ゆっくり寄る
-      { t0: 15, t1: END + 60, cam: (me, _f, u) => ({ ...close(me, 5 - Math.min(1, u * 0.2) * 0.8, 1.05), x: me.x + Math.sin(u * 0.6) * 0.6 }) },
+      // 13.6〜17.6秒：衣装の早着替え（SR・SR・SSR）
+      { t0: T_COS, t1: T_UR, fresh: true, init: (me, foe) => ((me.x = 0), (me.facing = 1), (foe.x = 8.6)), cam: (me, _f, u) => ({ ...close(me, 5.2 - u * 0.6, 1.0), x: me.x + Math.sin(u * 3) * 0.8 }) },
+      // 17.6〜20.6秒：トリの UR。暗くして、ゆっくり寄る
+      { t0: T_UR, t1: END + 60, cam: (me, _f, u) => ({ ...close(me, 5 - Math.min(1, u * 0.2) * 0.8, 1.05), x: me.x + Math.sin(u * 0.6) * 0.6 }) },
     ];
   }
 
@@ -250,6 +264,8 @@ export class DebutSession {
     const [me, foe] = this.sim.fighters;
     while (this.acc >= 1) {
       this.acc -= 1;
+      // 映像の中では病みモードにしない（紫の光と輪が出て、衣装の見せ場の邪魔になるため）
+      me.lonely = 0;
       const [a, b] = shot.input?.(this.shotFrame, me, foe) ?? [N, N];
       this.sim.step(new Map([[0, a], [1, b]]));
       this.shotFrame++;
@@ -266,9 +282,9 @@ export class DebutSession {
     return { view: this.sim.toView(), events: events.filter((e) => e.k !== 'finish' && e.k !== 'ko') };
   }
 
-  /** 早着替え：11〜15秒で SR・SR・SSR、15秒で UR（白いフラッシュでつなぐ） */
+  /** 早着替え：SR・SR・SSR のあと UR（白いフラッシュでつなぐ） */
   private updateCostumes(t: number): void {
-    const times = [11, 12.33, 13.66, 15];
+    const times = [T_COS, T_COS + COS, T_COS + COS * 2, T_UR];
     let step = -1;
     times.forEach((tt, i) => {
       if (t >= tt) step = i;
@@ -295,8 +311,8 @@ export class DebutSession {
     // 最初の2秒は暗い画面。2〜2.5秒で明るくなる
     this.black.style.opacity = t < 2 ? '1' : t < 2.5 ? String(1 - (t - 2) / 0.5) : '0';
     // UR の場面はまわりを暗く
-    this.vignette.style.opacity = t >= 15 ? String(Math.min(0.75, (t - 15) * 1.5)) : '0';
-    if (t >= 18 && !this.card.classList.contains('on')) {
+    this.vignette.style.opacity = t >= T_UR ? String(Math.min(0.75, (t - T_UR) * 1.5)) : '0';
+    if (t >= T_CARD && !this.card.classList.contains('on')) {
       this.card.classList.add('on');
       this.setCaption('');
       this.sfx.jingle(this.def.charId);
@@ -309,8 +325,12 @@ export class DebutSession {
   }
 
   private cut(): void {
-    this.whiteFlash(0.12);
-    this.sfx.shot();
+    // 技の場面のつなぎ目：一瞬だけ暗くして、なめらかに切り替える（音は鳴らさない）
+    this.dip.style.transition = 'none';
+    this.dip.style.opacity = '0.85';
+    void this.dip.offsetWidth;
+    this.dip.style.transition = 'opacity 0.35s ease-out';
+    this.dip.style.opacity = '0';
   }
 
   private whiteFlash(sec: number): void {
@@ -332,8 +352,8 @@ export class DebutSession {
 
   /** スキップ：名前のカードまで飛ばす */
   private skip(): void {
-    if (this.t < 18) {
-      this.t = 18;
+    if (this.t < T_CARD) {
+      this.t = T_CARD;
       this.shotIndex = -1;
       // 本人だけが立っている場面にする
       this.sim = this.newSim();
@@ -343,7 +363,7 @@ export class DebutSession {
       foe.x = 8.6;
       if (this.costumeStep < 3) {
         this.costumeStep = 2;
-        this.updateCostumes(15);
+        this.updateCostumes(T_UR);
       }
       this.black.style.opacity = '0';
     }

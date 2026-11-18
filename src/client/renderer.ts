@@ -1122,6 +1122,13 @@ export class GameRenderer {
       if (f) this.props.showText(e.b ? `賞金首撃破！ +${e.p}` : `+${e.p}`, e.b ? '#ff4a5a' : '#ffd84a', f.x, f.y + 2.2, e.b, e.b ? 70 : 45);
       return;
     }
+    if (e.k === 'leashDmg') {
+      // 赤い糸が切れて、ためていたダメージが一気に加わった
+      this.spawn(this.ringGeo, 0xff3b6c, e.x, e.y - 0.6, 0, 0, 0.35, 16, 0.1);
+      this.props.showText(`+${e.p}%`, '#ff3b6c', e.x, e.y, true, 60);
+      this.shake = Math.max(this.shake, 0.35);
+      return;
+    }
     if (e.k === 'heavy') {
       // 重い愛のハートを拾った：ピンクの輪と「重い…！」
       this.spawn(this.ringGeo, 0xff4f9a, e.x, e.y, 0, 0, 0.4, 18, 0.1);

@@ -74,6 +74,7 @@ check('隠していても、キャラとステージの中身はある', getChar
   const before = v.damage;
   run(sim, v.callT + 2);
   check('鬼電：時間がたつと爆発してダメージ', v.damage - before >= 8, `+${(v.damage - before).toFixed(1)}%`);
+  check('鬼電：爆発してから約2秒は投げられない', sim.fighters[0].cdS > 100 && sim.fighters[0].cdS <= MENHERA.callCd, `残り${sim.fighters[0].cdS}`);
 }
 {
   const sim = make('menhera', 'guard');
@@ -149,9 +150,9 @@ check('隠していても、キャラとステージの中身はある', getChar
     sim.step(new Map());
     if (sim.heart) {
       fell = true;
-      // 降りてきたハートを、1人の足元へ動かす
+      // 降りてきたハートを、1人の体の位置へ動かす
       const f = sim.fighters[0];
-      if (sim.heart.vy === 0) {
+      if (sim.heart.y < f.y + 4) {
         sim.heart.x = f.x;
         sim.heart.y = f.y;
       }
@@ -176,7 +177,7 @@ check('隠していても、キャラとステージの中身はある', getChar
   check('重い愛のハート：重いとジャンプが低い', f.vy < g.vy * 0.85, `${f.vy.toFixed(1)} と ${g.vy.toFixed(1)}`);
 }
 
-// ---- 赤い糸：つながっている間は攻撃力1.2倍・自分が台の外に出ると切れる
+// ---- 赤い糸：つながっている間は攻撃力1.2倍
 {
   const sim = make('menhera', 'guard');
   place(sim, 2.5);
@@ -187,11 +188,43 @@ check('隠していても、キャラとステージの中身はある', getChar
   run(sim, 30, at(0, { mx: 0, my: 0, buttons: BTN_B }));
   me.lonely = 0;
   check('赤い糸：つながっている間は攻撃力1.2倍', Math.abs(p.powerMul(me).dmg / before - MENHERA.threadMul) < 1e-9, `${(p.powerMul(me).dmg / before).toFixed(2)}倍`);
-  // 自分が台の外へ出ると切れる（一緒に落ちて道連れにできない）
-  me.x = sim.stage.main.x2 + 2;
-  me.y = -2;
-  run(sim, 2);
-  check('赤い糸：自分が台の外に出ると切れる', sim.fighters[1].leashT === 0);
+}
+// 糸の時間は相手の%が高いほど短い
+{
+  const len = (pct: number) => {
+    const sim = make('menhera', 'guard');
+    place(sim, 2.5);
+    sim.fighters[1].damage = pct;
+    run(sim, 14, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+    return sim.fighters[1].leashT;
+  };
+  const a0 = len(0);
+  const a100 = len(100);
+  const a200 = len(200);
+  check('赤い糸：相手の%が高いほど、つながる時間が短い', a0 > a100 && a100 > a200 && a200 >= MENHERA.leashTime.base * MENHERA.leashTime.min - 20, `0%:${a0} 100%:${a100} 200%:${a200}`);
+}
+// つながれている間はダメージがたまり、糸が切れたときに一気に加わる
+{
+  const sim = make('menhera', 'guard');
+  place(sim, 2.5);
+  const v = sim.fighters[1];
+  run(sim, 14, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+  const d0 = v.damage;
+  // 技の終わりを待ってから、近づいて弱攻撃を当てる
+  run(sim, 20);
+  sim.fighters[0].x = v.x - 0.7;
+  sim.fighters[0].facing = 1;
+  run(sim, 20, at(0, { mx: 0, my: 0, buttons: 1 }));
+  const pending = v.leashDmg;
+  check('赤い糸：つながれている間は%が増えない（ダメージはたまる）', v.damage === d0 && pending > 0, `%=${v.damage.toFixed(1)} ためた=${pending.toFixed(1)}`);
+  let burst = false;
+  for (let i = 0; i < 300 && v.leashT > 0; i++) {
+    run(sim, 1);
+    if (sim.events.some((e) => e.k === 'leashDmg')) burst = true;
+  }
+  run(sim, 1);
+  if (sim.events.some((e) => e.k === 'leashDmg')) burst = true;
+  check('赤い糸：糸が切れると、ためたダメージが一気に加わる', burst && Math.abs(v.damage - (d0 + pending)) < 0.01 && v.leashDmg === 0, `%=${v.damage.toFixed(1)}`);
 }
 
 // ---- デレモードの移動アップは約7秒に1回

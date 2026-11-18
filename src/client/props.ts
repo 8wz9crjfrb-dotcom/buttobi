@@ -3,7 +3,9 @@
 import * as THREE from 'three';
 import { ITEM_COLORS, ITEM_INFO, SLOT_COLORS } from '../shared/characters';
 import { POPUP, TRAP, WALL } from '../shared/moves';
-import { FX_AWK, FX_CONFUSED, FX_HEAVY, type ViewState } from '../shared/types';
+import { FX_ATK_DOWN, FX_ATK_UP, FX_CONFUSED, FX_SPD_DOWN, FX_SPD_UP, type ViewState } from '../shared/types';
+import { drawBuff, whenBuffDrawn } from './buffIcons';
+import { heartGeometry } from './heartShape';
 
 /** 文字や絵を描いたテクスチャ */
 function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
@@ -25,9 +27,8 @@ export class PropRenderer {
   private zzz = new Map<number, THREE.Sprite>();
   private qTex: THREE.CanvasTexture;
   private question = new Map<number, THREE.Sprite>();
-  /** 泣き落とし（攻撃力ダウン）・重い愛のハート（重い）の目印 */
-  private debuffTex: THREE.CanvasTexture;
-  private heavyTex: THREE.CanvasTexture;
+  /** 攻撃力・スピードの上がり下がりの目印（剣・ブーツに↑↓） */
+  private buffTex: Record<string, THREE.CanvasTexture> = {};
   private debuffs = new Map<string, THREE.Sprite>();
   private bubbles: { mesh: THREE.Mesh; life: number }[] = [];
   private texts: { sprite: THREE.Sprite; life: number; max: number; still?: boolean }[] = [];
@@ -49,25 +50,15 @@ export class PropRenderer {
       g.strokeText('?', 16, 52);
       g.fillText('?', 16, 52);
     });
-    // 攻撃力ダウン：青い「攻↓」
-    this.debuffTex = canvasTexture(128, 64, (g) => {
-      g.font = `bold 40px ${FONT}`;
-      g.fillStyle = '#8fd0ff';
-      g.strokeStyle = '#123050';
-      g.lineWidth = 7;
-      g.strokeText('攻↓', 22, 48);
-      g.fillText('攻↓', 22, 48);
-    });
-    // 重い：ピンクのハートのおもり
-    this.heavyTex = canvasTexture(128, 64, (g) => {
-      g.font = `bold 40px ${FONT}`;
-      g.fillStyle = '#ff7ab8';
-      g.strokeStyle = '#4a1030';
-      g.lineWidth = 7;
-      g.strokeText('♥重', 18, 48);
-      g.fillText('♥重', 18, 48);
-    });
-    this.textures.push(this.zzzTex, this.qTex, this.debuffTex, this.heavyTex);
+    for (const kind of ['atk', 'spd'] as const) {
+      for (const up of [true, false]) {
+        const tex = canvasTexture(64, 64, (g) => drawBuff(g, kind, up));
+        this.buffTex[`${kind}${up ? 'Up' : 'Down'}`] = tex;
+        this.textures.push(tex);
+      }
+    }
+    whenBuffDrawn(() => Object.values(this.buffTex).forEach((t) => (t.needsUpdate = true)));
+    this.textures.push(this.zzzTex, this.qTex);
   }
 
   /** 吹き出し（アピールのセリフ）。キャラの頭の上に出て、しばらくして消える */
@@ -220,22 +211,11 @@ export class PropRenderer {
         const body = new THREE.Group();
         body.name = 'body';
         g.add(body);
-        const mat = new THREE.MeshToonMaterial({ color: 0xff4f9a, emissive: 0x7a1040 });
-        for (const x of [-0.26, 0.26]) {
-          const m = new THREE.Mesh(new THREE.SphereGeometry(0.36, 16, 12), mat);
-          m.position.set(x, 0.18, 0);
-          m.scale.z = 0.6;
-          body.add(m);
-        }
-        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.62, 0.72, 4), mat);
-        tip.rotation.set(Math.PI, Math.PI / 4, 0);
-        tip.position.y = -0.3;
-        tip.scale.z = 0.6;
-        body.add(tip);
-        const glow = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.85, 28), basic(0xff7ab8, { transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
-        glow.rotation.x = -Math.PI / 2;
-        glow.name = 'ring';
-        g.add(glow);
+        body.add(new THREE.Mesh(heartGeometry(0.8), new THREE.MeshToonMaterial({ color: 0xff4f9a, emissive: 0x7a1040 })));
+        // うしろでほんのり光る
+        const halo = new THREE.Mesh(heartGeometry(1.0, 0.05), basic(0xff9ec8, { transparent: true, opacity: 0.35, depthWrite: false }));
+        halo.position.z = -0.4;
+        body.add(halo);
         return g;
       }
       case 'leash': {
@@ -744,14 +724,13 @@ export class PropRenderer {
         // 切れそうになると点滅
         o.visible = e.life > 45 || Math.floor(time * 10) % 2 === 0;
       } else if (e.kind === 'heart') {
-        // ふわふわ揺れながら回る。消える前は点滅
-        o.position.set(e.x, e.y, 0.3);
+        // ゆらゆら揺れながら、ゆっくり降りてくる（床をそのまま通りぬける）
+        o.position.set(e.x + Math.sin(time * 1.6) * 0.15, e.y, 0.3);
         const body = o.getObjectByName('body');
         if (body) {
-          body.position.y = 0.75 + Math.sin(time * 3) * 0.08;
-          body.rotation.y = Math.sin(time * 1.5) * 0.6;
+          body.position.y = 0.5;
+          body.rotation.set(0, Math.sin(time * 1.2) * 0.5, Math.sin(time * 1.6) * 0.12);
         }
-        o.visible = e.life > 90 || Math.floor(time * 8) % 2 === 0;
       } else if (e.kind === 'call') {
         // 着信中：頭の上でふるえ、爆発が近いほど速く点滅して大きくなる
         const near = e.life < 50;
@@ -780,25 +759,28 @@ export class PropRenderer {
         q.visible = true;
         q.position.set(f.x + Math.sin(time * 6) * 0.3, f.y + 2.5, 0.5);
       } else if (q) q.visible = false;
-      // デバフの目印：泣き落とし（攻↓）・重い愛のハート（♥重）。頭の上に小さく
-      const marks: [string, boolean, THREE.CanvasTexture][] = [
-        ['awk', (f.fx & FX_AWK) !== 0, this.debuffTex],
-        ['heavy', (f.fx & FX_HEAVY) !== 0, this.heavyTex],
+      // 攻撃力・スピードの上がり下がり：頭の上に、剣・ブーツの目印を横に並べる
+      const marks: [string, boolean][] = [
+        ['atkUp', (f.fx & FX_ATK_UP) !== 0],
+        ['atkDown', (f.fx & FX_ATK_DOWN) !== 0],
+        ['spdUp', (f.fx & FX_SPD_UP) !== 0],
+        ['spdDown', (f.fx & FX_SPD_DOWN) !== 0],
       ];
-      let row = 0;
-      for (const [key, on, tex] of marks) {
+      const shown = marks.filter(([, on]) => on).length;
+      let col = 0;
+      for (const [key, on] of marks) {
         const id = `${key}${f.slot}`;
         let sp = this.debuffs.get(id);
         if (on && f.state !== 'dead') {
           if (!sp) {
-            sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
-            sp.scale.set(0.8, 0.4, 1);
+            sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.buffTex[key], depthWrite: false, transparent: true }));
+            sp.scale.setScalar(0.42);
             this.scene.add(sp);
             this.debuffs.set(id, sp);
           }
           sp.visible = true;
-          sp.position.set(f.x - 0.55, f.y + 2.05 + row * 0.42 + Math.sin(time * 3 + row) * 0.04, 0.5);
-          row++;
+          sp.position.set(f.x + (col - (shown - 1) / 2) * 0.46, f.y + 2.75 + Math.sin(time * 3 + col) * 0.03, 0.5);
+          col++;
         } else if (sp) sp.visible = false;
       }
       let z = this.zzz.get(f.slot);

@@ -227,6 +227,8 @@ export type GameEvent =
   /** 鬼電（メンヘラ）の着信音が鳴った・泣き落とし */
   | { k: 'ring'; x: number; y: number; s: number }
   | { k: 'cry'; x: number; y: number; s: number }
+  /** 赤い糸が切れて、ためていたダメージが一気に加わった（p = %） */
+  | { k: 'leashDmg'; s: number; x: number; y: number; p: number }
   /** 重い愛のハート（深夜のワンルームのギミック）を拾った */
   | { k: 'heavy'; s: number; x: number; y: number }
   /** メガホン（アイテム）の衝撃波 */
@@ -285,6 +287,11 @@ export const FX_YAMI = 8192;
 export const FX_AWK = 16384;
 /** 重い愛のハートで重い */
 export const FX_HEAVY = 32768;
+/** 攻撃力アップ・ダウン、スピードアップ・ダウン（どのキャラでも共通の目印：剣・ブーツに↑↓） */
+export const FX_ATK_UP = 65536;
+export const FX_ATK_DOWN = 131072;
+export const FX_SPD_UP = 262144;
+export const FX_SPD_DOWN = 524288;
 /** 3B の仕事（0〜2）を入れるビットの位置（256〜512） */
 export const FX_JOB_SHIFT = 8;
 export const fxJob = (fx: number) => (fx >> FX_JOB_SHIFT) & 3;
