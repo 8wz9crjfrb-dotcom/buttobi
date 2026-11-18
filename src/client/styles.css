@@ -5076,3 +5076,16 @@ table.rec td:first-child {
 #debut .db-card.btns .db-btns {
   opacity: 1;
 }
+
+/* テスト表示中（まだ公開していない内容を出している）の目印 */
+.preview-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: #ff4f9a;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  vertical-align: middle;
+}

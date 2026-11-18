@@ -309,8 +309,31 @@ export const ALL_CHARACTERS: CharacterDef[] = [
   },
 ];
 
-/** まだ公開していないキャラ・ステージを、確認のために出す（URL に ?preview を付けたとき。サーバーでは出さない） */
-export const PREVIEW = /[?&]preview(=|&|$)/.test((globalThis as { location?: { search?: string } }).location?.search ?? '');
+/** テスト表示（まだ公開していないキャラなどを出す）を覚えておく場所 */
+export const PREVIEW_KEY = 'buttobi-preview-v1';
+/**
+ * まだ公開していないキャラ・ステージを、確認のために出すか。
+ * URL に ?preview を付けて開くか、設定画面の見出し「設定」を7回たたくとオンになり、端末に覚える（?preview=off か、もう一度7回でオフ）。
+ * サーバー・テストでは出さない
+ */
+function readPreview(): boolean {
+  const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+  const q = g.location?.search ?? '';
+  try {
+    if (/[?&]preview=off/.test(q)) {
+      g.localStorage?.removeItem(PREVIEW_KEY);
+      return false;
+    }
+    if (/[?&]preview(=|&|$)/.test(q)) {
+      g.localStorage?.setItem(PREVIEW_KEY, '1');
+      return true;
+    }
+    return g.localStorage?.getItem(PREVIEW_KEY) === '1';
+  } catch {
+    return /[?&]preview(=|&|$)/.test(q);
+  }
+}
+export const PREVIEW = readPreview();
 /** まだ公開していないキャラ */
 export const HIDDEN_CHARS = ['menhera'];
 /** 選べるキャラ（ふだんは公開しているキャラだけ） */

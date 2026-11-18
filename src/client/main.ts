@@ -2,7 +2,7 @@
 
 import './styles.css';
 import { CpuController } from '../shared/ai';
-import { ballTeamOf, CHARACTERS, getCharacter, HIDDEN_CHARS, PREVIEW, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
+import { ballTeamOf, CHARACTERS, getCharacter, HIDDEN_CHARS, PREVIEW, PREVIEW_KEY, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
@@ -1648,7 +1648,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
   showScreen(
     `<div class="m-char" id="m-char"></div>
      <div class="m-top">
-       <img class="m-logo" src="${logoUrl}" alt="トバセ！" draggable="false"/>
+       <img class="m-logo" src="${logoUrl}" alt="トバセ！" draggable="false"/>${PREVIEW ? '<span class="preview-badge">テスト表示中</span>' : ''}
        <div class="grow"></div>
        ${coinBadge()}
        ${canInstall() ? `<button class="m-icon" id="install" title="ホーム画面に追加">${ICONS.install}</button>` : ''}
@@ -2751,7 +2751,7 @@ function showHowTo(): void {
 
 function showSettings(): void {
   showScreen(
-    `<h2>設定</h2>
+    `<h2 style="pointer-events:auto">設定</h2>
      <div class="setup-grid">
        <div class="opt">ボタン（配置・大きさ・濃さ） <button type="button" class="btn small" id="layout">${settings.leftHanded ? '左利き・' : ''}${Object.keys(settings.btnPos).length ? '自分で配置' : '標準の配置'}・大きさ${{ S: '小', M: '中', L: '大' }[settings.btnSize]}（変える）</button></div>
        <div class="opt">画質 ${seg('q', [['low', '軽さ優先'], ['high', 'きれい']], settings.quality)}</div>
@@ -2770,6 +2770,23 @@ function showSettings(): void {
      <div class="footer"><button class="btn primary" id="back">保存してもどる</button></div>`,
     'overlay',
     (root) => {
+      // 隠し操作：見出し「設定」を7回たたくと、テスト表示（まだ公開していないキャラなど）を切り替える
+      let taps = 0;
+      let tapAt = 0;
+      root.querySelector('h2')?.addEventListener('click', () => {
+        const now = Date.now();
+        taps = now - tapAt < 1500 ? taps + 1 : 1;
+        tapAt = now;
+        if (taps < 7) return;
+        try {
+          if (PREVIEW) localStorage.removeItem(PREVIEW_KEY);
+          else localStorage.setItem(PREVIEW_KEY, '1');
+        } catch {
+          /* 保存できなければ切り替えない */
+        }
+        toast(PREVIEW ? 'テスト表示をオフにします' : 'テスト表示をオンにします', 1500);
+        setTimeout(() => location.replace(location.pathname), 900);
+      });
       bindSeg(root, 'q', (v) => {
         settings.quality = v as Settings['quality'];
         renderer.setQuality(settings.quality);
