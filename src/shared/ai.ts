@@ -129,7 +129,7 @@ export class CpuController {
       const go = this.areaMove(sim, f, lv);
       if (go) return go;
     }
-    // 王冠うばい：落ちている王冠を拾いに行く。持っているときは相手から離れる
+    // 王冠うばい：持っているときは相手から離れる（だれも持っていないときは、相手を倒しに行く）
     if (sim.setup.rules.mode === 'crown') {
       const go = this.crownMove(sim, f, lv);
       if (go) return go;
@@ -338,15 +338,7 @@ export class CpuController {
   private crownMove(sim: Sim, f: Fighter, lv: number): InputState | null {
     const c = sim.crown;
     const m = sim.stage.main;
-    if (!c.on || !f.grounded) return null;
-    if (c.holder < 0) {
-      // 拾いに行く（上にあればジャンプ）
-      const dx = c.x - f.x;
-      if (c.y - f.y > 1.5 && Math.abs(dx) < 2.5) return { mx: Math.sign(dx) * 0.6, my: 0, buttons: BTN_JUMP };
-      if (Math.abs(dx) > 0.4) return { mx: Math.sign(dx), my: 0, buttons: 0 };
-      return null;
-    }
-    if (c.holder !== f.slot) return null;
+    if (!f.grounded || c.holder !== f.slot) return null;
     // 持っている：近くの相手からは離れる（すぐ近くなら戦う）。強いCPUほど上手に逃げる
     let near: Fighter | null = null;
     let nd = Infinity;
@@ -459,6 +451,20 @@ export class CpuController {
     if (rules.mode === 'crown' && sim.crown.holder >= 0 && sim.crown.holder !== f.slot) {
       const h = sim.fighter(sim.crown.holder);
       if (h && h.alive && !sim.sameTeam(h, f)) return h;
+      // 仲間が持っている：その仲間にいちばん近い相手をねらって守る
+      if (h && h.alive && !h.out) {
+        let guard: Fighter | null = null;
+        let gd = Infinity;
+        for (const o of sim.fighters) {
+          if (!o.alive || o.out || sim.sameTeam(o, f)) continue;
+          const d = Math.abs(o.x - h.x) + Math.abs(o.y - h.y);
+          if (d < gd) {
+            gd = d;
+            guard = o;
+          }
+        }
+        if (guard) return guard;
+      }
     }
     // 金庫まもり：近くに相手がいなければ、相手の金庫をねらう
     if (rules.mode === 'vault' && sim.vaults.length === 2) {

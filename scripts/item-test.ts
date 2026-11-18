@@ -167,7 +167,7 @@ for (const mode of ['time', 'stamina'] as const) {
   check('ジャンプ攻撃のひるみはそのまま', a.before > 0 && a.after === a.before, `${a.before} → ${a.after}`);
 }
 
-// 配達員：自転車に乗ったままジャンプ、ダメージ合計10%をこえると降りる、置き配は6%回復
+// 配達員：自転車に乗ったままジャンプ、ダメージ合計10%をこえると降りる、置き配は7%回復
 {
   const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'courier', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: 'guard', cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'stock', stocks: 3, timeLimit: 0 }, seed: 1 });
   while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
@@ -190,7 +190,7 @@ for (const mode of ['time', 'stamina'] as const) {
   k(c, 1, 4, 1, 1, 30, 1, 1);
   check('自転車：ダメージ合計10%をこえると降りる', after8 && c.bike === 0);
 }
-check('置き配の回復は6%', FOOD.heal === 6);
+check('置き配の回復は7%', FOOD.heal === 7);
 
 if (fail) {
   console.log(`\n${fail} 件 NG`);

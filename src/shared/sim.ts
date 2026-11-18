@@ -567,57 +567,45 @@ export class Sim {
     return this.setup.rules.teams ? f.team : f.slot;
   }
 
-  /** 王冠をステージの中央の上に出す（timer フレーム後に出てくる） */
-  private resetCrown(timer = 0): void {
+  /** 王冠をだれも持っていない状態にする（次に相手を撃墜した人が王冠を手に入れる） */
+  private resetCrown(): void {
     const m = this.stage.main;
-    this.crown = { x: (m.x1 + m.x2) / 2, y: m.top + 5, vy: 0, holder: -1, on: timer === 0, timer, cd: 0, last: -1 };
+    this.crown = { x: (m.x1 + m.x2) / 2, y: m.top, vy: 0, holder: -1, on: false, timer: 0, cd: 0, last: -1 };
   }
 
   private updateCrown(): void {
     const c = this.crown;
-    if (!c.on) {
-      if (--c.timer <= 0) {
-        this.resetCrown();
-        this.events.push({ k: 'poof', x: c.x, y: c.y });
-      }
-      return;
-    }
     if (c.cd > 0) c.cd--;
     const h = c.holder >= 0 ? this.fighter(c.holder) : undefined;
-    if (h) {
-      // 持っている人が撃墜された：王冠は中央に出直す
-      if (!h.alive || h.out) return this.resetCrown(CROWN.respawn);
-      c.x = h.x;
-      c.y = h.y + h.h + 0.3;
-      if (h.state !== 'respawn') {
-        const k = this.crownKey(h);
-        this.crownPts.set(k, (this.crownPts.get(k) ?? 0) + 1);
-      }
-      return;
+    if (!h) return;
+    // 持っている人が（だれにも倒されずに）いなくなった：次に相手を撃墜した人のものになる
+    if (!h.alive || h.out) return this.resetCrown();
+    c.x = h.x;
+    c.y = h.y + h.h + 0.3;
+    if (h.state !== 'respawn') {
+      const k = this.crownKey(h);
+      this.crownPts.set(k, (this.crownPts.get(k) ?? 0) + 1);
     }
-    // だれも持っていない：落ちてきて床や足場に乗り、触れた人が拾う
-    const py = c.y;
-    c.vy = Math.max(-12, c.vy - 25 * DT);
-    c.y += c.vy * DT;
-    const m = this.stage.main;
-    if (c.x >= m.x1 && c.x <= m.x2 && py >= m.top && c.y <= m.top) {
-      c.y = m.top;
-      c.vy = 0;
-    }
-    for (const sp of this.stage.platforms) {
-      const p = platformAt(sp, this.frame);
-      if (c.x >= p.x1 && c.x <= p.x2 && py >= p.prevY - 0.001 && c.y <= p.y) {
-        c.y = p.y;
-        c.vy = 0;
-      }
-    }
-    if (c.y < this.stage.blast.bottom) return this.resetCrown(CROWN.respawn);
-    const taker = this.fighters.find(
-      (v) => v.alive && !v.out && v.state !== 'respawn' && v.state !== 'grabbed' && !(c.cd > 0 && v.slot === c.last) && circleHitsBox(c.x, c.y + 0.3, CROWN.r, v),
-    );
-    if (taker) {
-      c.holder = taker.slot;
-      this.events.push({ k: 'crown', s: taker.slot, x: c.x, y: c.y });
+  }
+
+  /**
+   * 王冠うばい：だれかが撃墜された。王冠をだれも持っていないか、持っていた人が倒されたなら、
+   * 倒した人が王冠を手に入れる（最初に拾う形式だと、近くに出た人が有利になるため）
+   */
+  private crownOnKo(f: Fighter, by: number | undefined): void {
+    const c = this.crown;
+    if (c.holder >= 0 && c.holder !== f.slot) return;
+    const k = by === undefined ? undefined : this.fighter(by);
+    if (k && k.alive && !k.out && k.team !== f.team) {
+      c.holder = k.slot;
+      c.on = true;
+      c.cd = CROWN.stealCd;
+      c.last = f.slot;
+      c.x = k.x;
+      c.y = k.y + k.h + 0.3;
+      this.events.push({ k: 'crown', s: k.slot, x: c.x, y: c.y });
+    } else if (c.holder === f.slot) {
+      this.resetCrown();
     }
   }
 
@@ -645,7 +633,7 @@ export class Sim {
     const m = this.stage.main;
     // 人数が多いほど早く壊れるので、多いほうのチームの人数に合わせて耐久を増やす
     const size = Math.max(1, ...[0, 1].map((t) => this.fighters.filter((f) => f.team % 2 === t).length));
-    const hp = Math.round((this.setup.rules.vaultHp ?? VAULT.hp) * (1 + VAULT.perPlayer * (size - 1)));
+    const hp = Math.round((this.setup.rules.vaultHp ?? VAULT.hp) * VAULT.scale * (1 + VAULT.perPlayer * (size - 1)));
     this.vaults = [
       { x: m.x1 + VAULT.inset, y: m.top, hp, max: hp },
       { x: m.x2 - VAULT.inset, y: m.top, hp, max: hp },
@@ -663,7 +651,10 @@ export class Sim {
   private hitVault(i: number, dmg: number, by: number, x: number, y: number): void {
     const v = this.vaults[i];
     if (v.hp <= 0 || dmg <= 0) return;
-    v.hp = Math.max(0, v.hp - dmg);
+    // 細かい数で数え、1回ごとに少しぶれる（引き分けになりにくくする）
+    dmg = Math.max(1, Math.round(dmg * VAULT.scale * (1 - VAULT.spread + this.rng.next() * VAULT.spread * 2)));
+    dmg = Math.min(dmg, v.hp);
+    v.hp -= dmg;
     const f = this.fighter(by);
     if (f) f.vaultDmg += dmg;
     this.events.push({ k: 'vhit', x, y, t: i, p: dmg });
@@ -3462,6 +3453,7 @@ export class Sim {
         if (k.def.id === 'streamer') k.buzz = Math.min(3, k.buzz + 1);
       }
     }
+    if (this.setup.rules.mode === 'crown' && !this.solo) this.crownOnKo(f, by);
     if (f.grabbing >= 0) this.endGrab(f, this.fighter(f.grabbing));
     f.buzz = 0;
     f.move = null;
@@ -3646,7 +3638,7 @@ export class Sim {
         ...(area ? { area: Math.floor((gauge(e.f) / this.areaGoal) * 100) } : {}),
         ...(ball ? { goals: e.f.goals, teamGoals: this.ballScore[e.f.team] } : {}),
         ...(crown ? { crown: Math.floor(held(e.f) / 60) } : {}),
-        ...(vault ? { vaultDmg: Math.round(e.f.vaultDmg), vaultBroke: Math.round((broke(e.f.team) / (this.vaults[0]?.max || 1)) * 100) } : {}),
+        ...(vault ? { vaultDmg: Math.round(e.f.vaultDmg), vaultBroke: Math.floor((broke(e.f.team) / (this.vaults[0]?.max || 1)) * 1000) / 10 } : {}),
       };
     });
   }

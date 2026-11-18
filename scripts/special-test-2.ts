@@ -178,7 +178,7 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   const food = sim.entities.find((e) => e.kind === 'food')!;
   sim.fighters[1].x = food.x; sim.fighters[1].y = food.y;
   run(sim, 3);
-  check('料理を拾うと6%回復（相手も拾える）', Math.abs(sim.fighters[1].damage - 24) < 0.01, `${sim.fighters[1].damage}%`);
+  check('料理を拾うと7%回復（相手も拾える）', Math.abs(sim.fighters[1].damage - 23) < 0.01, `${sim.fighters[1].damage}%`);
 }
 {
   const sim = make('courier', 'guard');

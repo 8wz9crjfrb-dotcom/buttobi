@@ -149,7 +149,7 @@ export class Hud {
       const box = document.createElement('div');
       box.className = 'hud-vault';
       box.innerHTML = [0, 1]
-        .map((t) => `<div class="vb" style="--ac:${hex(TEAM_COLORS[t])}"><small>${TEAM_NAMES[t]}の金庫</small><div class="bar"><i></i><b>100%</b></div></div>`)
+        .map((t) => `<div class="vb" style="--ac:${hex(TEAM_COLORS[t])}"><small>${TEAM_NAMES[t]}の金庫</small><div class="bar"><i></i><b>100.0%</b></div></div>`)
         .join('');
       this.el.appendChild(box);
       this.vaultHud = { fills: [...box.querySelectorAll<HTMLElement>('.bar i')], nums: [...box.querySelectorAll<HTMLElement>('.bar b')] };
@@ -200,7 +200,8 @@ export class Hud {
       bar.root.classList.toggle('on', k === holderKey);
     }
     const name = v.crown.holder >= 0 ? c.names.get(v.crown.holder) ?? '' : '';
-    const msg = v.ended ? '' : name ? `王冠：${name}` : v.crown.on ? '王冠を拾え！' : '';
+    // だれも持っていないときは、次に相手を倒した人が手に入れる（まだだれも持ったことがなければ「最初に」）
+    const msg = v.ended ? '' : name ? `王冠：${name}` : pts.size === 0 ? '最初に相手を倒した人が王冠ゲット！' : '次に相手を倒した人が王冠ゲット！';
     if (msg !== c.last) {
       c.notice.textContent = msg;
       c.last = msg;
@@ -212,9 +213,10 @@ export class Hud {
     const h = this.vaultHud;
     if (!h || !v.vault) return;
     v.vault.hp.forEach((hp, t) => {
-      const pct = Math.max(0, Math.ceil((hp / v.vault!.max) * 100));
+      // 引き分けになりにくいよう、小数第1位まで出す（0 になるまでは 0.0% と出さない）
+      const pct = hp <= 0 ? 0 : Math.max(0.1, Math.ceil((hp / v.vault!.max) * 1000) / 10);
       h.fills[t].style.width = `${pct}%`;
-      h.nums[t].textContent = `${pct}%`;
+      h.nums[t].textContent = `${pct.toFixed(1)}%`;
     });
   }
 

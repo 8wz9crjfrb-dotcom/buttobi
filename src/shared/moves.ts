@@ -451,7 +451,7 @@ const SPECIALS: Record<string, Specials> = {
       special: 'shot', cd: 45,
       shots: [{ at: 0, kind: 'bag', x: 0.8, y: 1.0, vx: 15, vy: 0, life: 150, r: 0.4, dmg: 6, base: 5, growth: 5, angle: 40, boomerang: 30 }],
     },
-    // 自転車：乗ったまま走り回れる（ぶつかるとダメージ、ジャンプで降りる）
+    // 自転車：乗ったまま走り回れる（ぶつかるとダメージ。攻撃・必殺技・ガードで降りる）
     sspecial: { startup: 8, active: 1, end: 6, hitboxes: [], dmg: 6, base: 6, growth: 6.5, angle: 35, air: false, special: 'bike', cd: 120 },
     // 置き配：拾うと回復する料理を置く（相手も拾える）
     dspecial: { startup: 12, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: false, special: 'food' },
@@ -647,7 +647,7 @@ export const BIKE = {
   speedKb: 0.15,
 };
 /** 置き配：回復量、置いていられる時間、置いた本人が拾えるまでの時間 */
-export const FOOD = { heal: 6, life: 600, selfDelay: 60, r: 0.6 };
+export const FOOD = { heal: 7, life: 600, selfDelay: 60, r: 0.6 };
 /** ハルシネーション：分身の時間、攻撃した相手が目を回す時間 */
 export const DECOY = { life: 240, dizzy: 50 };
 /** API呼び出し：ワイヤーの届く距離と、引き寄せる速さ */
@@ -716,10 +716,13 @@ export const SUDDEN = { damage: 100, hp: 30, max: 60 * 60 };
 export const REWIND = { frames: 120, heal: 0.5, invuln: 20 };
 /** 飛び道具が当たったときのひるみ時間の倍率 */
 export const SHOT_HITSTUN = 0.5;
-/** 王冠うばい：勝ちになる時間（秒・初期値）、奪われた直後に奪い返せない時間、消えてから出直すまで、王冠の大きさ */
-export const CROWN = { goal: 30, stealCd: 45, respawn: 90, r: 0.6 };
-/** 金庫まもり：耐久（1対1のときの初期値）、大きさ、ステージの端からの距離、1チームの人数が1人増えるごとに増える耐久の割合 */
-export const VAULT = { hp: 400, w: 1.4, h: 1.8, inset: 1.7, perPlayer: 0.5 };
+/** 王冠うばい：勝ちになる時間（秒・初期値）、奪われた直後に奪い返せない時間 */
+export const CROWN = { goal: 30, stealCd: 45 };
+/**
+ * 金庫まもり：耐久（1対1のときの初期値。ルールの値）、大きさ、ステージの端からの距離、1チームの人数が1人増えるごとに増える耐久の割合、
+ * 細かさ（耐久とダメージを何倍の数で数えるか）、1回のダメージのぶれ（±）。引き分けになりにくいように、数を細かくしてぶれを付ける
+ */
+export const VAULT = { hp: 400, w: 1.4, h: 1.8, inset: 1.7, perPlayer: 0.5, scale: 10, spread: 0.1 };
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };
 
