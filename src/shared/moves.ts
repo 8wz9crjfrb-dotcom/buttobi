@@ -53,6 +53,8 @@ export interface ShotSpec {
   angle: number;
   /** ひるみ時間の倍率 */
   hitstunMul?: number;
+  /** 当たっても相手はのけぞらない（ダメージだけ） */
+  noFlinch?: boolean;
   /** 毒：当たった相手がこのフレーム数の間、少しずつダメージを受ける */
   poison?: number;
   /** 当たった相手の左右の操作を、このフレーム数の間だけ逆にする */
@@ -406,7 +408,7 @@ const SPECIALS: Record<string, Specials> = {
   },
   gacha: {
     // 10連ガチャ：毎回ランダム（大当たり〜大外れ）
-    nspecial: { startup: 14, active: 1, end: 20, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'gacha10' },
+    nspecial: { startup: 14, active: 1, end: 20, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'gacha10', cd: 60 },
     // 単発ガチャ：4回に1回ほど、超強力な一撃（確率は GACHA1_CRIT）
     sspecial: {
       startup: 9,
@@ -442,7 +444,7 @@ const SPECIALS: Record<string, Specials> = {
         [6, 1.6],
         [12, -0.6],
         [18, 0.8],
-      ].map(([at, x]) => ({ at, kind: 'stone' as const, x, y: 3.2, vx: 0, vy: -4, gravity: 22, life: 70, r: 0.32, dmg: 4, base: 4, growth: 4, angle: -60 })),
+      ].map(([at, x]) => ({ at, kind: 'stone' as const, x, y: 3.2, vx: 0, vy: -4, gravity: 22, life: 70, r: 0.32, dmg: 4, base: 4, growth: 4, angle: -60, noFlinch: true })),
     },
   },
   courier: {
@@ -461,7 +463,8 @@ const SPECIALS: Record<string, Specials> = {
       shots: [{ at: 0, kind: 'bag', x: 0.8, y: 1.0, vx: 15, vy: 0, life: 150, r: 0.4, dmg: 6, base: 5, growth: 5, angle: 40, boomerang: 30 }],
     },
     // 自転車：乗ったまま走り回れる（ぶつかるとダメージ。攻撃・必殺技・ガードで降りる）
-    sspecial: { startup: 8, active: 1, end: 6, hitboxes: [], dmg: 6, base: 6, growth: 6.5, angle: 35, air: false, special: 'bike', cd: 120 },
+    // 乗り始めに約0.5秒（配達員の動きの速さ 0.95倍をかけて30フレーム）。降りてから約3秒は乗れない
+    sspecial: { startup: 32, active: 1, end: 6, hitboxes: [], dmg: 6, base: 6, growth: 6.5, angle: 35, air: false, special: 'bike', cd: 180 },
     // 置き配：拾うと回復する料理を置く（相手も拾える）
     dspecial: { startup: 12, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: false, special: 'food' },
     // 立ちこぎジャンプ：自転車ごと大ジャンプ
@@ -723,8 +726,8 @@ export const BIKE = {
   hitCooldown: 40,
   /** ぶつかる判定の大きさ */
   hitR: 0.85,
-  /** 自転車の耐久（%）：受けたダメージの合計がこれをこえると降りる（弱い攻撃なら、こえるまでは降りない） */
-  hp: 10,
+  /** 自転車の耐久（%）：受けたダメージの合計がこれ（8%）をこえると降りる（弱い攻撃なら、こえるまでは降りない） */
+  hp: 8,
   /** これより強いふっとばしを受けたら、耐久が残っていても降ろされる */
   armorLimit: 12,
   /** 弱い攻撃を受けたときの減速 */
@@ -747,7 +750,7 @@ export const PULL = { range: 4.5, speed: 11 };
 /** ガチャの天井（外れがこの回数続くと次は必ず大当たり） */
 export const PITY = 6;
 /** 10連ガチャの出る確率（SSR・SR・R・N・回復。残りが爆死） */
-export const GACHA_RATES = { ssr: 0.06, sr: 0.14, r: 0.28, n: 0.29, heal: 0.05 };
+export const GACHA_RATES = { ssr: 0.06, sr: 0.14, r: 0.24, n: 0.33, heal: 0.05 };
 /** 単発ガチャの大当たりの確率 */
 export const GACHA1_CRIT = 0.25;
 /** 無限スクロールの3回目（最後）の一撃：威力の倍率と、ふっとばし */
@@ -826,7 +829,7 @@ export const TRAINER = {
   curlMul: 1.8,
   /** プロテインの効く時間と、次に飲めるまでの時間 */
   armor: 300,
-  armorCooldown: 900,
+  armorCooldown: 720,
   /** プロテイン中でも、この速さより強いふっとばしは受ける */
   armorLimit: 17,
   /** プロテイン中に受けるダメージの倍率 */

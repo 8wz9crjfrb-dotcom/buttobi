@@ -81,7 +81,7 @@ for (const [c, name] of [['hacker', 'ハッカー'], ['ai', 'AIエンジニア']
   const bk = make('courier');
   bk.fighters[1].x = 9;
   const c = bk.fighters[0];
-  for (let i = 0; i < 20; i++) bk.step(new Map([[0, i === 0 ? { mx: 1, my: 0, buttons: BTN_B } : N]]));
+  for (let i = 0; i < 40; i++) bk.step(new Map([[0, i === 0 ? { mx: 1, my: 0, buttons: BTN_B } : N]]));
   const riding = c.bike > 0;
   for (let i = 0; i < 400 && c.bike > 0; i++) bk.step(new Map([[0, { mx: i % 60 < 30 ? 1 : -1, my: 0, buttons: 0 }]]));
   check('配達員の自転車：降りた直後は乗れない', riding && c.cdS > 30, `残り${c.cdS}フレーム`);

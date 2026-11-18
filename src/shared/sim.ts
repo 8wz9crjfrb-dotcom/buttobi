@@ -76,6 +76,8 @@ export interface Projectile {
   angle: number;
   r: number;
   hitstunMul: number;
+  /** 当たっても相手はのけぞらない（ダメージだけ） */
+  noFlinch?: boolean;
   poison: number;
   confuse: number;
   homing: number;
@@ -1242,6 +1244,8 @@ export class Sim {
     for (const f of this.fighters) {
       const inp = playing ? inputs.get(f.slot) ?? EMPTY_INPUT : EMPTY_INPUT;
       this.readInput(f, inp);
+      // 試合が決まったあとは操作が止まるので、自転車からも降ろす（乗ったまま走り続けて台から落ちないように）
+      if (this.ended) f.bike = 0;
     }
     this.fixGrabs();
     const frozen = new Set<Fighter>();
@@ -2041,8 +2045,8 @@ export class Sim {
     const rarity = this.rollGacha(f);
     const sc = f.def.scale;
     this.events.push({ k: 'gacha', x: f.x, y: f.y + 2 * sc, s: f.slot, r: rarity });
-    const shot = (kind: ShotKind, vy: number, dmg: number, base: number, growth: number) =>
-      this.spawnShot(f, { at: 0, kind, x: 0.8, y: 1.0, vx: 13, vy, life: 45, r: 0.35, dmg, base, growth, angle: 38 });
+    const shot = (kind: ShotKind, vy: number, dmg: number, base: number, growth: number, noFlinch = false) =>
+      this.spawnShot(f, { at: 0, kind, x: 0.8, y: 1.0, vx: 13, vy, life: 45, r: 0.35, dmg, base, growth, angle: 38, noFlinch });
     switch (rarity) {
       case 5: {
         // SSR：周りを大爆発
@@ -2064,7 +2068,8 @@ export class Sim {
         shot('gold', 0, 7, 5, 6);
         break;
       case 2:
-        shot('stone', 0, 3, 3, 3);
+        // N：石が1つ（当たっても相手はのけぞらない）
+        shot('stone', 0, 3, 3, 3, true);
         break;
       case 1:
         f.damage = Math.max(0, f.damage - 15);
@@ -2886,6 +2891,7 @@ export class Sim {
       angle: spec.angle,
       r: spec.r,
       hitstunMul: spec.hitstunMul ?? 1,
+      noFlinch: spec.noFlinch,
       poison: spec.poison ?? 0,
       confuse: spec.confuse ?? 0,
       homing: spec.homing ?? 0,
@@ -3547,7 +3553,7 @@ export class Sim {
     return true;
   }
 
-  private knock(v: Fighter, dir: number, dmg: number, base: number, growth: number, angle: number, kbMul: number, from: number): void {
+  private knock(v: Fighter, dir: number, dmg: number, base: number, growth: number, angle: number, kbMul: number, from: number, noFlinch = false): void {
     // 王冠うばい：王冠を持っている人に当てたら奪う
     if (this.setup.rules.mode === 'crown') this.crownSteal(v, from);
     // コイン集め：攻撃を受けた人はコインを落とす
@@ -3594,6 +3600,17 @@ export class Sim {
           }
         }
       }
+    }
+    // のけぞらない攻撃（ガチャ廃人の石など）：ダメージだけ受けて、ふっとびもひるみもしない
+    if (noFlinch) {
+      // 自転車の耐久はふつうに減る（こえたら降りるだけで、ふっとばない）
+      if (v.bike > 0) {
+        v.bikeHp -= dmg;
+        if (v.bikeHp < 0) v.bike = 0;
+      }
+      v.lastHitBy = from;
+      v.lastHitFrame = this.frame;
+      return;
     }
     // 体力制：ふっとびはダメージで大きくなりにくい（HPを削り切るのが主な撃墜方法）
     const kbDamage = rules.mode === 'stamina' ? Math.min(v.damage, STAMINA_KB_CAP) : v.damage;
@@ -3849,11 +3866,11 @@ export class Sim {
           } else {
             const owner = this.fighter(p.owner);
             const before = v.damage;
-            this.knock(v, dir, p.dmg, p.base, p.growth, p.angle, owner ? this.powerMul(owner).kb : 1, p.owner);
+            this.knock(v, dir, p.dmg, p.base, p.growth, p.angle, owner ? this.powerMul(owner).kb : 1, p.owner, p.noFlinch);
             this.lifesteal(owner, v.damage - before);
-            v.hitstun = Math.round(v.hitstun * p.hitstunMul);
-            // 飛び道具のひるみは半分
-            if (v.state === 'hitstun') v.hitstun = Math.max(1, Math.round(v.hitstun * SHOT_HITSTUN));
+            if (!p.noFlinch) v.hitstun = Math.round(v.hitstun * p.hitstunMul);
+            // 飛び道具のひるみは半分（のけぞらない攻撃は、いまのひるみをそのままにする）
+            if (v.state === 'hitstun' && !p.noFlinch) v.hitstun = Math.max(1, Math.round(v.hitstun * SHOT_HITSTUN));
             if (p.confuse > 0) v.confused = Math.max(v.confused, p.confuse);
             // 赤い糸：つながる。鬼電：着信中の印（すでに印があれば付け直さない）
             if (p.leash) {
@@ -3870,7 +3887,7 @@ export class Sim {
               v.poison = Math.max(v.poison, p.poison);
               v.poisonFrom = p.owner;
             }
-            v.hitlag = 3;
+            if (!p.noFlinch) v.hitlag = 3;
             this.events.push({ k: 'hit', x: p.x, y: p.y, p: p.dmg, s: v.slot, a: p.owner });
           }
           // ブーメランとステージギミックは当たっても消えずに進む

@@ -142,11 +142,40 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   }
   check('無償石を配るで上から石が降る', stones >= 2, `${stones}個`);
 }
+{
+  // のけぞらない石：無償石・10連ガチャのNの石は、当たってもダメージだけ（ふっとばない・ひるまない）
+  const sim = make('gacha', 'guard');
+  const v = sim.fighters[1];
+  v.x = 0;
+  const priv = sim as unknown as { spawnShot(f: unknown, s: unknown): void };
+  priv.spawnShot(sim.fighters[0], { at: 0, kind: 'stone', x: 0, y: 3, vx: 0, vy: -4, gravity: 22, life: 70, r: 0.32, dmg: 4, base: 4, growth: 4, angle: -60, noFlinch: true });
+  sim.projectiles[sim.projectiles.length - 1].x = v.x;
+  let hitState = '';
+  for (let i = 0; i < 40 && v.damage === 0; i++) {
+    run(sim, 1);
+    hitState = v.state;
+  }
+  check('無償石：当たってもダメージだけで、のけぞらない', v.damage > 3.9 && hitState !== 'hitstun' && Math.abs(v.vx) < 0.01, `${v.damage.toFixed(1)}% ${hitState}`);
+  // 10連ガチャのN：石を1つ（のけぞらない）
+  const sim2 = make('gacha', 'guard');
+  (sim2 as unknown as { rollGacha(): number }).rollGacha = () => 2;
+  sim2.fighters[0].x = 0; sim2.fighters[0].facing = 1;
+  sim2.fighters[1].x = 2.5;
+  let st = '';
+  for (let i = 0; i < 60 && sim2.fighters[1].damage === 0; i++) {
+    sim2.step(new Map([[0, i === 0 ? B() : N]]));
+    st = sim2.fighters[1].state;
+  }
+  check('10連ガチャのN：石が当たっても相手はのけぞらない', sim2.fighters[1].damage > 0 && st !== 'hitstun', `${sim2.fighters[1].damage.toFixed(1)}% ${st}`);
+  check('10連ガチャ：使ったあと約1秒は使えない', sim2.fighters[0].cdN > 0, `残り${sim2.fighters[0].cdN}`);
+}
 // ---- 配達員
 {
   const sim = make('courier', 'guard');
   sim.fighters[0].x = -6; sim.fighters[0].facing = 1; sim.fighters[1].x = 0; sim.fighters[1].facing = -1;
-  run(sim, 12, at(0, B(1, 0)));
+  run(sim, 20, at(0, B(1, 0)));
+  check('自転車：乗り始めに約0.5秒かかる（0.33秒ではまだ乗っていない）', sim.fighters[0].bike === 0);
+  run(sim, 14);
   check('自転車に乗れる', sim.fighters[0].bike > 0);
   let hit = false;
   for (let i = 0; i < 60 && !hit; i++) { sim.step(new Map()); hit = sim.fighters[1].damage > 0; }

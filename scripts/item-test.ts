@@ -175,7 +175,7 @@ for (const mode of ['time', 'stamina'] as const) {
   sim.fighters[1].x = 8;
   c.x = -6;
   sim.step(new Map([[0, { mx: 1, my: 0, buttons: 2 }]]));
-  for (let i = 0; i < 20; i++) sim.step(new Map([[0, { mx: 1, my: 0, buttons: 0 }]]));
+  for (let i = 0; i < 40; i++) sim.step(new Map([[0, { mx: 1, my: 0, buttons: 0 }]]));
   const onBike = c.bike > 0;
   sim.step(new Map([[0, { mx: 1, my: 0, buttons: 4 }]]));
   let stillAir = false;
