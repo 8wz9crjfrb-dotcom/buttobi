@@ -1959,7 +1959,7 @@ export class Sim {
     const o = this.fighter(f.leashBy);
     const r = MENHERA.recoil;
     const dir = o ? (f.x >= o.x ? 1 : -1) : -f.facing;
-    if (f.state !== 'grabbed') this.knock(f, dir, 0, d * r.base, Math.min(r.maxGrowth, d * r.growth), r.angle, 1, o?.slot ?? -1);
+    if (f.state !== 'grabbed') this.knock(f, dir, 0, Math.min(r.maxBase, d * r.base), Math.min(r.maxGrowth, d * r.growth), r.angle, 1, o?.slot ?? -1);
   }
 
   /** 鬼電の爆発：着信音でダメージとふっとばし（ガード中なら盾が減るだけ） */
