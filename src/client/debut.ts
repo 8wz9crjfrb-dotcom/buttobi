@@ -2,7 +2,7 @@
 // 試合の画面（％表示・タイマー・操作ボタン）は出さない。最後に名前とキャッチコピー、「さっそくCPU戦で使ってみる」「閉じる」
 
 import { Sim, COUNTDOWN_FRAMES, type Fighter } from '../shared/sim';
-import { BTN_B, type GameEvent, type InputState, type MatchSetup, type ViewState } from '../shared/types';
+import { BTN_A, BTN_B, type GameEvent, type InputState, type MatchSetup, type ViewState } from '../shared/types';
 import type { GameRenderer } from './renderer';
 import type { Sfx } from './audio';
 import { threebDef } from '../shared/characters';
@@ -46,6 +46,8 @@ export const DEBUTS: DebutDef[] = [
 ];
 
 const N: InputState = { mx: 0, my: 0, buttons: 0 };
+/** 赤い糸の場面で、追いかけながら出す技の順番 */
+const COMBO = ['side', 'up', 'side', 'up', 'smash'] as const;
 const press = (mx: number, my: number): InputState => ({ mx, my, buttons: BTN_B });
 
 /** 場面（開始と終わりの時刻は秒） */
@@ -66,7 +68,7 @@ interface Shot {
 /** 映像の長さ（名前のカードが出きって、ボタンが出るまで） */
 /** 時刻（秒）：技の場面（赤い糸は連撃まで見せるので長め）。そのあと衣装の早着替え、UR、名前のカード */
 const MOVE0 = 4;
-const MOVES = [3.8, 2.4, 2.8, 2.4];
+const MOVES = [4.6, 2.4, 2.8, 2.4];
 const M = MOVES.map((_, i) => MOVE0 + MOVES.slice(0, i).reduce((a, b) => a + b, 0));
 const T_COS = MOVE0 + MOVES.reduce((a, b) => a + b, 0);
 const COS = 1.35;
@@ -79,6 +81,9 @@ export class DebutSession {
   mySlot = null;
   paused = false;
   private cryText = false;
+  /** 赤い糸の場面の連撃：何発目か・前のフレームでボタンを押したか */
+  private comboStep = 0;
+  private comboPrev = false;
   setup: MatchSetup;
   private sim: Sim;
   private t = 0;
@@ -193,7 +198,8 @@ export class DebutSession {
         t1: M[1],
         fresh: true,
         caption: moves[0],
-        init: (me, foe) => ((me.x = -2.6), (me.facing = 1), (foe.x = 0.6), (foe.facing = -1)),
+        // 相手は 0% から：%が低いほど吹っ飛ばずに近くにとどまるので、連撃が続く
+        init: (me, foe) => ((me.x = -2.6), (me.facing = 1), (foe.x = 0.6), (foe.facing = -1), (foe.damage = 0), (this.comboStep = 0), (this.comboPrev = false)),
         // 糸でつなぐ → 逃げようとする相手を引き戻し、追いかけて連撃 → 糸が切れて、ためたダメージと反動で吹っ飛ぶ
         input: (f, me, foe) => {
           if (f === 8) return [press(0, 0), N];
@@ -203,8 +209,17 @@ export class DebutSession {
           if (f >= 46 && !release) {
             const dx = foe.x - me.x;
             if (Math.abs(dx) > 1.0) return [{ mx: Math.sign(dx), my: 0, buttons: 0 }, run];
-            // 弱攻撃をくり返す（押しては離す）
-            return [{ mx: 0, my: 0, buttons: f % 9 === 0 ? 1 : 0 }, run];
+            // 横攻撃 → 上攻撃 → 横攻撃 → 上攻撃 → 最後にスマッシュ（技が終わって動けるときだけ押す。押したら一度離す）
+            if (this.comboPrev || (me.state !== 'idle' && me.state !== 'run')) {
+              this.comboPrev = false;
+              return [N, run];
+            }
+            const m = COMBO[Math.min(this.comboStep++, COMBO.length - 1)];
+            const s = Math.sign(dx) || 1;
+            if (m === 'side') me.flickX = 99;
+            if (m === 'smash') me.flickX = 0;
+            this.comboPrev = true;
+            return [m === 'up' ? { mx: 0, my: 1, buttons: BTN_A } : { mx: s, my: 0, buttons: BTN_A }, run];
           }
           // 連撃のあと、糸を切って一気にダメージ（映像の長さに合わせる）
           if (release && foe.leashT > 1) foe.leashT = 1;
@@ -215,8 +230,11 @@ export class DebutSession {
           const c = pair(me, foe, 8.4 - u * 1.4);
           // 糸が切れる少し前から引き始めて、切れた瞬間にはもう引ききっておく
           if (this.t < M[1] - 1.4) return c;
+          // 吹っ飛んでいく相手は追わずに、メンヘラを入れたまま見送る（鬼電の場面と同じ）
+          const w = pair(me, { x: me.x + 4, y: me.y } as Fighter, 10.5);
           const k = Math.min(1, (this.t - (M[1] - 1.4)) / 0.3);
-          return { ...c, y: c.y + k * 0.8, ly: c.ly + k * 0.9, z: c.z + k * 3.2 };
+          const mix = (a: number, b: number) => a + (b - a) * k;
+          return { x: mix(c.x, w.x), y: mix(c.y, w.y + 0.6), z: mix(c.z, w.z), lx: mix(c.lx, w.lx), ly: mix(c.ly, w.ly + 0.6) };
         },
       },
       {
@@ -306,6 +324,11 @@ export class DebutSession {
         // 当たった音・着信音（映像なので、試合の効果音の代わりにここで鳴らす）
         if (e.k === 'hit') this.sfx.hit(Math.min(20, e.p));
         if (e.k === 'ring') this.sfx.notify();
+        // 糸が切れて、ためたダメージが一気に入る：爆発音と白いフラッシュ
+        if (e.k === 'leashDmg') {
+          this.sfx.boom();
+          this.whiteFlash(0.2);
+        }
       }
     }
     const u = Math.min(1, (t - shot.t0) / Math.max(0.1, shot.t1 - shot.t0));
