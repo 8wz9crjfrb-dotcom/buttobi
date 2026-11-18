@@ -1938,10 +1938,13 @@ export class Sim {
     return (atkUp ? FX_ATK_UP : 0) | (f.awkward > 0 ? FX_ATK_DOWN : 0) | (f.speedBuff > 0 || f.dere > 0 ? FX_SPD_UP : 0) | (f.heavyT > 0 ? FX_SPD_DOWN : 0);
   }
 
-  /** 赤い糸の時間：つながれた相手の%が高いほど短い（つないだまま場外へ道連れにしやすくなりすぎないように） */
-  private leashFrames(v: Fighter, base: number): number {
+  /**
+   * 赤い糸の時間：糸を投げたメンヘラ自身の%が高いほど短い。
+   * （追い込まれたメンヘラが「どうせ落ちるから」と元気な相手を道連れにしにくくする。元気なうちの道連れは1機どうしの交換になる）
+   */
+  private leashFrames(owner: Fighter, base: number): number {
     const L = MENHERA.leashTime;
-    return Math.round(base * Math.max(L.min, 1 - v.damage * L.perPct));
+    return Math.round(base * Math.max(L.min, 1 - owner.damage * L.perPct));
   }
 
   /** 赤い糸が切れた：ためていたダメージを一気に加える */
@@ -1952,6 +1955,11 @@ export class Sim {
     if (!f.alive) return;
     f.damage = Math.min(999, f.damage + d);
     this.events.push({ k: 'leashDmg', s: f.slot, x: f.x, y: f.y + f.h + 0.4, p: Math.round(d) });
+    // 反動：ためたダメージの量に応じて、つないでいた人から離れる向きにふっとぶ（%はもう加えたので、ダメージは0）
+    const o = this.fighter(f.leashBy);
+    const r = MENHERA.recoil;
+    const dir = o ? (f.x >= o.x ? 1 : -1) : -f.facing;
+    if (f.state !== 'grabbed') this.knock(f, dir, 0, d * r.base, Math.min(r.maxGrowth, d * r.growth), r.angle, 1, o?.slot ?? -1);
   }
 
   /** 鬼電の爆発：着信音でダメージとふっとばし（ガード中なら盾が減るだけ） */
@@ -3846,7 +3854,7 @@ export class Sim {
             if (p.confuse > 0) v.confused = Math.max(v.confused, p.confuse);
             // 赤い糸：つながる。鬼電：着信中の印（すでに印があれば付け直さない）
             if (p.leash) {
-              v.leashT = this.leashFrames(v, p.leash);
+              v.leashT = this.leashFrames(owner ?? v, p.leash);
               v.leashBy = p.owner;
             }
             if (p.call && v.callT <= 0) {

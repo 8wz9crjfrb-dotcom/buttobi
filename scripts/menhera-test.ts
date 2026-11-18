@@ -61,7 +61,7 @@ check('隠していても、キャラとステージの中身はある', getChar
   v.damage = 150;
   (sim as unknown as { knock(v: unknown, dir: number, dmg: number, base: number, growth: number, angle: number, kb: number, from: number): void }).knock(v, 1, 10, 10, 10, 40, 1, 0);
   run(sim, 2);
-  check('赤い糸：強くふっとばされると切れる', v.leashT === 0 && v.tumble);
+  check('赤い糸：強くふっとばされると切れる', v.leashT === 0 && v.leashDmg === 0);
 }
 
 // ---- 鬼電：当てた相手に印。約2.5秒後に爆発
@@ -189,19 +189,19 @@ check('隠していても、キャラとステージの中身はある', getChar
   me.lonely = 0;
   check('赤い糸：つながっている間は攻撃力1.2倍', Math.abs(p.powerMul(me).dmg / before - MENHERA.threadMul) < 1e-9, `${(p.powerMul(me).dmg / before).toFixed(2)}倍`);
 }
-// 糸の時間は相手の%が高いほど短い
+// 糸の時間は自分（メンヘラ）の%が高いほど短い
 {
   const len = (pct: number) => {
     const sim = make('menhera', 'guard');
     place(sim, 2.5);
-    sim.fighters[1].damage = pct;
+    sim.fighters[0].damage = pct;
     run(sim, 14, at(0, { mx: 0, my: 0, buttons: BTN_B }));
     return sim.fighters[1].leashT;
   };
   const a0 = len(0);
   const a100 = len(100);
   const a200 = len(200);
-  check('赤い糸：相手の%が高いほど、つながる時間が短い', a0 > a100 && a100 > a200 && a200 >= MENHERA.leashTime.base * MENHERA.leashTime.min - 20, `0%:${a0} 100%:${a100} 200%:${a200}`);
+  check('赤い糸：自分（メンヘラ）の%が高いほど、つながる時間が短い', a0 > a100 && a100 > a200 && a200 >= MENHERA.leashTime.base * MENHERA.leashTime.min - 20, `0%:${a0} 100%:${a100} 200%:${a200}`);
 }
 // つながれている間はダメージがたまり、糸が切れたときに一気に加わる
 {
@@ -217,14 +217,20 @@ check('隠していても、キャラとステージの中身はある', getChar
   run(sim, 20, at(0, { mx: 0, my: 0, buttons: 1 }));
   const pending = v.leashDmg;
   check('赤い糸：つながれている間は%が増えない（ダメージはたまる）', v.damage === d0 && pending > 0, `%=${v.damage.toFixed(1)} ためた=${pending.toFixed(1)}`);
+  // たくさん当てた想定で、ためたダメージを増やしておく
+  v.leashDmg += 30;
+  const pending2 = v.leashDmg;
   let burst = false;
-  for (let i = 0; i < 300 && v.leashT > 0; i++) {
+  let vxAfter = 0;
+  for (let i = 0; i < 300 && !burst; i++) {
     run(sim, 1);
-    if (sim.events.some((e) => e.k === 'leashDmg')) burst = true;
+    if (sim.events.some((e) => e.k === 'leashDmg')) {
+      burst = true;
+      vxAfter = v.vx;
+    }
   }
-  run(sim, 1);
-  if (sim.events.some((e) => e.k === 'leashDmg')) burst = true;
-  check('赤い糸：糸が切れると、ためたダメージが一気に加わる', burst && Math.abs(v.damage - (d0 + pending)) < 0.01 && v.leashDmg === 0, `%=${v.damage.toFixed(1)}`);
+  check('赤い糸：糸が切れると、ためたダメージが一気に加わる', burst && Math.abs(v.damage - (d0 + pending2)) < 0.01 && v.leashDmg === 0, `%=${v.damage.toFixed(1)}`);
+  check('赤い糸：糸が切れた瞬間、ためた量に応じて離れる向きにふっとぶ（反動）', vxAfter * Math.sign(v.x - sim.fighters[0].x) > 3, `vx=${vxAfter.toFixed(2)}`);
 }
 
 // ---- デレモードの移動アップは約7秒に1回
