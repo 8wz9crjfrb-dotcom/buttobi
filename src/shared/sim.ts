@@ -3577,8 +3577,9 @@ export class Sim {
         dmg *= HORDE.taken;
       }
     }
-    // 赤い糸でつながれている間は、ダメージをためておく（糸が切れたときに一気に加わる）
-    if (v.leashT > 0) v.leashDmg += dmg;
+    // 赤い糸でつながれている間は、つないだメンヘラから受けたダメージだけをためておく（糸が切れたときに一気に加わる）。
+    // ほかの人からの攻撃は、ふだんどおりすぐに加わる
+    if (v.leashT > 0 && from === v.leashBy) v.leashDmg += dmg;
     else v.damage = Math.min(999, v.damage + dmg);
     if (from >= 0 && from !== v.slot) {
       const att = this.fighter(from);

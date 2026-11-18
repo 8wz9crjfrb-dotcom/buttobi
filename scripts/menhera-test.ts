@@ -265,6 +265,38 @@ check('隠していても、キャラとステージの中身はある', getChar
   check('赤い糸：糸が切れた瞬間、ためた量に応じて離れる向きにふっとぶ（反動）', vxAfter * Math.sign(v.x - sim.fighters[0].x) > 3, `vx=${vxAfter.toFixed(2)}`);
 }
 
+// 3人以上の試合：つながれている相手が、ほかの人から受けたダメージはすぐ加わる（ためるのはメンヘラの分だけ）
+{
+  const sim = new Sim({ players: ['menhera', 'guard', 'thief'].map((c, i) => ({ slot: i, name: 'p' + i, charId: c, cpu: false, cpuLevel: 1 })), stageId: 'plain', rules: { mode: 'stock', stocks: 3, timeLimit: 300 }, seed: 1 });
+  while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+  const [m, v, o] = sim.fighters;
+  m.x = 0;
+  m.facing = 1;
+  v.x = 2.5;
+  v.facing = -1;
+  o.x = 3.3;
+  o.facing = -1;
+  const step = (n: number, a: (i: number) => InputState, c: (i: number) => InputState) => {
+    for (let i = 0; i < n; i++) sim.step(new Map([[0, a(i)], [1, N], [2, c(i)]]));
+  };
+  step(30, at(0, { mx: 0, my: 0, buttons: BTN_B }), () => N);
+  check('赤い糸（3人）：つながる', v.leashT > 0 && v.leashBy === 0);
+  // 3人目（怪盗）が弱攻撃を当てる
+  const d0 = v.damage;
+  const p0 = v.leashDmg;
+  o.x = v.x + 0.7;
+  o.facing = -1;
+  step(20, () => N, at(0, { mx: 0, my: 0, buttons: 1 }));
+  check('赤い糸（3人）：ほかの人の攻撃はすぐに%に加わる', v.damage > d0 && v.leashDmg === p0, `%=${d0.toFixed(1)}→${v.damage.toFixed(1)} ためた=${v.leashDmg.toFixed(1)}`);
+  // メンヘラが弱攻撃を当てる
+  const d1 = v.damage;
+  m.x = v.x - 0.7;
+  m.facing = 1;
+  o.x = 8;
+  step(20, at(0, { mx: 0, my: 0, buttons: 1 }), () => N);
+  check('赤い糸（3人）：メンヘラの攻撃はためておく', v.damage === d1 && v.leashDmg > p0, `%=${v.damage.toFixed(1)} ためた=${v.leashDmg.toFixed(1)}`);
+}
+
 // ---- デレモードの移動アップは約7秒に1回
 {
   const sim = make('menhera', 'guard');
