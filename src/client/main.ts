@@ -1326,7 +1326,7 @@ function ruleText(r: MatchRules): string {
 
 function ruleControls(rules: MatchRules): string {
   return `
-    <div class="opt opt-wide">ルール ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ'], ['crown', '王冠'], ['vault', '金庫'], ['bounty', '賞金首'], ['coins', 'コイン']], rules.mode)}</div>
+    <div class="opt opt-wide">モード ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ'], ['crown', '王冠'], ['vault', '金庫'], ['bounty', '賞金首'], ['coins', 'コイン']], rules.mode)}</div>
     <div class="opt" data-show="crown">勝ちになる時間 ${seg('cgoal', [[20, '20秒'], [30, '30秒'], [45, '45秒']], rules.crownGoal ?? 30)}</div>
     <div class="opt" data-show="crown">時間 ${seg('ctime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt opt-wide" data-show="crown"><span class="muted">最初に相手を倒した人が王冠を手に入れます。王冠を持っている間だけ時間がたまり、持っている人に攻撃を当てると奪えます。決めた時間だけ持つか、時間切れのときに一番長く持っていた人（チーム）の勝ち。チーム戦でも王冠は1つで、仲間が持っている人を守ります</span></div>
@@ -1727,8 +1727,15 @@ const RULE_TABS: [string, string][] = [
   ['rule', 'ルール'],
   ['cpu', 'CPU'],
 ];
-function ruleTabs(current: string): string {
-  return `<div class="tabs" data-tabs>${RULE_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === current ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+/** オンラインのルームのタブ：対戦形式（全員で・トーナメント）を、ルールとは別のタブにする */
+const LOBBY_TABS: [string, string][] = [
+  ['stage', 'ステージ'],
+  ['fmt', '対戦形式'],
+  ['rule', 'ルール'],
+  ['cpu', 'CPU'],
+];
+function ruleTabs(current: string, tabs = RULE_TABS): string {
+  return `<div class="tabs" data-tabs>${tabs.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === current ? 'on' : ''}">${l}</button>`).join('')}</div>`;
 }
 /** タブを押すと、そのタブの中身（data-pane）だけを出す */
 function bindTabs(root: HTMLElement, onPick: (k: string) => void): void {
@@ -3982,14 +3989,16 @@ function showLobby(): void {
   const cpuLevel = cpus[0]?.cpuLevel ?? 3;
   const cpuOpts = Array.from({ length: maxCpu + 1 }, (_, i) => [i, String(i)] as [number, string]);
   const hostControls = isHost
-    ? `${ruleTabs(lobbyTab)}
+    ? `${ruleTabs(lobbyTab, LOBBY_TABS)}
       <div data-pane="stage">${stageCards(l.stageId)}</div>
-      <div data-pane="rule"><div class="setup-grid wide">
-        <div class="opt opt-wide">対戦の形式 ${seg('fmt', [['all', '全員で'], ['tour', 'トーナメント']], tourOn ? 'tour' : 'all')}</div>
+      <div data-pane="fmt"><div class="setup-grid wide">
+        <div class="opt opt-wide">試合の進め方 ${seg('fmt', [['all', '全員で'], ['tour', 'トーナメント']], tourOn ? 'tour' : 'all')}</div>
         <div class="opt" data-fmt-help ${tourOn ? '' : 'hidden'}>3位決定戦 ${seg('third', [['on', 'あり'], ['off', 'なし']], l.tourThird !== false ? 'on' : 'off')}</div>
         <div class="opt">乱入アイテム ${seg('dropon', [['on', 'あり'], ['off', 'なし']], l.dropOn !== false ? 'on' : 'off')}</div>
         <div class="opt opt-wide"><span class="muted">乱入アイテム：試合に出ていない人（トーナメントの待ち・観戦）が、1試合に1回アイテムを落とせます</span></div>
         <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">ルームの全員（CPUも）で1対1の勝ち抜き戦。3人から。人数が半端ならシード（1回戦なし）ができます。始める前に組み合わせ表が出ます。試合に出ない人は勝敗を予想して観戦し、全員が予想すると次の試合が始まります（予想する人がいなければ15秒後、予想を待つのは最長30秒）。全員が「OK！」を押すと、待たずにすぐ始まります。3位決定戦（4人以上のとき）は、決勝の前に準決勝で負けた2人で戦います（次に始めるトーナメントから）。チーム戦の設定は使いません</span></div>
+      </div></div>
+      <div data-pane="rule"><div class="setup-grid wide">
         ${ruleControls(rules)}</div></div>
       <div data-pane="cpu"><div class="setup-grid wide">
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
