@@ -2067,6 +2067,11 @@ export class GameRenderer {
   /** 登場映像：カメラの位置（x, y, z）と見る点（lx, ly）を決め打ちにする */
   cinema: { x: number; y: number; z: number; lx: number; ly: number } | null = null;
 
+  /** 画面の中に文字を出す（登場映像の説明） */
+  say(text: string, color: string, x: number, y: number, big = false, life = 70): void {
+    this.props.showText(text, color, x, y, big, life);
+  }
+
   /** 1人だけ衣装を着替える（登場映像の早着替え） */
   setCostume(slot: number, costume: string): void {
     const p = this.setup?.players.find((x) => x.slot === slot);

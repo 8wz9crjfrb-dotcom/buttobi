@@ -64,10 +64,11 @@ interface Shot {
 }
 
 /** 映像の長さ（名前のカードが出きって、ボタンが出るまで） */
-/** 時刻（秒）：技の場面は1つ MOVE 秒。そのあと衣装の早着替え、UR、名前のカード */
+/** 時刻（秒）：技の場面（赤い糸は連撃まで見せるので長め）。そのあと衣装の早着替え、UR、名前のカード */
 const MOVE0 = 4;
-const MOVE = 2.4;
-const T_COS = MOVE0 + MOVE * 4;
+const MOVES = [3.8, 2.4, 2.8, 2.4];
+const M = MOVES.map((_, i) => MOVE0 + MOVES.slice(0, i).reduce((a, b) => a + b, 0));
+const T_COS = MOVE0 + MOVES.reduce((a, b) => a + b, 0);
 const COS = 1.35;
 const T_UR = T_COS + COS * 3;
 const T_CARD = T_UR + 3;
@@ -77,6 +78,7 @@ export class DebutSession {
   kind = 'demo' as const;
   mySlot = null;
   paused = false;
+  private cryText = false;
   setup: MatchSetup;
   private sim: Sim;
   private t = 0;
@@ -185,20 +187,41 @@ export class DebutSession {
         input: (f) => [f === 30 ? { mx: 1, my: 0, buttons: 0 } : N, N],
         cam: (me, _f, u) => close(me, 3.6 - u * 0.6, 1.3),
       },
-      // 4〜13.6秒：技を1つずつ（それぞれ約2.4秒）
+      // 技を1つずつ
       {
-        t0: MOVE0,
-        t1: MOVE0 + MOVE,
+        t0: M[0],
+        t1: M[1],
         fresh: true,
         caption: moves[0],
-        init: (me, foe) => ((me.x = -2.2), (me.facing = 1), (foe.x = 0.8), (foe.facing = -1)),
-        // 糸を投げ、相手は逃げようとしても戻される
-        input: (f) => [f === 8 ? press(0, 0) : N, f > 40 ? { mx: 1, my: 0, buttons: 0 } : N],
-        cam: (me, foe, u) => pair(me, foe, 9 - u * 1.2),
+        init: (me, foe) => ((me.x = -2.6), (me.facing = 1), (foe.x = 0.6), (foe.facing = -1)),
+        // 糸でつなぐ → 逃げようとする相手を引き戻し、追いかけて連撃 → 糸が切れて、ためたダメージと反動で吹っ飛ぶ
+        input: (f, me, foe) => {
+          if (f === 8) return [press(0, 0), N];
+          const run = f > 34 && f < 70 ? { mx: 1, my: 0, buttons: 0 } : N;
+          // 連撃中は当たるたびにスローになるので、糸を切るのはフレーム数ではなく映像の時刻で決める
+          const release = this.t >= M[1] - 1.1;
+          if (f >= 46 && !release) {
+            const dx = foe.x - me.x;
+            if (Math.abs(dx) > 1.0) return [{ mx: Math.sign(dx), my: 0, buttons: 0 }, run];
+            // 弱攻撃をくり返す（押しては離す）
+            return [{ mx: 0, my: 0, buttons: f % 9 === 0 ? 1 : 0 }, run];
+          }
+          // 連撃のあと、糸を切って一気にダメージ（映像の長さに合わせる）
+          if (release && foe.leashT > 1) foe.leashT = 1;
+          return [N, run];
+        },
+        // 糸が切れたあとは、少し引いて上も映す（「+◯%」の文字が切れないように）
+        cam: (me, foe, u) => {
+          const c = pair(me, foe, 8.4 - u * 1.4);
+          // 糸が切れる少し前から引き始めて、切れた瞬間にはもう引ききっておく
+          if (this.t < M[1] - 1.4) return c;
+          const k = Math.min(1, (this.t - (M[1] - 1.4)) / 0.3);
+          return { ...c, y: c.y + k * 0.8, ly: c.ly + k * 0.9, z: c.z + k * 3.2 };
+        },
       },
       {
-        t0: MOVE0 + MOVE,
-        t1: MOVE0 + MOVE * 2,
+        t0: M[1],
+        t1: M[2],
         fresh: true,
         caption: moves[1],
         init: (me, foe) => ((me.x = -2.8), (me.facing = 1), (foe.x = 1.2), (foe.facing = -1)),
@@ -211,16 +234,24 @@ export class DebutSession {
         cam: (me, _foe, u) => pair(me, { x: me.x + 4, y: me.y } as Fighter, 8.5 - u * 1.2),
       },
       {
-        t0: MOVE0 + MOVE * 2,
-        t1: MOVE0 + MOVE * 3,
+        t0: M[2],
+        t1: M[3],
         fresh: true,
         caption: moves[2],
         init: (me, foe) => ((me.x = -0.6), (me.facing = 1), (foe.x = 1.1), (foe.facing = -1)),
-        input: (f) => [f === 8 ? press(0, -1) : N, N],
-        cam: (me, foe, u) => pair(me, foe, 6.5 - u * 0.8),
+        // 泣いたあと、相手の頭の上の「攻撃力ダウン」の目印に寄って見せる
+        input: (f, _me, foe) => {
+          // 寄り始めたところで文字を出す（スローで止まっても映像の時刻に合わせる）
+          if (!this.cryText && this.t >= M[2] + (M[3] - M[2]) * 0.4) {
+            this.cryText = true;
+            this.renderer.say('攻撃力ダウン！', '#8fd0ff', foe.x + 2.0, foe.y + 1.3, false, 120);
+          }
+          return [f === 8 ? press(0, -1) : N, N];
+        },
+        cam: (me, foe, u) => (u < 0.4 ? pair(me, foe, 6.5 - u * 0.8) : { x: foe.x + 0.6, y: foe.y + 2.0, z: 6.4, lx: foe.x + 0.6, ly: foe.y + 1.9 }),
       },
       {
-        t0: MOVE0 + MOVE * 3,
+        t0: M[3],
         t1: T_COS,
         fresh: true,
         caption: moves[3],
@@ -229,9 +260,9 @@ export class DebutSession {
         input: (f) => [f === 6 ? press(0, 1) : f > 30 ? { mx: 1, my: 0, buttons: 0 } : N, N],
         cam: (me, _f, u) => ({ x: me.x + 0.3, y: me.y + 1.2, z: 8 + u * 0.5, lx: me.x + 0.3, ly: me.y + 1.0 }),
       },
-      // 13.6〜17.6秒：衣装の早着替え（SR・SR・SSR）
+      // 衣装の早着替え（SR・SR・SSR）
       { t0: T_COS, t1: T_UR, fresh: true, init: (me, foe) => ((me.x = 0), (me.facing = 1), (foe.x = 8.6)), cam: (me, _f, u) => ({ ...close(me, 5.2 - u * 0.6, 1.0), x: me.x + Math.sin(u * 3) * 0.8 }) },
-      // 17.6〜20.6秒：トリの UR。暗くして、ゆっくり寄る
+      // トリの UR。暗くして、ゆっくり寄る
       { t0: T_UR, t1: END + 60, cam: (me, _f, u) => ({ ...close(me, 5 - Math.min(1, u * 0.2) * 0.8, 1.05), x: me.x + Math.sin(u * 0.6) * 0.6 }) },
     ];
   }
@@ -271,7 +302,7 @@ export class DebutSession {
       this.shotFrame++;
       for (const e of this.sim.events) {
         events.push(e);
-        if (e.k === 'hit' || e.k === 'ring' || e.k === 'cry') this.slowUntil = t + 0.3;
+        if (e.k === 'hit' || e.k === 'ring' || e.k === 'cry' || e.k === 'leashDmg') this.slowUntil = t + (e.k === 'leashDmg' ? 0.45 : 0.3);
         // 当たった音・着信音（映像なので、試合の効果音の代わりにここで鳴らす）
         if (e.k === 'hit') this.sfx.hit(Math.min(20, e.p));
         if (e.k === 'ring') this.sfx.notify();
