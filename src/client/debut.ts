@@ -224,8 +224,8 @@ export class DebutSession {
           // 連撃のあと、糸を切って一気にダメージ（映像の長さに合わせる）
           if (release && foe.leashT > 1) {
             foe.leashT = 1;
-            // 映像では%を出さないので、相手を80%にしておき、反動で大きく吹っ飛ぶところを見せる（実際の試合でも80%ならこのくらい飛ぶ）
-            foe.damage = Math.max(foe.damage, 80);
+            // 映像では%を出さないので、相手を90%にしておき、反動で大きく吹っ飛ぶところを見せる（実際の試合でも90%ならこのくらい飛ぶ）
+            foe.damage = Math.max(foe.damage, 90);
           }
           return [N, run];
         },
