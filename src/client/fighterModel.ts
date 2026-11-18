@@ -9,6 +9,7 @@ import type { Accessory, Costume, CostumeFx } from '../shared/costumes';
 import { moveOf } from '../shared/moves';
 import { FX_ARMOR, FX_AWK, FX_HEAVY, FX_YAMI, FX_BIG, FX_BIKE, FX_CHARGED, FX_POWER, FX_SMALL, FX_SPEED, fxJob, type ViewFighter } from '../shared/types';
 import { SIZE_REQ } from '../shared/sim';
+import { heartGeometry } from './heartShape';
 
 const FWD = -Math.PI / 2; // 腕・脚を前に向ける回転（x軸まわり）
 const UP = -Math.PI;
@@ -1677,8 +1678,8 @@ export class FighterModel {
             const sw = new THREE.Group();
             sw.position.set(x * 0.1, 1.0, -0.2);
             b.add(sw);
-            this.heart(sw, 0.3, col, [x * 0.32, 0.12, -0.02]).rotation.set(0, 0, x * 0.45);
-            this.heart(sw, 0.18, 0xffffff, [x * 0.26, -0.12, -0.04]).rotation.set(0, 0, x * 0.9);
+            this.heart(sw, 0.3, col, [x * 0.32, 0.12, -0.02], true).rotation.set(0, 0, x * 0.45);
+            this.heart(sw, 0.18, 0xffffff, [x * 0.26, -0.12, -0.04], true).rotation.set(0, 0, x * 0.9);
             this.wingGroups.push({ g: sw, side: x });
           }
           break;
@@ -2118,12 +2119,16 @@ export class FighterModel {
     this.part(phone, new THREE.BoxGeometry(0.075, 0.13, 0.005), this.glow(0xbfe8ff), [0, -0.05, 0.093], { rot: [0.3, 0, 0], outline: false });
   }
 
-  /** ハートの形（2つの玉と、とがった下） */
-  private heart(parent: THREE.Object3D, size: number, color: number, pos: [number, number, number]): THREE.Group {
+  /** ハートの形（2つの玉と、とがった下）。smooth のときは、ステージのハートと同じなめらかな形にする */
+  private heart(parent: THREE.Object3D, size: number, color: number, pos: [number, number, number], smooth = false): THREE.Group {
     const g = new THREE.Group();
     g.position.set(...pos);
     parent.add(g);
     const m = this.toon(color);
+    if (smooth) {
+      this.part(g, heartGeometry(size, 0.32), m, [0, 0, 0]);
+      return g;
+    }
     for (const x of [0.5, -0.5]) this.part(g, new THREE.SphereGeometry(size * 0.55, 14, 10), m, [x * size * 0.9, size * 0.25, 0], { scale: [1, 1, 0.55] });
     this.part(g, new THREE.ConeGeometry(size * 0.95, size * 1.15, 4), m, [0, -size * 0.45, 0], { rot: [Math.PI, Math.PI / 4, 0], scale: [1, 1, 0.55] });
     return g;
