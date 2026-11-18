@@ -483,7 +483,7 @@ const SPECIALS: Record<string, Specials> = {
       growth: 0,
       angle: 0,
       air: true,
-      special: 'shot', cd: 32,
+      special: 'shot', cd: 62,
       shots: [{ at: 0, kind: 'orb', x: 0.8, y: 1.2, vx: 6.5, vy: 1, life: 130, r: 0.35, dmg: 7, base: 4.8, growth: 5, angle: 40, homing: 0.06 }],
     },
     // 学習：構えている間に飛んできた飛び道具を吸収し、次の攻撃を強化
