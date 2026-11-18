@@ -53,7 +53,7 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   check('無限スクロールは最大3回まで続く', sim.fighters[0].chain === 2 && sim.fighters[0].x > -6 + 4, `続けた回数${sim.fighters[0].chain} x=${sim.fighters[0].x.toFixed(1)}`);
 }
 {
-  // おすすめに出てくる：いちばん近い相手の目の前へ瞬間移動して、軽く浮かせる
+  // あなたへのおすすめ：いちばん近い相手の目の前へ瞬間移動して、軽く浮かせる
   const sim = make('dopa', 'guard');
   sim.fighters[0].x = -4; sim.fighters[0].facing = -1; sim.fighters[1].x = 4;
   let moved = 99;
@@ -61,12 +61,12 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
     sim.step(new Map([[0, i === 0 ? B(0, -1) : N]]));
     moved = Math.min(moved, Math.abs(sim.fighters[1].x - sim.fighters[0].x));
   }
-  check('おすすめに出てくる：8m離れた相手の目の前へ瞬間移動して当てる', moved < 1.5 && sim.fighters[1].damage > 0 && sim.fighters[0].x < sim.fighters[1].x, `距離${moved.toFixed(2)}m、${sim.fighters[1].damage.toFixed(1)}%`);
-  check('おすすめに出てくる：使ったあと約3秒は使えない', sim.fighters[0].cdD > 100, `残り${sim.fighters[0].cdD}`);
+  check('あなたへのおすすめ：8m離れた相手の目の前へ瞬間移動して当てる', moved < 1.5 && sim.fighters[1].damage > 0 && sim.fighters[0].x < sim.fighters[1].x, `距離${moved.toFixed(2)}m、${sim.fighters[1].damage.toFixed(1)}%`);
+  check('あなたへのおすすめ：使ったあと約3秒は使えない', sim.fighters[0].cdD > 100, `残り${sim.fighters[0].cdD}`);
   const far = make('dopa', 'guard');
   far.fighters[0].x = -8; far.fighters[1].x = 8;
   run(far, 20, at(0, B(0, -1)));
-  check('おすすめに出てくる：10mより遠い相手には飛ばない', far.fighters[0].x < -7, `x=${far.fighters[0].x.toFixed(1)}`);
+  check('あなたへのおすすめ：10mより遠い相手には飛ばない', far.fighters[0].x < -7, `x=${far.fighters[0].x.toFixed(1)}`);
   const sim2 = make('dopa', 'guard');
   sim2.fighters[0].x = 0; sim2.fighters[1].x = 3.5;
   run(sim2, 30, at(0, B(0, -1)), () => ({ mx: 0, my: 0, buttons: BTN_SHIELD }));

@@ -109,6 +109,22 @@ const place = (sim: Sim, dx: number) => {
   place(tap, 5.0);
   run(tap, 90, at(0, { mx: 0, my: 0, buttons: BTN_B }));
   check('爆音ソロ：音を前へ飛ばし、5m先の相手に当たる', tap.fighters[1].damage > 0, `${tap.fighters[1].damage.toFixed(1)}%`);
+  {
+    // 音の衝撃が消えてから約2.5秒は使えない
+    const cd = make(1);
+    cd.fighters[0].x = -8; cd.fighters[0].facing = 1; cd.fighters[1].x = 8;
+    let goneAt = -1;
+    let cdAtGone = 0;
+    for (let i = 0; i < 120; i++) {
+      cd.step(new Map([[0, i === 0 ? { mx: 0, my: 0, buttons: BTN_B } : N]]));
+      const has = cd.projectiles.some((p) => p.kind === 'sound');
+      if (i > 25 && !has && goneAt < 0) {
+        goneAt = i;
+        cdAtGone = cd.fighters[0].cdN;
+      }
+    }
+    check('爆音ソロ：音が消えた時点で、まだ約2.5秒使えない', goneAt > 0 && cdAtGone >= 148, `消えたとき残り${cdAtGone}フレーム`);
+  }
   const hold = make(1);
   place(hold, 5.0);
   run(hold, 150, (i) => (i < 75 ? { mx: 0, my: 0, buttons: BTN_B } : N));

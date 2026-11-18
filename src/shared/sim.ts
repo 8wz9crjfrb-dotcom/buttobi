@@ -1377,6 +1377,11 @@ export class Sim {
       const k = SPECIAL_CD[id];
       // 自転車は、降りてから数える
       if (id === 'sspecial' && f.bike > 0) continue;
+      // 爆音ソロ（3B・バンドマン）は、飛ばした音の衝撃が消えてから数える
+      if (id === 'nspecial' && f.def.id === 'threeb' && this.projectiles.some((p) => p.owner === f.slot && p.kind === 'sound')) {
+        f[k] = Math.max(f[k], moveOf('threeb', 'nspecial', 1).cd ?? 0);
+        continue;
+      }
       // エージェント起動は、ドローンがいる間は待ち時間のまま（消えてから数える）
       if (id === 'dspecial' && f.def.id === 'ai' && this.entities.some((e) => e.kind === 'drone' && e.owner === f.slot && e.life > 0)) {
         f[k] = Math.max(f[k], DRONE.cd);
@@ -2571,7 +2576,7 @@ export class Sim {
           this.addEntity('trap', f.slot, f.x + f.facing * 0.5 * sc, f.y, TRAP.life);
           break;
         case 'recommend': {
-          // おすすめに出てくる（ドパガキ）：いちばん近い相手の目の前へ瞬間移動（届かなければ、その場で一撃）
+          // あなたへのおすすめ（ドパガキ）：いちばん近い相手の目の前へ瞬間移動（届かなければ、その場で一撃）
           let best: Fighter | null = null;
           let bestD = RECOMMEND.range;
           for (const v of this.fighters) {

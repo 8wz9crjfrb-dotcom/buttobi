@@ -391,7 +391,7 @@ const SPECIALS: Record<string, Specials> = {
       landLag: 8,
     },
     // 通知爆撃：通知に気を取られた周りの相手を、自分のほうへ引き寄せる
-    // おすすめに出てくる：いちばん近い相手の目の前へ瞬間移動して、軽く浮かせる一撃（そのまま追撃できる）
+    // あなたへのおすすめ：いちばん近い相手の目の前へ瞬間移動して、軽く浮かせる一撃（そのまま追撃できる）
     dspecial: { startup: 10, active: 3, end: 4, hitboxes: [{ x: 0.7, y: 0.9, r: 0.75 }], dmg: 5, base: 4.5, growth: 2.5, angle: 75, air: true, special: 'recommend', hitstunMul: 2.5, landLag: 8, cd: 180 },
     // 次の動画へ：上へ高速で滑り上がる。途中でもう一度Bを押すと方向転換
     uspecial: {
@@ -680,6 +680,8 @@ const THREEB: Specials[] = [
       air: true,
       special: 'curl',
       landLag: 12,
+      // 音の衝撃が消えてから約2.5秒は使えない（消えるまでは待ち時間のまま）
+      cd: 150,
       shots: [{ at: 0, kind: 'sound', x: 0.9, y: 1.0, vx: 12, vy: 0, life: 36, r: 0.6, dmg: 7, base: 6, growth: 10, angle: 45 }],
     },
     // ステージダイブ：前へ飛び込んで体当たり。当たると相手を踏み台に跳ねる
@@ -764,7 +766,7 @@ export const SWAP = { range: 7, freeze: 20 };
 /** エージェント起動：ドローンがいる時間、撃つ間隔、狙える距離 */
 export const DRONE = { life: 300, interval: 40, range: 8, cd: 120 };
 /** 通知爆撃（いまは使っていない）：引き寄せる範囲と速さ */
-/** おすすめに出てくる（ドパガキ）：瞬間移動できるいちばん遠い相手（m） */
+/** あなたへのおすすめ（ドパガキ）：瞬間移動できるいちばん遠い相手（m） */
 export const RECOMMEND = { range: 10 };
 /** 通知爆撃：引き寄せる範囲と速さ */
 export const PULL = { range: 4.5, speed: 11 };
