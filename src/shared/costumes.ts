@@ -341,7 +341,7 @@ ALL_COSTUMES.push(
     extras: ['halo', 'wings', 'featherPins'], extraColor: 0xbfe8ff, fx: { particle: 'petal', color: 0xe8f6ff, hit: 0x8fd0ff, hitText: '尊い…' },
   },
   {
-    id: 'menhera-ur', charId: 'menhera', name: '永遠の愛', rarity: 6, colors: c(0xfff4f8, 0xff4f9a, 0xffd23f, 0x2a1c2a, 0xffe4d8, 0xfff4f8, 0xff4f9a),
+    id: 'menhera-ur', charId: 'menhera', name: '永遠の愛', rarity: 6, colors: c(0xfff4f8, 0xff4f9a, 0xffd23f, 0xf2d27a, 0xffe4d8, 0xfff4f8, 0xff4f9a),
     extras: ['heartWings', 'heartCrown', 'letterOrbit'], extraColor: 0xff4f9a, fx: { particle: 'heart', color: 0xff7ab8, hit: 0xff4f9a, hitText: 'ずっと一緒だよ' },
   },
 );

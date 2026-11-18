@@ -819,10 +819,10 @@ export class FighterModel {
     this.mouths = { line, open, smile };
   }
 
-  private brows(angle: number, color: number, thick = 0.022, y = 0.37): void {
+  private brows(angle: number, color: number, thick = 0.022, y = 0.37, len = 0.11): void {
     for (const x of [0.11, -0.11]) {
       const side = x > 0 ? -1 : 1;
-      const mesh = this.part(this.head, new THREE.BoxGeometry(0.11, thick, 0.02), this.toon(color), [x, y, 0.28], { rot: [0, 0, side * angle], outline: false });
+      const mesh = this.part(this.head, new THREE.BoxGeometry(len, thick, 0.02), this.toon(color), [x, y, 0.28], { rot: [0, 0, side * angle], outline: false });
       this.browMeshes.push({ mesh, base: side * angle, side });
     }
   }
@@ -2081,7 +2081,8 @@ export class FighterModel {
     const h = this.head;
     const b = this.body;
     this.mouth();
-    this.brows(0.12, c.hair, 0.018, 0.375);
+    // 細くて短い、少し下がった眉
+    this.brows(0.12, c.hair, 0.009, 0.375, 0.08);
     this.sparkle = true;
     const hair = this.hairToon(c.hair);
     // 頭をおおう髪と、ぱっつん前髪
