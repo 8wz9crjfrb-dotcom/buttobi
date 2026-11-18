@@ -275,6 +275,21 @@ function gimmickSim(stageId: string, a = 'guard', b = 'thief'): Sim {
   f.vy = 0;
   run(sim, 1);
   check('電脳空間：ワープホールに入ると、もう一方から出てくる', Math.abs(f.x - spots[1].x) < 1 && Math.abs(f.y + f.h / 2 - spots[1].y) < 1, `x=${f.x.toFixed(2)}（出口 ${spots[1].x.toFixed(2)}）`);
+  // くぐった直後（約2秒）は、もう一度入ってもワープしない
+  const back = () => {
+    f.x = spots[1].x;
+    f.y = spots[1].y - f.h / 2;
+    f.vx = 0;
+    f.vy = 0;
+    run(sim, 1);
+    return Math.abs(f.x - spots[0].x) < 1;
+  };
+  run(sim, 30);
+  check('電脳空間：くぐったあと約2秒は、もう一度くぐれない', !back() && WARP.cd === 120, `x=${f.x.toFixed(2)}`);
+  // 入口からはなれて待つ
+  f.x = (spots[0].x + spots[1].x) / 2;
+  run(sim, WARP.cd);
+  check('電脳空間：約2秒たつと、またくぐれる', back(), `x=${f.x.toFixed(2)}`);
   run(sim, WARP.time);
   const s2 = warpSpots(sim.stage, sim.setup.seed, sim.frame);
   f.x = s2[0].x;

@@ -271,6 +271,8 @@ export const FX_ARMOR = 128;
 /** 配信スタジオの視聴者リクエストで、でっかい・ちっちゃい */
 export const FX_BIG = 1024;
 export const FX_SMALL = 2048;
+/** ワープホールをくぐったばかりで、しばらくくぐれない */
+export const FX_WARPCD = 4096;
 /** 3B の仕事（0〜2）を入れるビットの位置（256〜512） */
 export const FX_JOB_SHIFT = 8;
 export const fxJob = (fx: number) => (fx >> FX_JOB_SHIFT) & 3;

@@ -16,6 +16,7 @@ import {
   FX_ARMOR,
   FX_BIG,
   FX_SMALL,
+  FX_WARPCD,
   FX_CHARGED,
   FX_JOB_SHIFT,
   FX_CONFUSED,
@@ -430,8 +431,8 @@ export function gimmickPhase(frame: number, gimmicks: boolean, kind: string, wan
   const t = frame - COUNTDOWN_FRAMES - 300;
   return t < 0 ? -1 : t % GIMMICK.interval;
 }
-/** 電脳空間のワープホール：出ている時間、台の端からの余白、床からの高さ、大きさ、続けてくぐれない時間、2つの間の最短距離 */
-export const WARP = { time: 300, inset: 1.1, y: 0.95, r: 0.85, cd: 40, minGap: 5 };
+/** ワープホール：出ている時間、端からの距離、高さ、入口の大きさ、くぐった人が次にくぐれるまで（2秒）、2つの入口の最低の間隔 */
+export const WARP = { time: 300, inset: 1.1, y: 0.95, r: 0.85, cd: 120, minGap: 5 };
 
 /**
  * ワープホールの2つの場所（毎回ランダム）。床の上か、少し高い空中のどこか。試合の種と何回目かだけで決まるので、
@@ -3884,6 +3885,7 @@ export class Sim {
           (f.absorbCharge ? FX_CHARGED : 0) |
           (f.armor > 0 ? FX_ARMOR : 0) |
           (f.size === 1 ? FX_BIG : f.size === 2 ? FX_SMALL : 0) |
+          (f.warpCd > 0 ? FX_WARPCD : 0) |
           (f.job << FX_JOB_SHIFT) |
           (f.buzz << 5),
       })),

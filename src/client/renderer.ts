@@ -6,7 +6,7 @@ import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
 import { BALL, ballBaskets, COUNTDOWN_FRAMES, gimmickAt, gimmickPhase, isSlippery, ROULETTE, SIZE_REQ, WARP, warpSpots } from '../shared/sim';
 import { GIMMICK, VAULT } from '../shared/moves';
-import { FX_BIG, FX_SMALL, FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
+import { FX_BIG, FX_SMALL, FX_SPEED, FX_WARPCD, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
 import { getCostume } from '../shared/costumes';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -197,6 +197,8 @@ export class GameRenderer {
     this.focusSlot = slot;
   }
   private focusSlot: number | null = null;
+  /** この端末で操作している人（ワープの待ち時間の表示に使う） */
+  localSlot: number | null = null;
 
   clear(): void {
     if (this.ballObj) {
@@ -337,13 +339,20 @@ export class GameRenderer {
       const show = at >= 0 && at < WARP.time;
       // 場所は毎回ランダム（サーバーと同じ計算）
       const spots = show ? warpSpots(st, this.setup!.seed, view.frame) : [];
+      // 自分がくぐったばかり（待ち時間中）なら、ワープホールを暗くして回転も止める
+      const me = this.localSlot === null ? undefined : view.fighters.find((f) => f.slot === this.localSlot);
+      const cooling = !!me && (me.fx & FX_WARPCD) !== 0;
       for (const [i, g] of this.portals.entries()) {
+        for (const c of g.children) {
+          const mat = (c as THREE.Mesh).material as THREE.MeshBasicMaterial;
+          mat.opacity = cooling ? 0.18 : c === g.children[0] ? 0.6 : 1;
+        }
         g.visible = show;
         if (!show) continue;
         g.position.set(spots[i].x, spots[i].y, 0.1);
         const grow = Math.min(1, at / 15, (WARP.time - at) / 15);
         g.scale.setScalar(Math.max(0.01, grow));
-        g.rotation.z = this.time * (i ? -2 : 2);
+        if (!cooling) g.rotation.z = this.time * (i ? -2 : 2);
       }
     }
     // ルーレット：予告の前半は光が回り、止まったら当たり（緑）・ハズレ（赤）を見せる。本番のあと1秒で消える

@@ -458,6 +458,7 @@ function loop(t: number): void {
   }
   // 待ち受け画面のCPU同士の試合では、撃墜確定のスロー演出はしない
   if (session?.kind === 'demo') events = events.filter((e) => e.k !== 'finish');
+  renderer.localSlot = session?.mySlot ?? null;
   renderer.render(lastView, dt, events);
   // 画面の外にいるキャラを、画面の端に顔と矢印で出す
   if (session && session.kind !== 'demo' && lastView) hud.updateOffscreen(lastView, (x, y) => renderer.project(x, y));
