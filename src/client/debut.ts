@@ -222,7 +222,11 @@ export class DebutSession {
             return [m === 'up' ? { mx: 0, my: 1, buttons: BTN_A } : { mx: s, my: 0, buttons: BTN_A }, run];
           }
           // 連撃のあと、糸を切って一気にダメージ（映像の長さに合わせる）
-          if (release && foe.leashT > 1) foe.leashT = 1;
+          if (release && foe.leashT > 1) {
+            foe.leashT = 1;
+            // 映像では%を出さないので、相手を80%にしておき、反動で大きく吹っ飛ぶところを見せる（実際の試合でも80%ならこのくらい飛ぶ）
+            foe.damage = Math.max(foe.damage, 80);
+          }
           return [N, run];
         },
         // 糸が切れたあとは、少し引いて上も映す（「+◯%」の文字が切れないように）
