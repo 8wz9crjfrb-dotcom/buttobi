@@ -53,10 +53,20 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   check('無限スクロールは最大3回まで続く', sim.fighters[0].chain === 2 && sim.fighters[0].x > -6 + 4, `続けた回数${sim.fighters[0].chain} x=${sim.fighters[0].x.toFixed(1)}`);
 }
 {
+  // おすすめに出てくる：いちばん近い相手の目の前へ瞬間移動して、軽く浮かせる
   const sim = make('dopa', 'guard');
-  sim.fighters[0].x = 0; sim.fighters[1].x = 3.5;
-  run(sim, 30, at(0, B(0, -1)));
-  check('通知爆撃で離れた相手を引き寄せる', sim.fighters[1].x < 2.5 && sim.fighters[1].damage > 0, `相手x 3.5 → ${sim.fighters[1].x.toFixed(2)}、${sim.fighters[1].damage.toFixed(1)}%`);
+  sim.fighters[0].x = -4; sim.fighters[0].facing = -1; sim.fighters[1].x = 4;
+  let moved = 99;
+  for (let i = 0; i < 30; i++) {
+    sim.step(new Map([[0, i === 0 ? B(0, -1) : N]]));
+    moved = Math.min(moved, Math.abs(sim.fighters[1].x - sim.fighters[0].x));
+  }
+  check('おすすめに出てくる：8m離れた相手の目の前へ瞬間移動して当てる', moved < 1.5 && sim.fighters[1].damage > 0 && sim.fighters[0].x < sim.fighters[1].x, `距離${moved.toFixed(2)}m、${sim.fighters[1].damage.toFixed(1)}%`);
+  check('おすすめに出てくる：使ったあと約3秒は使えない', sim.fighters[0].cdD > 100, `残り${sim.fighters[0].cdD}`);
+  const far = make('dopa', 'guard');
+  far.fighters[0].x = -8; far.fighters[1].x = 8;
+  run(far, 20, at(0, B(0, -1)));
+  check('おすすめに出てくる：10mより遠い相手には飛ばない', far.fighters[0].x < -7, `x=${far.fighters[0].x.toFixed(1)}`);
   const sim2 = make('dopa', 'guard');
   sim2.fighters[0].x = 0; sim2.fighters[1].x = 3.5;
   run(sim2, 30, at(0, B(0, -1)), () => ({ mx: 0, my: 0, buttons: BTN_SHIELD }));
@@ -286,8 +296,8 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   }
   check('緊急警報：99%では鳴らず、100%で鳴る', notYet && rang && g.alarmT > 0);
   check('緊急警報：鳴っている間は攻撃力1.3倍', Math.abs(priv.powerMul(g).dmg / base - 1.3) < 0.001, `${(priv.powerMul(g).dmg / base).toFixed(2)}倍`);
-  run(sim, 300);
-  check('緊急警報：約5秒で終わる', g.alarmT === 0 && Math.abs(priv.powerMul(g).dmg - base) < 0.001);
+  run(sim, 720);
+  check('緊急警報：約12秒で終わる', g.alarmT === 0 && Math.abs(priv.powerMul(g).dmg - base) < 0.001);
   g.damage = 140;
   let again = false;
   for (let i = 0; i < 30; i++) {

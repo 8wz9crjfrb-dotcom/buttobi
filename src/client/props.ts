@@ -281,21 +281,14 @@ export class PropRenderer {
         sp.scale.setScalar(0.55);
         return sp;
       }
-      case 'scissors': {
-        // シザーブーメラン（3B・美容師）：銀の刃2枚と、ピンクの持ち手の輪
+      case 'sound': {
+        // 爆音ソロ（3B・バンドマン）：前へ広がる紫の音の輪
         const g = new THREE.Group();
-        const blade = new THREE.MeshToonMaterial({ color: 0xe8edf5, emissive: 0x3a4250 });
-        const grip = new THREE.MeshToonMaterial({ color: 0xff7ab8 });
-        for (const s of [1, -1]) {
-          const b = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.07, 0.04), blade);
-          b.position.x = 0.2;
-          const arm = new THREE.Group();
-          arm.rotation.z = s * 0.3;
-          arm.add(b);
-          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.03, 6, 14), grip);
-          ring.position.x = -0.2;
-          arm.add(ring);
-          g.add(arm);
+        for (const [r, o] of [[0.32, 0.9], [0.5, 0.6], [0.68, 0.35]] as const) {
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.05, 6, 20, Math.PI * 0.9), basic(0xc77dff, { transparent: true, opacity: o }));
+          ring.rotation.z = -Math.PI * 0.45;
+          ring.position.x = -r * 0.6;
+          g.add(ring);
         }
         return g;
       }
@@ -667,7 +660,6 @@ export class PropRenderer {
       else if (p.kind === 'thanks') o.scale.setScalar(0.6);
       else if (p.kind === 'stone' || p.kind === 'gold') o.rotation.set(time * 3, time * 4, 0);
       else if (p.kind === 'bag') o.rotation.z = time * 14;
-      else if (p.kind === 'scissors') o.rotation.z = time * 22;
       else if (p.kind === 'orb') o.scale.setScalar(1 + Math.sin(time * 20) * 0.1);
       else if (p.kind === 'spark') o.scale.setScalar(1 + Math.sin(time * 40) * 0.2);
       else if (p.kind === 'packet' || p.kind === 'capsule') o.rotation.set(time * 3, time * 4, 0);
@@ -680,10 +672,10 @@ export class PropRenderer {
         o.userData.py = p.y;
         o.scale.y = 1 + Math.sin(time * 50) * 0.3;
       }
-      else if (p.kind === 'scooter' || p.kind === 'comment') {
+      else if (p.kind === 'scooter' || p.kind === 'comment' || p.kind === 'sound') {
         // 進む向きに合わせる（前のフレームの位置と比べる）
         const px = o.userData.px as number | undefined;
-        if (px !== undefined && Math.abs(p.x - px) > 0.01 && p.kind === 'scooter') o.rotation.y = p.x > px ? 0 : Math.PI;
+        if (px !== undefined && Math.abs(p.x - px) > 0.01 && p.kind !== 'comment') o.rotation.y = p.x > px ? 0 : Math.PI;
         o.userData.px = p.x;
       }
     }

@@ -17,7 +17,7 @@ export type ShotKind =
   | 'thanks'
   | 'badge'
   | 'stone'
-  | 'scissors'
+  | 'sound'
   | 'bag'
   | 'orb'
   | 'gold'
@@ -98,6 +98,7 @@ export type SpecialKind =
   | 'swap'
   | 'drone'
   | 'pull'
+  | 'recommend'
   | 'charge'
   | 'pummel'
   | 'throw'
@@ -346,7 +347,7 @@ const SPECIALS: Record<string, Specials> = {
       shots: [{ at: 0, kind: 'coin', x: 0.7, y: 1.3, vx: 10, vy: 9, gravity: 28, life: 80, r: 0.3, dmg: 6, base: 5, growth: 5, angle: 45 }],
     },
     // 切り抜き：少し先へ瞬間移動して斬る
-    sspecial: { startup: 10, active: 4, end: 18, hitboxes: [{ x: 0.6, y: 0.9, r: 0.85 }], dmg: 10, base: 6.5, growth: 9, angle: 40, air: true, special: 'teleport', landLag: 10, cd: 60 },
+    sspecial: { startup: 10, active: 4, end: 12, hitboxes: [{ x: 0.6, y: 0.9, r: 0.85 }], dmg: 10, base: 6.5, growth: 9, angle: 40, air: true, special: 'teleport', landLag: 7, cd: 60 },
     // 強制アップデート：近くの相手をしばらく動けなくする
     dspecial: { startup: 10, active: 4, end: 24, hitboxes: [{ x: 0, y: 0.9, r: 1.8 }], dmg: 2, base: 0, growth: 0, angle: 0, air: true, special: 'sleep', cd: 150 },
     // スパチャ読み：上昇しながら周りにお礼の文字を飛ばす
@@ -390,7 +391,8 @@ const SPECIALS: Record<string, Specials> = {
       landLag: 8,
     },
     // 通知爆撃：通知に気を取られた周りの相手を、自分のほうへ引き寄せる
-    dspecial: { startup: 10, active: 1, end: 18, hitboxes: [], dmg: 3, base: 0, growth: 0, angle: 0, air: true, special: 'pull', cd: 180 },
+    // おすすめに出てくる：いちばん近い相手の目の前へ瞬間移動して、軽く浮かせる一撃（そのまま追撃できる）
+    dspecial: { startup: 10, active: 3, end: 4, hitboxes: [{ x: 0.7, y: 0.9, r: 0.75 }], dmg: 5, base: 4.5, growth: 2.5, angle: 75, air: true, special: 'recommend', hitstunMul: 2.5, landLag: 8, cd: 180 },
     // 次の動画へ：上へ高速で滑り上がる。途中でもう一度Bを押すと方向転換
     uspecial: {
       startup: 3,
@@ -656,22 +658,8 @@ export const MENHERA = {
 const JOBCHANGE: MoveDef = { cd: 57, startup: 7, active: 6, end: 8, hitboxes: [{ x: 0, y: 0.95, r: 0.95 }], dmg: 3, base: 6, growth: 3, angle: 60, air: true, special: 'jobchange' };
 const THREEB: Specials[] = [
   {
-    // 美容師：シザーブーメラン（ハサミを回しながら前へ投げる。しばらく進むと戻ってくるので、行きと帰りの2回当てられる）
-    nspecial: {
-      startup: 8,
-      active: 1,
-      end: 16,
-      hitboxes: [],
-      dmg: 0,
-      base: 0,
-      growth: 0,
-      angle: 0,
-      air: true,
-      special: 'shot',
-      cd: 60,
-      landLag: 8,
-      shots: [{ at: 0, kind: 'scissors', x: 0.7, y: 1.0, vx: 20, vy: 0, life: 140, r: 0.38, dmg: 4.5, base: 4.5, growth: 5, angle: 40, boomerang: 40 }],
-    },
+    // 美容師：シザーラッシュ（Bを連打すると続き、最後の一撃でふっとばす）
+    nspecial: { startup: 5, active: 15, end: 14, hitboxes: [{ x: 0.85, y: 1.0, r: 0.62 }], dmg: 1.6, base: 1.2, growth: 0, angle: 0, air: true, special: 'rush', rehit: 4, hitstunMul: 1.35, landLag: 8, cd: 60 },
     // ブローアップ：熱風を当てながら踏み込む連続ヒット
     sspecial: { startup: 7, active: 16, end: 16, hitboxes: [{ x: 0.9, y: 0.95, r: 0.7 }], dmg: 1.8, base: 3, growth: 1, angle: 10, air: true, special: 'dash', dashSpeed: 7, rehit: 4, landLag: 10, cd: 60 },
     dspecial: JOBCHANGE,
@@ -679,8 +667,21 @@ const THREEB: Specials[] = [
     uspecial: { startup: 4, active: 20, end: 8, hitboxes: [{ x: 0, y: 1.0, r: 0.95 }], dmg: 1.6, base: 4, growth: 2, angle: 80, air: true, special: 'recovery', riseV: 15.5, rehit: 5, helpless: true },
   },
   {
-    // バンドマン：爆音ソロ（Bを押し続けると溜まる。自分の周り全方向）
-    nspecial: { startup: 18, active: 5, end: 20, hitboxes: [{ x: 0, y: 1.0, r: 1.55 }], dmg: 10, base: 7.5, growth: 13.5, angle: 55, air: true, special: 'curl', landLag: 12 },
+    // バンドマン：爆音ソロ（ギターをかき鳴らし、音の衝撃を前へ飛ばす。Bを押し続けると溜まり、溜めるほど強い）
+    nspecial: {
+      startup: 18,
+      active: 1,
+      end: 20,
+      hitboxes: [],
+      dmg: 0,
+      base: 0,
+      growth: 0,
+      angle: 0,
+      air: true,
+      special: 'curl',
+      landLag: 12,
+      shots: [{ at: 0, kind: 'sound', x: 0.9, y: 1.0, vx: 12, vy: 0, life: 36, r: 0.6, dmg: 7, base: 6, growth: 10, angle: 45 }],
+    },
     // ステージダイブ：前へ飛び込んで体当たり。当たると相手を踏み台に跳ねる
     sspecial: { startup: 8, active: 22, end: 14, hitboxes: [{ x: 0.5, y: 0.8, r: 0.75 }], dmg: 9, base: 6.5, growth: 9, angle: 40, air: true, special: 'dive', landLag: 14, cd: 60 },
     dspecial: JOBCHANGE,
@@ -735,7 +736,7 @@ export const SPEEDUP = { duration: 420, cooldown: 330, speed: 1.35, frame: 0.75 
 /** 課金：増えるダメージ%、効果時間、攻撃力・ふっとばし力の倍率 */
 export const PAY = { cost: 8, duration: 360, dmg: 1.3, kb: 1.15 };
 /** 緊急警報（警備員の特性）：ダメージがこの%以上になると、1ストックに1回、しばらく攻撃力アップ */
-export const ALARM = { at: 100, time: 300, dmg: 1.3 };
+export const ALARM = { at: 100, time: 720, dmg: 1.3 };
 /** 自転車：乗っていられる時間、速さ、ぶつかったときに同じ相手へ再び当たるまで */
 export const BIKE = {
   duration: 240,
@@ -762,6 +763,9 @@ export const TETHER = { range: 6, speed: 18 };
 export const SWAP = { range: 7, freeze: 20 };
 /** エージェント起動：ドローンがいる時間、撃つ間隔、狙える距離 */
 export const DRONE = { life: 300, interval: 40, range: 8, cd: 120 };
+/** 通知爆撃（いまは使っていない）：引き寄せる範囲と速さ */
+/** おすすめに出てくる（ドパガキ）：瞬間移動できるいちばん遠い相手（m） */
+export const RECOMMEND = { range: 10 };
 /** 通知爆撃：引き寄せる範囲と速さ */
 export const PULL = { range: 4.5, speed: 11 };
 /** ガチャの天井（外れがこの回数続くと次は必ず大当たり） */

@@ -75,23 +75,18 @@ const place = (sim: Sim, dx: number) => {
 
 // ---- 美容師
 {
-  // シザーブーメラン：ハサミを前へ投げる。離れた相手に届き、しばらく進むと戻ってくる
   const once = make(0);
-  place(once, 5);
-  let maxX = -99;
-  let back = false;
-  let thrown = false;
-  for (let i = 0; i < 140; i++) {
+  place(once, 0.9);
+  let finish = false;
+  for (let i = 0; i < 60; i++) {
     once.step(new Map([[0, i === 0 ? { mx: 0, my: 0, buttons: BTN_B } : N]]));
-    const sc = once.projectiles.find((p) => p.kind === 'scissors');
-    if (sc) {
-      thrown = true;
-      maxX = Math.max(maxX, sc.x);
-      if (sc.x < maxX - 2) back = true;
-    }
+    if (once.fighters[1].state === 'hitstun' && Math.abs(once.fighters[1].vx) > 4) finish = true;
   }
-  check('シザーブーメラン：ハサミを投げて、5m先の相手に当たる', thrown && once.fighters[1].damage > 4, `${once.fighters[1].damage.toFixed(1)}%`);
-  check('シザーブーメラン：しばらく進むと戻ってくる', back, `最も遠くでx=${maxX.toFixed(1)}`);
+  const mash = make(0);
+  place(mash, 0.9);
+  run(mash, 130, (i) => (i < 80 && i % 6 === 0 ? { mx: 0, my: 0, buttons: BTN_B } : N));
+  check('シザーラッシュ：連続で当たり、最後にふっとばす', once.fighters[1].damage > 5 && finish, `${once.fighters[1].damage.toFixed(1)}%`);
+  check('シザーラッシュ：Bを連打すると長く続いてダメージが増える', mash.fighters[1].damage > once.fighters[1].damage * 1.4, `連打 ${mash.fighters[1].damage.toFixed(1)}% / 1回 ${once.fighters[1].damage.toFixed(1)}%`);
   const blow = make(0);
   place(blow, 1.6);
   run(blow, 50, at(0, { mx: 1, my: 0, buttons: BTN_B }));
@@ -109,22 +104,19 @@ const place = (sim: Sim, dx: number) => {
 
 // ---- バンドマン
 {
+  // 爆音ソロ：音の衝撃を前へ飛ばす（5m先の相手に届く）。押し続けると溜まって強くなる
   const tap = make(1);
-  place(tap, 1.0);
-  run(tap, 60, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+  place(tap, 5.0);
+  run(tap, 90, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+  check('爆音ソロ：音を前へ飛ばし、5m先の相手に当たる', tap.fighters[1].damage > 0, `${tap.fighters[1].damage.toFixed(1)}%`);
   const hold = make(1);
-  hold.fighters[0].x = 0;
-  hold.fighters[0].facing = 1;
-  hold.fighters[1].x = 6;
-  run(hold, 70, () => ({ mx: 0, my: 0, buttons: BTN_B }));
-  hold.fighters[1].x = 1.0;
-  hold.fighters[1].damage = 0;
-  run(hold, 40);
+  place(hold, 5.0);
+  run(hold, 150, (i) => (i < 75 ? { mx: 0, my: 0, buttons: BTN_B } : N));
   check('爆音ソロ：押し続けると溜まって強くなる', hold.fighters[1].damage > tap.fighters[1].damage * 1.5, `溜め ${hold.fighters[1].damage.toFixed(1)}% / すぐ ${tap.fighters[1].damage.toFixed(1)}%`);
   const back = make(1);
-  place(back, -1.0);
-  run(back, 50, at(0, { mx: 0, my: 0, buttons: BTN_B }));
-  check('爆音ソロ：後ろの相手にも当たる（全方向）', back.fighters[1].damage > 0);
+  place(back, -1.5);
+  run(back, 60, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+  check('爆音ソロ：後ろの相手には当たらない（前へ飛ばす技）', back.fighters[1].damage === 0);
   const dive = make(1);
   place(dive, 3.0);
   let bounced = false;

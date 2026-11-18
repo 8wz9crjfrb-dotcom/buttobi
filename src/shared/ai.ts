@@ -250,7 +250,8 @@ export class CpuController {
       case 'dopa':
         // 倍速再生は使えるならすぐ使う。通知爆撃で引き寄せてから殴る。無限スクロールは押し直して続ける
         if (f.speedBuff === 0 && f.speedCd === 0 && this.rng.chance(skill)) return { mx: 0, my: 0, buttons: BTN_B };
-        if (near && adx > 2 && adx < 4.3 && this.rng.chance(skill * 0.6)) return { mx: 0, my: -1, buttons: BTN_B };
+        // おすすめに出てくる：少し離れた相手の目の前へ飛んでいく（地上の相手のときだけ。場外へ飛び込まないように）
+        if (near && t.grounded && adx > 3 && adx < 9 && this.rng.chance(skill * 0.35)) return { mx: 0, my: -1, buttons: BTN_B };
         if (near && adx > 3 && adx < 8 && this.rng.chance(skill * 0.4)) {
           b.hold = { mx: dir, my: 0, buttons: 0 };
           b.holdFrames = 0;
@@ -280,14 +281,12 @@ export class CpuController {
         // 3B：ときどき着替えて（早着替えで強くなる）、仕事ごとの得意技を使う
         if (f.jobCd === 0 && f.jobBuff === 0 && adx < 3.5 && this.rng.chance(skill * 0.12)) return { mx: 0, my: -1, buttons: BTN_B };
         if (f.job === 0) {
-          // シザーブーメラン：同じくらいの高さの、少し離れた相手に投げる
-          if (adx > 1.8 && adx < 8 && Math.abs(t.y - f.y) < 1.6 && this.rng.chance(skill * 0.18)) {
-            if (dir !== f.facing) return { mx: dir, my: 0, buttons: 0 };
-            return { mx: 0, my: 0, buttons: BTN_B };
-          }
+          if (near && adx < 1.6 && this.rng.chance(skill * 0.25)) return { mx: 0, my: 0, buttons: BTN_B };
           if (near && adx > 1.8 && adx < 3.8 && this.rng.chance(skill * 0.18)) return { mx: dir, my: 0, buttons: BTN_B };
         } else if (f.job === 1) {
-          if (near && adx < 1.9 && this.rng.chance(skill * 0.22)) {
+          // 爆音ソロ：同じくらいの高さの、少し離れた相手へ音を飛ばす（ときどき溜める）
+          if (adx > 1.2 && adx < 7 && Math.abs(t.y - f.y) < 1.6 && this.rng.chance(skill * 0.2)) {
+            if (dir !== f.facing) return { mx: dir, my: 0, buttons: 0 };
             b.hold = { mx: 0, my: 0, buttons: BTN_B };
             b.holdFrames = 8 + Math.round(this.rng.range(0, 25 + lv * 3));
             return b.hold;

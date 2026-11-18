@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { ALARM, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { ALARM, RECOMMEND, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -2570,6 +2570,32 @@ export class Sim {
           this.removeEntities(f.slot, 'trap');
           this.addEntity('trap', f.slot, f.x + f.facing * 0.5 * sc, f.y, TRAP.life);
           break;
+        case 'recommend': {
+          // おすすめに出てくる（ドパガキ）：いちばん近い相手の目の前へ瞬間移動（届かなければ、その場で一撃）
+          let best: Fighter | null = null;
+          let bestD = RECOMMEND.range;
+          for (const v of this.fighters) {
+            if (v === f || !v.alive || v.out || this.friendly(f.slot, v) || v.state === 'respawn') continue;
+            const d = Math.hypot(v.x - f.x, v.y - f.y);
+            if (d <= bestD) {
+              bestD = d;
+              best = v;
+            }
+          }
+          if (best) {
+            this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot });
+            const side = f.x <= best.x ? -1 : 1;
+            f.x = best.x + side * 0.9 * sc;
+            f.y = best.y;
+            f.facing = -side;
+            f.vx = 0;
+            f.vy = 0;
+            f.grounded = best.grounded;
+            f.groundRef = best.groundRef;
+            this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot, w: 1 });
+          }
+          break;
+        }
         case 'teleport': {
           this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot });
           f.x += f.facing * 3;
@@ -2889,7 +2915,9 @@ export class Sim {
     const s = f.def.scale;
     // 配達バッグは1つまで（戻ってくるまで投げられない）
     if (spec.boomerang && this.projectiles.some((p) => p.owner === f.slot && p.boomerang)) return;
-    const pm = this.powerMul(f);
+    const pm = { ...this.powerMul(f) };
+    // 爆音ソロ（3B・バンドマン）：Bを押し続けて溜めた分だけ、飛ばす音も強くなる
+    if (f.move && this.moveDef(f).special === 'curl' && spec.kind === 'sound') pm.dmg *= 1 + (f.charge / TRAINER.curlMax) * (TRAINER.curlMul - 1);
     this.projectiles.push({
       owner: f.slot,
       kind: spec.kind,
