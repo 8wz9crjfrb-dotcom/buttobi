@@ -1,6 +1,7 @@
 // CPUの思考。強さ(level 1〜9)で反応の速さと判断の正確さが変わる。
 
 import { Rng } from './rng';
+import { THREEB_RULES, TRAINER } from './moves';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type AreaZone, type InputState } from './types';
 import { ballBaskets, type Fighter, type Sim } from './sim';
 
@@ -284,11 +285,12 @@ export class CpuController {
           if (near && adx < 1.6 && this.rng.chance(skill * 0.25)) return { mx: 0, my: 0, buttons: BTN_B };
           if (near && adx > 1.8 && adx < 3.8 && this.rng.chance(skill * 0.18)) return { mx: dir, my: 0, buttons: BTN_B };
         } else if (f.job === 1) {
-          // 爆音ソロ：同じくらいの高さの、少し離れた相手へ音を飛ばす（ときどき溜める）
-          if (adx > 1.2 && adx < 7 && Math.abs(t.y - f.y) < 1.6 && this.rng.chance(skill * 0.2)) {
+          // 爆音ソロ：同じくらいの高さの、少し離れた相手へ音を飛ばす。遠い相手ほど長く溜めて届かせる（強いCPUほど溜める長さが正確）
+          if (adx > 1.2 && adx < 10 && Math.abs(t.y - f.y) < 1.6 && this.rng.chance(skill * 0.2)) {
             if (dir !== f.facing) return { mx: dir, my: 0, buttons: 0 };
+            const need = Math.max(0, ((adx + 0.5) / 4.4 - 1) / (THREEB_RULES.soundRange - 1)) * TRAINER.curlMax;
             b.hold = { mx: 0, my: 0, buttons: BTN_B };
-            b.holdFrames = 8 + Math.round(this.rng.range(0, 25 + lv * 3));
+            b.holdFrames = 16 + Math.round(Math.min(TRAINER.curlMax, need + this.rng.range(-1, 1) * (30 - lv * 3)));
             return b.hold;
           }
           if (near && adx > 2.5 && adx < 5 && this.rng.chance(skill * 0.25)) return { mx: dir, my: 0, buttons: BTN_B };
@@ -334,6 +336,8 @@ export class CpuController {
    */
   private avoidCooldown(sim: Sim, f: Fighter, out: InputState, b: Brain): InputState {
     if (!(out.buttons & BTN_B)) return out;
+    // 技を出している最中のB（溜めの押しっぱなし・連打で続ける技）は、新しく技を出すわけではないので止めない
+    if (f.state === 'attack') return out;
     const ax = Math.abs(out.mx);
     const ay = Math.abs(out.my);
     const cd = ay > 0.5 && ay >= ax ? (out.my > 0 ? f.cdU : f.cdD) : ax > 0.5 ? f.cdS : f.cdN;

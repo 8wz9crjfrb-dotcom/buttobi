@@ -667,7 +667,7 @@ const THREEB: Specials[] = [
     uspecial: { startup: 4, active: 20, end: 8, hitboxes: [{ x: 0, y: 1.0, r: 0.95 }], dmg: 1.6, base: 4, growth: 2, angle: 80, air: true, special: 'recovery', riseV: 15.5, rehit: 5, helpless: true },
   },
   {
-    // バンドマン：爆音ソロ（ギターをかき鳴らし、音の衝撃を前へ飛ばす。Bを押し続けると溜まり、溜めるほど強い）
+    // バンドマン：爆音ソロ（ギターをかき鳴らし、音の衝撃を前へ飛ばす。Bを押し続けると溜まり、溜めるほど遠くまで飛ぶ）
     nspecial: {
       startup: 18,
       active: 1,
@@ -682,7 +682,7 @@ const THREEB: Specials[] = [
       landLag: 12,
       // 音の衝撃が消えてから約2.5秒は使えない（消えるまでは待ち時間のまま）
       cd: 150,
-      shots: [{ at: 0, kind: 'sound', x: 0.9, y: 1.0, vx: 12, vy: 0, life: 36, r: 0.6, dmg: 7, base: 6, growth: 10, angle: 45 }],
+      shots: [{ at: 0, kind: 'sound', x: 0.9, y: 1.0, vx: 12, vy: 0, life: 22, r: 0.6, dmg: 7, base: 6, growth: 10, angle: 45 }],
     },
     // ステージダイブ：前へ飛び込んで体当たり。当たると相手を踏み台に跳ねる
     sspecial: { startup: 8, active: 22, end: 14, hitboxes: [{ x: 0.5, y: 0.8, r: 0.75 }], dmg: 9, base: 6.5, growth: 9, angle: 40, air: true, special: 'dive', landLag: 14, cd: 60 },
@@ -713,6 +713,8 @@ export const THREEB_RULES = {
   buffMul: 1.25,
   /** ジョブチェンジの待ち時間 */
   cooldown: 60,
+  /** 爆音ソロ：いちばん溜めたときの飛ぶ距離の倍率（溜めなしで約4.4m、最大で約10.6m） */
+  soundRange: 2.4,
   /** ステージダイブで当てたあとに跳ね上がる速さ */
   bounce: 12,
 };

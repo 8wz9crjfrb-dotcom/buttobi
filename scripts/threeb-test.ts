@@ -106,9 +106,13 @@ const place = (sim: Sim, dx: number) => {
 {
   // 爆音ソロ：音の衝撃を前へ飛ばす（5m先の相手に届く）。押し続けると溜まって強くなる
   const tap = make(1);
-  place(tap, 5.0);
+  place(tap, 3.5);
   run(tap, 90, at(0, { mx: 0, my: 0, buttons: BTN_B }));
-  check('爆音ソロ：音を前へ飛ばし、5m先の相手に当たる', tap.fighters[1].damage > 0, `${tap.fighters[1].damage.toFixed(1)}%`);
+  check('爆音ソロ：音を前へ飛ばし、3.5m先の相手に当たる', tap.fighters[1].damage > 0, `${tap.fighters[1].damage.toFixed(1)}%`);
+  const tapFar = make(1);
+  place(tapFar, 8.0);
+  run(tapFar, 90, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+  check('爆音ソロ：溜めないと、8m先までは届かない', tapFar.fighters[1].damage === 0);
   {
     // 音の衝撃が消えてから約2.5秒は使えない
     const cd = make(1);
@@ -140,9 +144,9 @@ const place = (sim: Sim, dx: number) => {
     check('仕事ごとの待ち時間：バンドマンの待ち時間は裏で減っていく', me.job === 1 && me.cdN < bandCd && me.cdN >= 0, `仕事${me.job} 残り${me.cdN}`);
   }
   const hold = make(1);
-  place(hold, 5.0);
+  place(hold, 8.0);
   run(hold, 150, (i) => (i < 75 ? { mx: 0, my: 0, buttons: BTN_B } : N));
-  check('爆音ソロ：押し続けると溜まって強くなる', hold.fighters[1].damage > tap.fighters[1].damage * 1.5, `溜め ${hold.fighters[1].damage.toFixed(1)}% / すぐ ${tap.fighters[1].damage.toFixed(1)}%`);
+  check('爆音ソロ：いちばん溜めると、8m先の相手にも届く（威力は溜めなしと同じ）', hold.fighters[1].damage > 0 && Math.abs(hold.fighters[1].damage - tap.fighters[1].damage) < 0.01, `溜め ${hold.fighters[1].damage.toFixed(1)}% / すぐ ${tap.fighters[1].damage.toFixed(1)}%`);
   const back = make(1);
   place(back, -1.5);
   run(back, 60, at(0, { mx: 0, my: 0, buttons: BTN_B }));

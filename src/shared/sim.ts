@@ -2937,8 +2937,9 @@ export class Sim {
     // 配達バッグは1つまで（戻ってくるまで投げられない）
     if (spec.boomerang && this.projectiles.some((p) => p.owner === f.slot && p.boomerang)) return;
     const pm = { ...this.powerMul(f) };
-    // 爆音ソロ（3B・バンドマン）：Bを押し続けて溜めた分だけ、飛ばす音も強くなる
-    if (f.move && this.moveDef(f).special === 'curl' && spec.kind === 'sound') pm.dmg *= 1 + (f.charge / TRAINER.curlMax) * (TRAINER.curlMul - 1);
+    // 爆音ソロ（3B・バンドマン）：Bを押し続けて溜めた分だけ、音が遠くまで飛ぶ（威力は同じ）
+    let life = spec.life;
+    if (f.move && this.moveDef(f).special === 'curl' && spec.kind === 'sound') life = Math.round(spec.life * (1 + (f.charge / TRAINER.curlMax) * (THREEB_RULES.soundRange - 1)));
     this.projectiles.push({
       owner: f.slot,
       kind: spec.kind,
@@ -2947,7 +2948,7 @@ export class Sim {
       vx: f.facing * spec.vx,
       vy: spec.vy,
       gravity: spec.gravity ?? 0,
-      life: spec.life,
+      life,
       dmg: spec.dmg * pm.dmg,
       base: spec.base,
       growth: spec.growth,
