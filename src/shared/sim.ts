@@ -123,7 +123,7 @@ const SNAPSHOT_KEYS = [
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
   'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'warpSlow', 'moveAim',
   'leashT', 'leashBy', 'leashDmg', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'dereCd', 'floatT', 'heavyT',
-  'alarmT', 'alarmUsed',
+  'alarmT', 'alarmUsed', 'jobCdN',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -295,6 +295,8 @@ export class Fighter {
   recentMoves: string[] = [];
   /** 相手ごとに攻撃を受けた回数（学習データ） */
   learnHits: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+  /** 3B：着替えている間の、ほかの仕事のBの待ち時間（仕事ごとに別々に数える） */
+  jobCdN: number[] = [0, 0, 0];
   /** API呼び出しで崖に向かっているか、その崖の位置 */
   tetherOn = false;
   tetherX = 0;
@@ -1372,13 +1374,19 @@ export class Sim {
     if (f.warpCd > 0) f.warpCd--;
     if (f.warpSlow > 0) f.warpSlow--;
     this.menheraTimers(f);
+    // 3B：いま着ていない仕事のBの待ち時間も、裏で数える（バンドマンの爆音ソロは、音が消えるまでは減らない）
+    // （書き出した状態と配列を共有しないよう、書き換えるときは新しい配列にする）
+    if (f.def.id === 'threeb' && f.jobCdN.some((c, j) => j !== f.job && (c > 0 || j === 1))) {
+      const hold = this.soundAlive(f) ? moveOf('threeb', 'nspecial', 1).cd ?? 0 : 0;
+      f.jobCdN = f.jobCdN.map((c, j) => (j === f.job ? c : j === 1 && hold ? Math.max(c, hold) : Math.max(0, c - 1)));
+    }
     // 必殺技の待ち時間は、その技を出し終わってから減り始める
     for (const id of ['nspecial', 'sspecial', 'dspecial', 'uspecial'] as const) {
       const k = SPECIAL_CD[id];
       // 自転車は、降りてから数える
       if (id === 'sspecial' && f.bike > 0) continue;
       // 爆音ソロ（3B・バンドマン）は、飛ばした音の衝撃が消えてから数える
-      if (id === 'nspecial' && f.def.id === 'threeb' && this.projectiles.some((p) => p.owner === f.slot && p.kind === 'sound')) {
+      if (id === 'nspecial' && f.def.id === 'threeb' && f.job === 1 && this.soundAlive(f)) {
         f[k] = Math.max(f[k], moveOf('threeb', 'nspecial', 1).cd ?? 0);
         continue;
       }
@@ -1947,6 +1955,11 @@ export class Sim {
       this.events.push({ k: 'heavy', s: taker.slot, x: h.x, y: h.y + 0.6 });
       this.heart = null;
     }
+  }
+
+  /** 自分が飛ばした爆音ソロ（3B・バンドマン）の音が、まだ残っているか */
+  private soundAlive(f: Fighter): boolean {
+    return this.projectiles.some((p) => p.owner === f.slot && p.kind === 'sound');
   }
 
   /** 攻撃力・スピードの上がり下がり（画面の目印用。どのキャラでも共通） */
@@ -2631,7 +2644,10 @@ export class Sim {
         case 'jobchange':
           // ジョブチェンジ：美容師 → バンドマン → バーテンダー の順に着替える
           if (f.jobCd <= 0) {
+            // Bの待ち時間は仕事ごとに別々：今の仕事の分をしまって、次の仕事の分を出す
+            f.jobCdN = f.jobCdN.map((c, j) => (j === f.job ? f.cdN : c));
             f.job = (f.job + 1) % 3;
+            f.cdN = f.jobCdN[f.job];
             applySize(f);
             f.jobBuff = THREEB_RULES.buff;
             f.jobCd = THREEB_RULES.cooldown;
@@ -3136,6 +3152,7 @@ export class Sim {
     f.absorbCharge = false;
     f.recentMoves = [];
     f.learnHits = f.learnHits.map(() => 0);
+    f.jobCdN = [0, 0, 0];
     f.runTime = 0;
     this.setState(f, 'respawn');
   }

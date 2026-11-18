@@ -125,6 +125,20 @@ const place = (sim: Sim, dx: number) => {
     }
     check('爆音ソロ：音が消えた時点で、まだ約2.5秒使えない', goneAt > 0 && cdAtGone >= 148, `消えたとき残り${cdAtGone}フレーム`);
   }
+  {
+    // Bの待ち時間は仕事ごとに別々：爆音ソロのあとに着替えれば、次の仕事のBはすぐ使える。戻ると、バンドマンの待ち時間は残っている
+    const sw = make(1);
+    sw.fighters[0].x = -8; sw.fighters[0].facing = 1; sw.fighters[1].x = 8;
+    const me = sw.fighters[0];
+    for (let i = 0; i < 50; i++) sw.step(new Map([[0, i === 0 ? { mx: 0, my: 0, buttons: BTN_B } : N]]));
+    const bandCd = me.cdN;
+    for (let i = 0; i < 30; i++) sw.step(new Map([[0, i === 0 ? { mx: 0, my: -1, buttons: BTN_B } : N]]));
+    check('仕事ごとの待ち時間：爆音ソロのあと着替えると、バーテンダーのBはすぐ使える', bandCd > 100 && me.job === 2 && me.cdN === 0, `バンドマン残り${bandCd} → 仕事${me.job} 残り${me.cdN}`);
+    // 2回着替えてバンドマンに戻す（美容師を経由）
+    for (let i = 0; i < 60; i++) sw.step(new Map([[0, N]]));
+    for (let k = 0; k < 2; k++) for (let i = 0; i < 80; i++) sw.step(new Map([[0, i === 0 ? { mx: 0, my: -1, buttons: BTN_B } : N]]));
+    check('仕事ごとの待ち時間：バンドマンの待ち時間は裏で減っていく', me.job === 1 && me.cdN < bandCd && me.cdN >= 0, `仕事${me.job} 残り${me.cdN}`);
+  }
   const hold = make(1);
   place(hold, 5.0);
   run(hold, 150, (i) => (i < 75 ? { mx: 0, my: 0, buttons: BTN_B } : N));
