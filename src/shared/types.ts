@@ -227,6 +227,8 @@ export type GameEvent =
   /** 鬼電（メンヘラ）の着信音が鳴った・泣き落とし */
   | { k: 'ring'; x: number; y: number; s: number }
   | { k: 'cry'; x: number; y: number; s: number }
+  /** 運命の赤い糸（深夜のワンルームのギミック）：s と t がつながった */
+  | { k: 'fate'; s: number; t: number }
   /** メガホン（アイテム）の衝撃波 */
   | { k: 'shout'; x: number; y: number }
   /** ステージギミックの予告（h = 種類、x/y = 位置、d = 向き） */

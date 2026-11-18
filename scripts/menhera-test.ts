@@ -139,6 +139,28 @@ check('隠していても、キャラとステージの中身はある', getChar
   check('かまってちゃん：攻撃を当てるとデレモード（少し速い）に戻る', f.lonely < MENHERA.lonely && f.dere > 0 && Math.abs(p.speedMul(f) - MENHERA.dereSpeed) < 1e-9, `lonely=${f.lonely} dere=${f.dere}`);
 }
 
+// ---- 深夜のワンルームのギミック：運命の赤い糸（2人がしばらくつながる）
+{
+  const players = ['guard', 'thief', 'hacker'].map((c, i) => ({ slot: i, name: 'p' + i, charId: c, cpu: false, cpuLevel: 1 }));
+  const sim = new Sim({ players, stageId: 'room', rules: { mode: 'stock', stocks: 3, timeLimit: 300, gimmicks: true }, seed: 4 });
+  let tied: number[] = [];
+  for (let i = 0; i < 60 * 30 && !tied.length; i++) {
+    sim.step(new Map());
+    if (sim.events.some((e) => e.k === 'fate')) tied = sim.fighters.filter((f) => f.leashT > 0).map((f) => f.slot);
+  }
+  check('運命の赤い糸：ランダムな2人がつながる', tied.length === 2, `${tied.join('と')}`);
+  const [a, b] = tied.map((s2) => sim.fighter(s2)!);
+  check('運命の赤い糸：おたがいにつながっている', a.leashBy === b.slot && b.leashBy === a.slot);
+  let far = 0;
+  for (let i = 0; i < 120; i++) {
+    sim.step(new Map([[a.slot, { mx: -1, my: 0, buttons: 0 }], [b.slot, { mx: 1, my: 0, buttons: 0 }]]));
+    far = Math.max(far, Math.hypot(a.x - b.x, a.y - b.y));
+  }
+  check('運命の赤い糸：反対へ走っても離れられない', far <= MENHERA.leashLen + 0.05, `最大${far.toFixed(2)}m`);
+  for (let i = 0; i < MENHERA.fate; i++) sim.step(new Map());
+  check('運命の赤い糸：約5秒で切れる', a.leashT === 0 && b.leashT === 0);
+}
+
 // ---- CPUだけで最後まで遊べる・勝率の目安
 {
   const others = ['guard', 'hacker', 'thief', 'streamer', 'dopa', 'gacha', 'courier', 'ai', 'trainer', 'threeb'];

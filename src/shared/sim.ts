@@ -2150,6 +2150,26 @@ export class Sim {
           shot('laser', l.x, l.y, l.vx, l.vy, 0, 200, 0.42, 8, 6, 6, 70, true);
         }
         break;
+      case 'room':
+        // 運命の赤い糸：ランダムな2人（チーム戦なら敵どうし）が、しばらく赤い糸でつながる（互いに離れられない）
+        if (at === 0 && !this.solo) {
+          const alive = this.fighters.filter((f) => f.alive && !f.out);
+          if (alive.length < 2) break;
+          const a = alive[Math.floor(this.rng.next() * alive.length)];
+          const others = alive.filter((f) => f !== a && !this.friendly(a.slot, f));
+          if (!others.length) break;
+          const b = others[Math.floor(this.rng.next() * others.length)];
+          for (const [x, y] of [
+            [a, b],
+            [b, a],
+          ] as const) {
+            x.leashT = MENHERA.fate;
+            x.leashBy = y.slot;
+            this.events.push({ k: 'poof', x: x.x, y: x.y + x.h });
+          }
+          this.events.push({ k: 'fate', s: a.slot, t: b.slot });
+        }
+        break;
       case 'arcade':
         // 床を走り抜けるスクーター
         if (at === 0) shot('scooter', d > 0 ? m.x1 - 6 : m.x2 + 6, m.top + 0.55, d * 17, 0, 0, 160, 0.6, 10, 7, 8, 45, true);
