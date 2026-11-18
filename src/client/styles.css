@@ -1150,6 +1150,12 @@ input[inputmode='numeric'] {
   pointer-events: none;
 }
 
+.mv-pop.wide {
+  max-width: min(560px, calc(100% - 16px));
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .mv-pop b {
   display: block;
   color: var(--accent);

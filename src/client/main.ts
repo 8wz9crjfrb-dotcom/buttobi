@@ -1100,11 +1100,15 @@ function bindMovePopups(root: HTMLElement, charId: () => string): void {
     // 押した技のすぐ上に出す（画面からはみ出さないように）
     const r = el.getBoundingClientRect();
     const rr = root.getBoundingClientRect();
+    // 背の低い画面で説明が長いときは、横に広げて文字を少し小さくし、縦に収める
+    if (pop.offsetHeight > rr.height * 0.55) pop.classList.add('wide');
     const pw = pop.offsetWidth;
     const ph = pop.offsetHeight;
     const left = Math.max(8, Math.min(rr.width - pw - 8, r.left - rr.left));
+    // 技の上 → 入らなければ技の下 → どちらも入らなければ、画面の中に収まる位置（技に少し重なってもよい）
     let top = r.top - rr.top - ph - 6;
     if (top < 8) top = r.bottom - rr.top + 6;
+    if (top + ph > rr.height - 8) top = Math.max(8, rr.height - ph - 8);
     pop.style.left = `${left}px`;
     pop.style.top = `${top + root.scrollTop}px`;
     sfx.click();
