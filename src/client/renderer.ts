@@ -197,6 +197,8 @@ export class GameRenderer {
     this.focusSlot = slot;
   }
   private focusSlot: number | null = null;
+  /** ワープホールから出てきた人と、出てきた時刻（ゆっくり大きくなる演出） */
+  private warpGrow = new Map<number, number>();
   /** この端末で操作している人（ワープの待ち時間の表示に使う） */
   localSlot: number | null = null;
 
@@ -722,6 +724,16 @@ export class GameRenderer {
       this.updateCrown(view);
       this.updateVaults(view);
       this.updateBounty(view);
+      for (const [slot, t0] of this.warpGrow) {
+        const m = this.models.get(slot)?.model;
+        const u = (this.time - t0) / 0.5;
+        if (!m || u >= 1) {
+          if (m) m.appear = 1;
+          this.warpGrow.delete(slot);
+          continue;
+        }
+        m.appear = 0.15 + 0.85 * (1 - (1 - u) * (1 - u));
+      }
       this.updateCoins(view);
       for (const f of view.fighters) {
         const m = this.models.get(f.slot);
@@ -1191,6 +1203,8 @@ export class GameRenderer {
       return;
     }
     if (e.k === 'teleport') {
+      // ワープホールから出てきた：小さい姿から、ゆっくり元の大きさに戻る
+      if (e.w) this.warpGrow.set(e.s, this.time);
       for (let i = 0; i < 10; i++) {
         this.spawn(this.sparkGeo, 0xff9ec8, e.x + (Math.random() - 0.5) * 0.8, e.y + Math.random() * 1.8, (Math.random() - 0.5) * 3, Math.random() * 2, 0.12, 20, -0.004);
       }

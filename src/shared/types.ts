@@ -189,7 +189,8 @@ export type GameEvent =
   | { k: 'counter'; x: number; y: number; s: number }
   | { k: 'flash'; x: number; y: number; s: number }
   | { k: 'boom'; x: number; y: number }
-  | { k: 'teleport'; x: number; y: number; s: number }
+  /** w = ワープホールの出口から出てきた */
+  | { k: 'teleport'; x: number; y: number; s: number; w?: 1 }
   | { k: 'sleep'; x: number; y: number; s: number }
   | { k: 'gacha'; x: number; y: number; s: number; r: number }
   | { k: 'absorb'; x: number; y: number; s: number }

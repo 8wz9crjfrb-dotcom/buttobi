@@ -1499,7 +1499,7 @@ function showNews(): void {
       <div class="modal-body news-list">${NEWS.map(
         (n) => `<section class="news-item">
           <div class="news-head"><b>${esc(n.title)}</b><small>${n.date}</small>${n.id > seen ? '<span class="news-new">NEW</span>' : ''}</div>
-          <ul>${n.items.map((it) => `<li><span class="news-tag ${it.kind}">${NEWS_LABEL[it.kind]}</span>${esc(it.text)}</li>`).join('')}</ul>
+          <ul>${n.items.map((it) => `<li class="${it.kind}"><span class="news-tag ${it.kind}">${NEWS_LABEL[it.kind]}</span>${esc(it.text)}</li>`).join('')}</ul>
         </section>`,
       ).join('')}</div>
       <div class="footer"><button class="btn primary" data-close>閉じる</button></div>

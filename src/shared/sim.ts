@@ -109,7 +109,7 @@ const SNAPSHOT_KEYS = [
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeAir', 'bikeHp', 'bikeHitCd', 'wallHit', 'confused', 'chain', 'redirected', 'pity', 'crit',
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
-  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'moveAim',
+  'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'warpSlow', 'moveAim',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -210,6 +210,8 @@ export class Fighter {
   size = 0;
   /** ワープホール（電脳空間）を続けてくぐれないようにする待ち時間 */
   warpCd = 0;
+  /** ワープホールから出てきたところ（ゆっくり出てくる残りフレーム） */
+  warpSlow = 0;
   /** 技を出したときのスティックの上下（玉入れのねらい。上で山なり、下で低く） */
   moveAim = 0;
   /** 自転車の残りの耐久（%）。弱い攻撃はこの分まで受けても降りない */
@@ -432,7 +434,7 @@ export function gimmickPhase(frame: number, gimmicks: boolean, kind: string, wan
   return t < 0 ? -1 : t % GIMMICK.interval;
 }
 /** ワープホール：出ている時間、端からの距離、高さ、入口の大きさ、くぐった人が次にくぐれるまで（2秒）、2つの入口の最低の間隔 */
-export const WARP = { time: 300, inset: 1.1, y: 0.95, r: 0.85, cd: 120, minGap: 5 };
+export const WARP = { time: 300, inset: 1.1, y: 0.95, r: 0.85, cd: 120, minGap: 5, slow: 30, slowSpeed: 2.5 };
 
 /**
  * ワープホールの2つの場所（毎回ランダム）。床の上か、少し高い空中のどこか。試合の種と何回目かだけで決まるので、
@@ -1330,6 +1332,7 @@ export class Sim {
     if (f.jobBuff > 0) f.jobBuff--;
     if (f.jobCd > 0) f.jobCd--;
     if (f.warpCd > 0) f.warpCd--;
+    if (f.warpSlow > 0) f.warpSlow--;
     // 必殺技の待ち時間は、その技を出し終わってから減り始める
     for (const id of ['nspecial', 'sspecial', 'dspecial', 'uspecial'] as const) {
       const k = SPECIAL_CD[id];
@@ -1501,6 +1504,14 @@ export class Sim {
     if (f.grounded && f.groundRef >= 0 && f.groundRef < ENTITY_GROUND) {
       const p = platformAt(this.stage.platforms[f.groundRef], this.frame);
       f.x += p.dx;
+    }
+    // ワープホールから出てきたところ：しばらくは左右にゆっくり動き、ゆっくり落ちる（攻撃でふっとんだら終わり）
+    if (f.warpSlow > 0) {
+      if (f.state === 'hitstun' || f.tumble) f.warpSlow = 0;
+      else {
+        f.vx = Math.max(-WARP.slowSpeed, Math.min(WARP.slowSpeed, f.vx));
+        if (f.vy < -WARP.slowSpeed) f.vy = -WARP.slowSpeed;
+      }
     }
     const prevX = f.x;
     const prevY = f.y;
@@ -2054,7 +2065,11 @@ export class Sim {
                 if (f.state === 'idle' || f.state === 'run') this.setState(f, 'air');
               }
               f.warpCd = WARP.cd;
-              this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot });
+              // ゆっくり出てくる：勢いを落とし、しばらく速く動けない
+              f.vx *= 0.2;
+              f.vy = 0;
+              f.warpSlow = WARP.slow;
+              this.events.push({ k: 'teleport', x: f.x, y: f.y, s: f.slot, w: 1 });
               break;
             }
           }

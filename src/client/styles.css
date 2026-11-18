@@ -4623,6 +4623,9 @@ table.rec td:first-child {
   margin-right: 6px;
 }
 .news-list {
+  /* スマホのブラウザが長い文だけ勝手に文字を大きくするのを止めて、大きさをそろえる */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -4665,6 +4668,10 @@ table.rec td:first-child {
   gap: 8px;
   align-items: flex-start;
   line-height: 1.45;
+}
+/* 新機能だけ少し大きく */
+.news-item li.new {
+  font-size: 14.5px;
 }
 .news-tag {
   flex: none;
