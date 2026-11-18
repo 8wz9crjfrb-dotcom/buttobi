@@ -58,18 +58,24 @@ const step = (sim: Sim, k: number, inp?: Map<number, InputState>) => { for (let 
   a.lastHitBy = 2; a.lastHitFrame = sim.frame; a.x = 99;
   step(sim, 2);
   check('王冠：持っている人を撃墜した人が王冠を手に入れる', sim.crown.holder === 2, `${sim.crown.holder}`);
-  // 持っている人が自分で落ちたら、だれも持っていない状態にもどる
+  // 持っている人が自分で落ちたら、少しあとに中央に出て、触れた人が拾う
   c.lastHitBy = -1; c.x = 99;
   step(sim, 2);
-  check('王冠：持っている人が自分で落ちたら、だれも持たない', sim.crown.holder === -1 && !sim.crown.on);
-  step(sim, 300);
-  b.lastHitBy = 2; b.lastHitFrame = sim.frame; b.x = 99;
+  check('王冠：持っている人が自分で落ちたら、いったんだれも持たない', sim.crown.holder === -1 && !sim.crown.on);
+  b.lastHitBy = 0; b.lastHitFrame = sim.frame; b.x = 99;
   step(sim, 2);
-  check('王冠：そのあと相手を撃墜した人が手に入れる', sim.crown.holder === 2, `${sim.crown.holder} c:${c.alive},${c.state},${c.out} b:${b.alive},${b.state}`);
+  check('王冠：中央に出るのを待つ間は、相手を倒してももらえない', sim.crown.holder === -1);
+  step(sim, CROWN.respawn + 2);
+  check('王冠：中央に出てくる', sim.crown.on && sim.crown.holder === -1 && Math.abs(sim.crown.x) < 0.5);
+  for (const f of [b, c]) f.x = 6;
+  step(sim, 100, new Map([[0, { mx: 1, my: 0, buttons: 0 }]]));
+  a.x = sim.crown.x; a.y = 0;
+  step(sim, 3);
+  check('王冠：中央の王冠に触れると拾う', sim.crown.holder === 0, `${sim.crown.holder}`);
   // 勝ちになる時間で終わる
-  sim.crownPts.set(2, 20 * 60 - 1);
+  sim.crownPts.set(0, 20 * 60 - 1);
   step(sim, 200);
-  check('王冠：決めた時間持ったら終わり、その人が1位', sim.ended && sim.results()[0].slot === 2 && sim.results()[0].crown === 20, JSON.stringify(sim.results().map((r) => [r.slot, r.rank, r.crown])));
+  check('王冠：決めた時間持ったら終わり、その人が1位', sim.ended && sim.results()[0].slot === 0 && sim.results()[0].crown === 20, JSON.stringify(sim.results().map((r) => [r.slot, r.rank, r.crown])));
   // 通信で送っても同じ
   const v = decodeState(JSON.parse(JSON.stringify(encodeState(sim.toView(), []))));
   check('王冠：通信で状態が伝わる', !!v.crown && v.crown.goal === 1200 && v.crown.pts.length >= 2);

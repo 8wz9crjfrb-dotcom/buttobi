@@ -200,8 +200,8 @@ export class Hud {
       bar.root.classList.toggle('on', k === holderKey);
     }
     const name = v.crown.holder >= 0 ? c.names.get(v.crown.holder) ?? '' : '';
-    // だれも持っていないときは、次に相手を倒した人が手に入れる（まだだれも持ったことがなければ「最初に」）
-    const msg = v.ended ? '' : name ? `王冠：${name}` : pts.size === 0 ? '最初に相手を倒した人が王冠ゲット！' : '次に相手を倒した人が王冠ゲット！';
+    // はじめは最初に相手を倒した人のもの。持っている人が自分で落ちたら、中央に出てくる
+    const msg = v.ended ? '' : name ? `王冠：${name}` : v.crown.on ? '王冠を拾え！' : pts.size === 0 ? '最初に相手を倒した人が王冠ゲット！' : 'まもなく中央に王冠が出現！';
     if (msg !== c.last) {
       c.notice.textContent = msg;
       c.last = msg;

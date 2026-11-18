@@ -331,7 +331,7 @@ const SPECIALS: Record<string, Specials> = {
       air: true,
       special: 'shot', cd: 60,
       // 少しゆっくり飛ぶ（届く距離はほぼ同じ）
-      shots: [{ at: 0, kind: 'coin', x: 0.7, y: 1.3, vx: 8.5, vy: 8.5, gravity: 24, life: 95, r: 0.3, dmg: 6, base: 5, growth: 5, angle: 45 }],
+      shots: [{ at: 0, kind: 'coin', x: 0.7, y: 1.3, vx: 9.5, vy: 8.8, gravity: 26.5, life: 84, r: 0.3, dmg: 6, base: 5, growth: 5, angle: 45 }],
     },
     // 切り抜き：少し先へ瞬間移動して斬る
     sspecial: { startup: 10, active: 4, end: 18, hitboxes: [{ x: 0.6, y: 0.9, r: 0.85 }], dmg: 10, base: 6.5, growth: 9, angle: 40, air: true, special: 'teleport', landLag: 10, cd: 60 },
@@ -716,13 +716,13 @@ export const SUDDEN = { damage: 100, hp: 30, max: 60 * 60 };
 export const REWIND = { frames: 120, heal: 0.5, invuln: 20 };
 /** 飛び道具が当たったときのひるみ時間の倍率 */
 export const SHOT_HITSTUN = 0.5;
-/** 王冠うばい：勝ちになる時間（秒・初期値）、奪われた直後に奪い返せない時間 */
-export const CROWN = { goal: 30, stealCd: 45 };
+/** 王冠うばい：勝ちになる時間（秒・初期値）、奪われた直後に奪い返せない時間、自分で落ちたあと中央に出るまで、王冠の大きさ */
+export const CROWN = { goal: 30, stealCd: 45, respawn: 90, r: 0.6 };
 /**
  * 金庫まもり：耐久（1対1のときの初期値。ルールの値）、大きさ、ステージの端からの距離、1チームの人数が1人増えるごとに増える耐久の割合、
- * 細かさ（耐久とダメージを何倍の数で数えるか）、1回のダメージのぶれ（±）。引き分けになりにくいように、数を細かくしてぶれを付ける
+ * 細かさ（耐久とダメージを何倍の数で数えるか。引き分けになりにくいように細かく数える）
  */
-export const VAULT = { hp: 400, w: 1.4, h: 1.8, inset: 1.7, perPlayer: 0.5, scale: 10, spread: 0.1 };
+export const VAULT = { hp: 400, w: 1.4, h: 1.8, inset: 1.7, perPlayer: 0.5, scale: 10 };
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };
 

@@ -129,7 +129,7 @@ export class CpuController {
       const go = this.areaMove(sim, f, lv);
       if (go) return go;
     }
-    // 王冠うばい：持っているときは相手から離れる（だれも持っていないときは、相手を倒しに行く）
+    // 王冠うばい：中央に出た王冠を拾いに行く。持っているときは相手から離れる（はじめは相手を倒しに行く）
     if (sim.setup.rules.mode === 'crown') {
       const go = this.crownMove(sim, f, lv);
       if (go) return go;
@@ -338,7 +338,16 @@ export class CpuController {
   private crownMove(sim: Sim, f: Fighter, lv: number): InputState | null {
     const c = sim.crown;
     const m = sim.stage.main;
-    if (!f.grounded || c.holder !== f.slot) return null;
+    if (!f.grounded) return null;
+    if (c.holder < 0) {
+      // 中央に出ている王冠を拾いに行く（上にあればジャンプ）。出るのを待っているときは中央で待つ
+      const tx = c.x;
+      const dx = tx - f.x;
+      if (c.on && c.y - f.y > 1.5 && Math.abs(dx) < 2.5) return { mx: Math.sign(dx) * 0.6, my: 0, buttons: BTN_JUMP };
+      if ((c.on || c.timer > 0) && Math.abs(dx) > 0.4) return { mx: Math.sign(dx), my: 0, buttons: 0 };
+      return null;
+    }
+    if (c.holder !== f.slot) return null;
     // 持っている：近くの相手からは離れる（すぐ近くなら戦う）。強いCPUほど上手に逃げる
     let near: Fighter | null = null;
     let nd = Infinity;
