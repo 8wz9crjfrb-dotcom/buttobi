@@ -1549,7 +1549,7 @@ function showNews(): void {
           <ul>${n.items.map((it) => `<li class="${it.kind}"><span class="news-tag ${it.kind}">${NEWS_LABEL[it.kind]}</span>${esc(it.text)}</li>`).join('')}</ul>
         </section>`,
       ).join('')}</div>
-      <div class="footer">${DEBUTS.filter((d) => PREVIEW || !HIDDEN_CHARS.includes(d.charId)).map((d) => `<button class="btn" data-debut="${d.id}">${HIDDEN_CHARS.includes(d.charId) ? '（確認用）' : ''}${esc(d.name)}の登場映像</button>`).join('')}<button class="btn primary" data-close>閉じる</button></div>
+      <div class="footer">${newsDebuts().map((d) => `<button class="btn" data-debut="${d.id}">${HIDDEN_CHARS.includes(d.charId) ? '（確認用）' : ''}${esc(d.name)}の登場映像</button>`).join('')}<button class="btn primary" data-close>閉じる</button></div>
     </div>`;
   el.querySelectorAll<HTMLElement>('[data-debut]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -1586,6 +1586,13 @@ function markDebutSeen(id: string): void {
   } catch {
     /* 保存できなくても続ける */
   }
+}
+/** お知らせの下に出す登場映像のボタン：いちばん新しく公開したキャラの映像だけ（次の新キャラを公開すると入れ替わる）。
+ *  テスト表示中は、まだ公開していないキャラの映像も（確認用）として出す */
+function newsDebuts(): DebutDef[] {
+  const released = DEBUTS.filter((d) => !HIDDEN_CHARS.includes(d.charId));
+  const latest = released.length ? [released[released.length - 1]] : [];
+  return PREVIEW ? [...latest, ...DEBUTS.filter((d) => HIDDEN_CHARS.includes(d.charId))] : latest;
 }
 /** まだ見ていない登場映像（公開しているキャラだけ）。はじめての人には出さない（全部見たことにする） */
 function pendingDebut(): DebutDef | undefined {

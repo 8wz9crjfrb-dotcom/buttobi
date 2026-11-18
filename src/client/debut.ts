@@ -25,6 +25,7 @@ export interface DebutDef {
   foe: { charId: string; job?: number };
 }
 
+/** 登場映像の一覧。新しいキャラの映像は最後に足す（お知らせのボタンは、公開しているうちの最後のものを出す） */
 export const DEBUTS: DebutDef[] = [
   {
     charId: 'menhera',
