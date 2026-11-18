@@ -30,8 +30,8 @@ const place = (sim: Sim, dx: number) => {
 type Priv = { powerMul(a: unknown): { dmg: number; kb: number }; speedMul(a: unknown): number };
 
 // ---- まだ公開しない
-check('ふだんは選べない（キャラ・ステージ）', !CHARACTERS.some((c) => c.id === 'menhera') && !STAGES.some((s) => s.id === 'room'));
-check('隠していても、キャラとステージの中身はある', getCharacter('menhera').id === 'menhera' && getStage('room').id === 'room');
+check('公開済み：キャラとステージが選べる', CHARACTERS.some((c) => c.id === 'menhera') && STAGES.some((s) => s.id === 'room'));
+check('キャラとステージの中身がある', getCharacter('menhera').id === 'menhera' && getStage('room').id === 'room');
 
 // ---- 赤い糸：当たった相手は3.5mより遠くへ行けない
 {

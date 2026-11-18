@@ -315,7 +315,7 @@ ALL_STAGES.push(
 );
 
 /** まだ公開していないステージ */
-export const HIDDEN_STAGES = ['room'];
+export const HIDDEN_STAGES: string[] = [];
 /** 選べるステージ（ふだんは公開しているステージだけ） */
 export const STAGES: StageDef[] = PREVIEW ? ALL_STAGES : ALL_STAGES.filter((s) => !HIDDEN_STAGES.includes(s.id));
 

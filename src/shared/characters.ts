@@ -283,7 +283,6 @@ export const ALL_CHARACTERS: CharacterDef[] = [
     trait: { name: '早着替え', desc: 'ジョブチェンジしてから約4秒間、攻撃力が1.25倍。' },
   },
   {
-    // まだ公開していない（URL に ?preview を付けたときだけ選べる）
     id: 'menhera',
     name: 'メンヘラ',
     role: '粘着・一点集中',
@@ -335,7 +334,7 @@ function readPreview(): boolean {
 }
 export const PREVIEW = readPreview();
 /** まだ公開していないキャラ */
-export const HIDDEN_CHARS = ['menhera'];
+export const HIDDEN_CHARS: string[] = [];
 /** 選べるキャラ（ふだんは公開しているキャラだけ） */
 export const CHARACTERS: CharacterDef[] = PREVIEW ? ALL_CHARACTERS : ALL_CHARACTERS.filter((c) => !HIDDEN_CHARS.includes(c.id));
 

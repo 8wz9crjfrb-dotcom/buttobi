@@ -1549,7 +1549,7 @@ function showNews(): void {
           <ul>${n.items.map((it) => `<li class="${it.kind}"><span class="news-tag ${it.kind}">${NEWS_LABEL[it.kind]}</span>${esc(it.text)}</li>`).join('')}</ul>
         </section>`,
       ).join('')}</div>
-      <div class="footer">${PREVIEW ? DEBUTS.map((d) => `<button class="btn" data-debut="${d.id}">（確認用）${esc(d.name)}の登場映像</button>`).join('') : ''}<button class="btn primary" data-close>閉じる</button></div>
+      <div class="footer">${DEBUTS.filter((d) => PREVIEW || !HIDDEN_CHARS.includes(d.charId)).map((d) => `<button class="btn" data-debut="${d.id}">${HIDDEN_CHARS.includes(d.charId) ? '（確認用）' : ''}${esc(d.name)}の登場映像</button>`).join('')}<button class="btn primary" data-close>閉じる</button></div>
     </div>`;
   el.querySelectorAll<HTMLElement>('[data-debut]').forEach((b) =>
     b.addEventListener('click', () => {
