@@ -597,6 +597,8 @@ function showScreen(html: string, cls = '', bind?: (root: HTMLElement) => void):
 // フレンド：自分のフレンドコード・追加・届いた申請・フレンド一覧（オンライン・公開ルームへ参加）
 /** フレンド画面で右に出している人（'me' = 自分、それ以外はフレンドコード） */
 let friendPick = 'me';
+/** フレンド画面の「フレンドを追加」の小窓を開いている */
+let friendAddOpen = false;
 
 /** 持っているガチャの衣装の数 */
 const ownedCostumeCount = () => new Set(wallet.owned).size;
@@ -642,15 +644,16 @@ function agoText(t: number): string {
   return `${dt.getFullYear()}/${dt.getMonth() + 1}/${dt.getDate()}`;
 }
 
-/** 名刺カード（案A）。p がなければ「未設定」のカード。together はフレンドのときだけ */
-function profileCard(name: string, code: string, p: Profile | undefined, together?: number): string {
+/** 名刺カード（案A）。p がなければ「未設定」のカード。together はフレンドのときだけ。myCode は自分のカードの名前の横に出すコード（タップでコピー） */
+function profileCard(name: string, code: string, p: Profile | undefined, together?: number, myCode?: string): string {
+  const nm = `<div class="pc-nmrow"><div class="pc-nm">${esc(name)}</div>${myCode !== undefined ? `<button type="button" class="pc-mycode" id="fr-copy" ${myCode ? '' : 'disabled'}><small>フレンドコード</small><b>${esc(myCode || '…')}</b><span>コピー</span></button>` : ''}</div>`;
   const [c1, c2] = PROFILE_COLORS[p?.color ?? 6] ?? PROFILE_COLORS[0];
   // フレンドコード（自分のカードでは出さない：フレンド画面の左に出ている）と、一緒に戦った回数（フレンドのとき）
   const meta = [code ? `フレンドコード ${esc(code)}` : '', together !== undefined ? `一緒に戦った ${together}回` : ''].filter(Boolean).join('　・　');
   if (!p) {
     return `<div class="pcard" style="--c1:${c1};--c2:${c2}">
       <div class="pc-pic empty">？</div>
-      <div class="pc-r"><div class="pc-nm">${esc(name)}</div>
+      <div class="pc-r">${nm}
         <div class="pc-cos">まだプロフィールを設定していません</div>
         ${meta ? `<div class="pc-code">${meta}</div>` : ''}
       </div></div>`;
@@ -672,7 +675,7 @@ function profileCard(name: string, code: string, p: Profile | undefined, togethe
   return `<div class="pcard ${cos.rarity >= 6 ? 'ur' : ''}" style="--c1:${c1};--c2:${c2}">
     <div class="pc-pic" data-char="${p.charId}" data-cos="${esc(p.costume)}"><img alt="" src="${renderer.fullBody(p.charId, p.costume)}"/></div>
     <div class="pc-r">
-      <div class="pc-nm">${esc(name)}</div>
+      ${nm}
       ${p.title ? `<div><span class="pc-title">${rewardMark()}${esc(p.title)}</span></div>` : ''}
       <div class="pc-cos">お気に入り：${getCharacter(p.charId).name}「${esc(cos.name)}」${rar ? `（${rar}）` : ''}</div>
       <div class="pc-bub">${chatMark()}${esc(PROFILE_COMMENTS[p.comment] ?? '')}</div>
@@ -698,6 +701,8 @@ function showFriends(): void {
   const left = screensEl.querySelector<HTMLElement>('.fr-left');
   const y = left?.scrollTop ?? 0;
   const typed = screensEl.querySelector<HTMLInputElement>('#fr-code')?.value ?? '';
+  // 小窓で入力中に画面が書き直されても、入力を続けられるようにする
+  const typing = document.activeElement?.id === 'fr-code';
   const me = myProfile();
   social.setProfile(me);
   // 並び順：オンライン（ルーム公開中を含む）の人が先、その中で一緒に戦った回数が多い順。同じなら名前順
@@ -715,14 +720,14 @@ function showFriends(): void {
     })
     .join('');
   const inbox = st.inbox.length
-    ? `<div class="opt-label">届いた申請</div>${st.inbox
+    ? `<div class="opt-label">届いた申請（${st.inbox.length}件）</div>${st.inbox
         .map((r) => `<div class="fr-row"><div class="grow"><b>${esc(r.name)}</b> <small class="muted">${r.code}</small></div><button class="btn small primary" data-accept="${r.code}">承認</button><button class="btn small" data-decline="${r.code}">断る</button></div>`)
         .join('')}`
     : '';
   const sent = st.sent.length
-    ? `<div class="opt-label">送った申請（相手の承認待ち）</div>${st.sent
+    ? `<div class="opt-label">送った申請（相手の承認待ち）</div><div class="fr-sent">${st.sent
         .map((r) => `<div class="fr-row"><div class="grow">${esc(r.name)} <small class="muted">${r.code}</small></div><button class="btn small" data-cancel="${r.code}">取り消す</button></div>`)
-        .join('')}`
+        .join('')}</div>`
     : '';
   // 右：選んでいる人の名刺カード
   const pick = st.friends.find((f) => f.code === friendPick);
@@ -730,21 +735,17 @@ function showFriends(): void {
     ? `${profileCard(pick.name, pick.code, pick.prof, social.together(pick.code))}
        <div class="fr-acts">${pick.room ? `<button class="btn small primary" data-join="${pick.room.code}">ルームに参加</button>` : ''}</div>
        <div class="fr-danger"><button class="btn small danger-outline" data-remove="${pick.code}" data-name="${esc(pick.name)}">フレンドから外す</button></div>`
-    : `${profileCard(settings.name || 'あなた', '', me)}
+    : `${profileCard(settings.name || 'あなた', '', me, undefined, social.code)}
        <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
   showScreen(
-    `<div class="fr-head"><button class="btn small" id="back">もどる</button><h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2></div>
+    `<div class="fr-head"><button class="btn small" id="back">もどる</button><h2>フレンド <small class="h2-sub">${social.connected ? `オンライン ${social.onlineCount}人` : 'サーバーにつないでいます…'}</small></h2>
+       <button class="btn small primary fr-addbtn" id="fr-open">＋フレンド追加${st.sent.length ? `<span class="fr-badge">${st.sent.length}</span>` : ''}</button></div>
      <div class="fr-wrap">
        <div class="fr-left">
          <button type="button" class="fr-item me ${friendPick === 'me' ? 'on' : ''}" data-pick="me">${friendFace(settings.name || 'あなた', me)}<span class="fr-txt"><b>自分のプロフィール</b><small>見る・編集する</small></span></button>
-         <div class="opt-label">フレンド（${st.friends.length}人）</div>
-         ${rows || '<p class="muted">まだフレンドがいません。フレンドコードを教え合って追加しましょう。</p>'}
          ${inbox}
-         <div class="opt-label">フレンドを追加</div>
-         <div class="fr-me">あなたのコード：<b class="fr-code">${social.code || '…'}</b> <button class="btn small" id="fr-copy" ${social.code ? '' : 'disabled'}>コピー</button></div>
-         <div class="row fr-add"><input type="text" id="fr-code" maxlength="9" placeholder="相手のコード（例 ABCD-EFGH）" value="${esc(typed)}" autocomplete="off" autocapitalize="characters"/>
-           <button class="btn primary" id="fr-send">申請</button></div>
-         ${sent}
+         <div class="opt-label">フレンド（${st.friends.length}人）</div>
+         ${rows || '<p class="muted">まだフレンドがいません。右上の「＋フレンド追加」から、相手のフレンドコードで申請しましょう。</p>'}
          <p class="muted small-note">フレンドがルームを「フレンドに公開」にすると「ルームに参加」が出ます。${settings.hideOnline ? 'あなたのオンライン状態は隠しています。' : 'オンライン状態は設定画面で隠せます。'}</p>
        </div>
        <div class="fr-right">${card}</div>
@@ -754,7 +755,10 @@ function showFriends(): void {
       const l = root.querySelector<HTMLElement>('.fr-left');
       if (l) l.scrollTop = y;
       mountCardViewer(root);
-      root.querySelector('#back')!.addEventListener('click', () => showMenu('multi'));
+      root.querySelector('#back')!.addEventListener('click', () => {
+        friendAddOpen = false;
+        showMenu('multi');
+      });
       root.querySelectorAll<HTMLElement>('[data-pick]').forEach((b) =>
         b.addEventListener('click', () => {
           friendPick = b.dataset.pick!;
@@ -763,6 +767,35 @@ function showFriends(): void {
         }),
       );
       root.querySelector('#pf-edit')?.addEventListener('click', () => showProfileEdit());
+      // フレンドを追加する小窓（相手のコードで申請・送った申請の取り消し）
+      root.querySelector('#fr-open')!.addEventListener('click', () => {
+        friendAddOpen = true;
+        showFriends();
+        screensEl.querySelector<HTMLInputElement>('#fr-code')?.focus();
+      });
+      if (friendAddOpen) {
+        const m = document.createElement('div');
+        m.className = 'modal';
+        m.innerHTML = `<div class="modal-box fr-addbox">
+            <h3>フレンドを追加</h3>
+            <div class="modal-body">
+              <p class="muted small-note">相手のフレンドコードを入れて申請します。相手が承認するとフレンドになります。</p>
+              <div class="row fr-add"><input type="text" id="fr-code" maxlength="9" placeholder="相手のコード（例 ABCD-EFGH）" value="${esc(typed)}" autocomplete="off" autocapitalize="characters"/>
+                <button class="btn primary" id="fr-send">申請</button></div>
+              ${sent}
+            </div>
+            <div class="footer"><button class="btn" data-close>閉じる</button></div>
+          </div>`;
+        m.addEventListener('click', (e) => {
+          const t = e.target as HTMLElement;
+          if (t === m || t.closest('[data-close]')) {
+            friendAddOpen = false;
+            m.remove();
+          }
+        });
+        screensEl.appendChild(m);
+        if (typing) m.querySelector<HTMLInputElement>('#fr-code')?.focus();
+      }
       root.querySelector('#fr-copy')?.addEventListener('click', async () => {
         try {
           await navigator.clipboard.writeText(social.code);
@@ -772,18 +805,18 @@ function showFriends(): void {
         }
       });
       const send = () => {
-        const box = root.querySelector<HTMLInputElement>('#fr-code')!;
+        const box = screensEl.querySelector<HTMLInputElement>('#fr-code')!;
         if (!box.value.trim()) return;
         social.add(box.value);
         box.value = '';
       };
-      root.querySelector('#fr-send')!.addEventListener('click', send);
-      root.querySelector<HTMLInputElement>('#fr-code')!.addEventListener('keydown', (e) => {
+      screensEl.querySelector('#fr-send')?.addEventListener('click', send);
+      screensEl.querySelector<HTMLInputElement>('#fr-code')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') send();
       });
       root.querySelectorAll<HTMLElement>('[data-accept]').forEach((b) => b.addEventListener('click', () => social.accept(b.dataset.accept!)));
       root.querySelectorAll<HTMLElement>('[data-decline]').forEach((b) => b.addEventListener('click', () => social.decline(b.dataset.decline!)));
-      root.querySelectorAll<HTMLElement>('[data-cancel]').forEach((b) => b.addEventListener('click', () => social.cancel(b.dataset.cancel!)));
+      screensEl.querySelectorAll<HTMLElement>('[data-cancel]').forEach((b) => b.addEventListener('click', () => social.cancel(b.dataset.cancel!)));
       root.querySelectorAll<HTMLElement>('[data-remove]').forEach((b) =>
         b.addEventListener('click', () => {
           confirmDialog(`${b.dataset.name} さんをフレンドから外しますか？`, 'もう一度申請し合うまで、フレンドに戻りません。', '外す', () => social.remove(b.dataset.remove!));

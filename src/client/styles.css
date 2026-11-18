@@ -3745,6 +3745,60 @@ table.rec td:first-child {
   gap: 4px;
   min-width: 0;
 }
+/* 名前と、自分のカードではその横にフレンドコード（タップでコピー） */
+.pc-nmrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+/* 名前とコードが1行に入らないときは、コードを名前の下の行に回す */
+.pc-nmrow .pc-nm {
+  min-width: 0;
+  max-width: 100%;
+}
+@media (max-width: 700px) {
+  .pc-mycode small {
+    display: none;
+  }
+}
+.pc-mycode {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.pc-mycode small {
+  font-size: 10px;
+  opacity: 0.75;
+}
+.pc-mycode b {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.pc-mycode span {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: #ffd84a;
+  color: #1b1f3b;
+}
+.pc-mycode:active {
+  transform: scale(0.96);
+}
+.pc-mycode:disabled {
+  opacity: 0.5;
+}
 .pc-nm {
   font-size: clamp(16px, 2.9vw, 24px);
   font-weight: 900;
@@ -4029,6 +4083,31 @@ table.rec td:first-child {
 }
 .fr-head h2 {
   margin: 0;
+}
+/* 右上の「＋フレンド追加」（送った申請があれば数を出す） */
+.fr-addbtn {
+  margin-left: auto;
+  flex: none;
+  position: relative;
+}
+.fr-badge {
+  margin-left: 6px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #1b1f3b;
+  color: #ffd84a;
+  font-size: 11px;
+}
+.fr-addbox {
+  max-width: 460px;
+}
+.fr-addbox .fr-add {
+  margin: 8px 0 4px;
+}
+.fr-addbox .fr-add input {
+  flex: 1;
+  min-width: 0;
 }
 .friends-screen {
   overflow: hidden;
