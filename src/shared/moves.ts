@@ -626,7 +626,7 @@ export const WALL = { life: 80, w: 0.35, h: 2.4, offset: 1.1, hit: { dmg: 4, bas
 /** 一時的な足場（ポップアップ広告）の設定 */
 export const POPUP = { life: 200, w: 2.4 };
 /** 倍速再生の効果時間（6秒）と、効果が切れてから次に使えるまでの時間（7秒）（フレーム） */
-export const SPEEDUP = { duration: 360, cooldown: 330, speed: 1.35, frame: 0.75 };
+export const SPEEDUP = { duration: 420, cooldown: 330, speed: 1.35, frame: 0.75 };
 /** 課金：増えるダメージ%、効果時間、攻撃力・ふっとばし力の倍率 */
 export const PAY = { cost: 8, duration: 360, dmg: 1.3, kb: 1.15 };
 /** 自転車：乗っていられる時間、速さ、ぶつかったときに同じ相手へ再び当たるまで */
@@ -664,7 +664,7 @@ export const GACHA_RATES = { ssr: 0.06, sr: 0.14, r: 0.28, n: 0.29, heal: 0.05 }
 /** 単発ガチャの大当たりの確率 */
 export const GACHA1_CRIT = 0.25;
 /** 無限スクロールの3回目（最後）の一撃：威力の倍率と、ふっとばし */
-export const SCROLL_FINISH = { dmg: 1.3, base: 7, growth: 11, angle: 40 };
+export const SCROLL_FINISH = { dmg: 1.3, base: 8, growth: 12.5, angle: 40 };
 /** 眠っている相手（強制アップデートなど）が受けるふっとばしの倍率 */
 export const SLEEP_KB = 1.2;
 /** 強制アップデートで眠らせる最長の時間（フレーム） */
