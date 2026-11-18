@@ -4871,3 +4871,208 @@ table.rec td:first-child {
   color: #fff;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
+
+/* 新キャラの登場映像：映画のような上下の帯・隅のロゴ・字幕・名前のカード（試合の画面の表示は出さない） */
+#debut {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  pointer-events: none;
+  overflow: hidden;
+}
+#debut .db-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 11vh;
+  background: #000;
+}
+#debut .db-bar.top {
+  top: 0;
+}
+#debut .db-bar.bottom {
+  bottom: 0;
+}
+#debut .db-vignette {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 50%, rgba(0, 0, 0, 0) 30%, rgba(10, 0, 18, 0.95) 85%);
+  transition: opacity 0.3s;
+}
+#debut .db-black {
+  position: absolute;
+  inset: 0;
+  background: #050308;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 暗い画面に光るスマホと「既読、まだ？」 */
+#debut .db-phone {
+  position: relative;
+  width: 64px;
+  height: 112px;
+  border-radius: 12px;
+  background: #1a1420;
+  border: 3px solid #ff9ec8;
+  box-shadow: 0 0 60px rgba(191, 232, 255, 0.45);
+  animation: db-buzz 0.5s steps(2) infinite;
+}
+#debut .db-phone i {
+  position: absolute;
+  inset: 8px;
+  border-radius: 6px;
+  background: linear-gradient(#bfe8ff, #8fd0ff);
+  opacity: 0.85;
+}
+#debut .db-phone span {
+  position: absolute;
+  left: 74px;
+  top: 10px;
+  white-space: nowrap;
+  padding: 8px 14px;
+  border-radius: 16px;
+  background: #ff9ec8;
+  color: #2a1638;
+  font-weight: 900;
+  font-size: 18px;
+  animation: db-pop 0.4s 0.5s both;
+}
+@keyframes db-buzz {
+  0% {
+    transform: translateX(-1px) rotate(-2deg);
+  }
+  100% {
+    transform: translateX(1px) rotate(2deg);
+  }
+}
+@keyframes db-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+#debut .db-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+}
+/* 字幕：下の帯の上に、技名・衣装名 */
+#debut .db-caption {
+  position: absolute;
+  left: 50%;
+  bottom: calc(11vh + 14px);
+  transform: translateX(-50%);
+  padding: 6px 22px;
+  border-left: 4px solid #ff4f9a;
+  background: linear-gradient(90deg, rgba(20, 8, 28, 0.85), rgba(20, 8, 28, 0.2));
+  color: #fff;
+  font-size: clamp(16px, 3.4vh, 26px);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  opacity: 0;
+}
+#debut .db-caption.on {
+  animation: db-cap 0.35s ease-out both;
+}
+#debut .db-caption.gold {
+  border-left-color: #ffd23f;
+  background: linear-gradient(90deg, rgba(60, 40, 0, 0.85), rgba(60, 40, 0, 0.2));
+  color: #ffe58a;
+}
+@keyframes db-cap {
+  from {
+    opacity: 0;
+    transform: translate(-40%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+/* 隅のロゴ（映像を見ている感じ） */
+#debut .db-logo {
+  position: absolute;
+  right: calc(16px + var(--safe-r, 0px));
+  bottom: calc(11vh - 34px);
+  height: 26px;
+  opacity: 0.85;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+#debut .db-skip {
+  position: absolute;
+  top: calc(11vh / 2 - 16px);
+  right: calc(16px + var(--safe-r, 0px));
+  pointer-events: auto;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+/* 名前のカード */
+#debut .db-card {
+  position: absolute;
+  left: 7%;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+}
+#debut .db-card.on {
+  animation: db-card 0.6s ease-out both;
+}
+#debut .db-card.btns {
+  pointer-events: auto;
+}
+@keyframes db-card {
+  from {
+    opacity: 0;
+    transform: translate(-30px, -50%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+#debut .db-new {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: #ffd23f;
+  color: #1b1f3b;
+  font-weight: 900;
+  font-size: clamp(13px, 2.8vh, 18px);
+  transform: skewX(-8deg);
+}
+#debut .db-name {
+  margin-top: 6px;
+  font-size: clamp(44px, 13vh, 96px);
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(255, 79, 154, 0.8), 0 4px 0 #ff4f9a;
+  letter-spacing: 0.04em;
+}
+#debut .db-copy {
+  margin-top: 10px;
+  font-size: clamp(16px, 4.2vh, 28px);
+  font-weight: 800;
+  color: #ffd6e8;
+}
+#debut .db-btns {
+  margin-top: 18px;
+  display: flex;
+  gap: 10px;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+#debut .db-card.btns .db-btns {
+  opacity: 1;
+}

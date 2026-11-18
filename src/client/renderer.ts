@@ -739,6 +739,8 @@ export class GameRenderer {
         const m = this.models.get(f.slot);
         if (!m) continue;
         m.model.buddyAway = view.entities.some((e) => e.kind === 'drone' && e.owner === f.slot);
+        // 登場映像では、頭の上の目印（試合の表示）を出さない
+        m.model.showMarker = !this.cinema;
         m.model.update(f, getCharacter(m.charId), this.time, dt);
       }
       // 飛び道具・壁・罠・広告ウィンドウ・Zzz
@@ -2059,8 +2061,34 @@ export class GameRenderer {
 
   /** 確認用：カメラの位置を固定する（自動テストで使う） */
   debugCamera: { x: number; y: number; dist: number } | null = null;
+  /** 登場映像：カメラの位置（x, y, z）と見る点（lx, ly）を決め打ちにする */
+  cinema: { x: number; y: number; z: number; lx: number; ly: number } | null = null;
+
+  /** 1人だけ衣装を着替える（登場映像の早着替え） */
+  setCostume(slot: number, costume: string): void {
+    const p = this.setup?.players.find((x) => x.slot === slot);
+    const cur = this.models.get(slot);
+    if (!p || !cur) return;
+    p.costume = costume;
+    this.scene.remove(cur.model.root);
+    cur.model.dispose();
+    const model = new FighterModel(getCharacter(p.charId), getCostume(costume, p.charId), playerColor(this.setup!, slot));
+    this.scene.add(model.root);
+    this.models.set(slot, { model, charId: p.charId });
+  }
 
   private updateCamera(view: ViewState, dt: number): void {
+    if (this.cinema) {
+      const c = this.cinema;
+      this.shake *= Math.pow(0.02, dt);
+      const sx = (Math.random() - 0.5) * this.shake * 0.3;
+      const sy = (Math.random() - 0.5) * this.shake * 0.3;
+      this.camera.position.set(c.x + sx, c.y + sy, c.z);
+      this.camera.lookAt(c.lx + sx, c.ly + sy, 0);
+      this.sun.target.position.set(c.lx, 0, 0);
+      this.sun.position.set(c.lx - 8, 20, 14);
+      return;
+    }
     if (this.debugCamera) {
       const c = this.debugCamera;
       this.camera.position.set(c.x, c.y + 0.3, c.dist);

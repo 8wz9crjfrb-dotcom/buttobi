@@ -15,6 +15,7 @@ import { championMark, chatMark, diceMark, ICONS, iconTile, predictMark, rewardM
 import { markNewsSeen, NEWS, NEWS_LABEL, newsSeen, unreadNews } from './changelog';
 import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
+import { DEBUTS, DebutSession, type DebutDef } from './debut';
 import { InputManager } from './input';
 import { SocialClient } from './social';
 import { CardViewer } from './cardViewer';
@@ -1542,8 +1543,15 @@ function showNews(): void {
           <ul>${n.items.map((it) => `<li class="${it.kind}"><span class="news-tag ${it.kind}">${NEWS_LABEL[it.kind]}</span>${esc(it.text)}</li>`).join('')}</ul>
         </section>`,
       ).join('')}</div>
-      <div class="footer"><button class="btn primary" data-close>閉じる</button></div>
+      <div class="footer">${PREVIEW ? DEBUTS.map((d) => `<button class="btn" data-debut="${d.id}">（確認用）${esc(d.name)}の登場映像</button>`).join('') : ''}<button class="btn primary" data-close>閉じる</button></div>
     </div>`;
+  el.querySelectorAll<HTMLElement>('[data-debut]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const d = DEBUTS.find((x) => x.id === b.dataset.debut);
+      el.remove();
+      if (d) playDebut(d);
+    }),
+  );
   el.addEventListener('click', (e) => {
     const t = e.target as HTMLElement;
     if (t === el || t.closest('[data-close]')) {
@@ -1555,6 +1563,52 @@ function showNews(): void {
   markNewsSeen();
   screensEl.appendChild(el);
 }
+// ---------------------------------------------------------------------------
+// 新キャラの登場映像
+const DEBUT_KEY = 'buttobi-debut-seen-v1';
+let debutShownOnce = false;
+function debutsSeen(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(DEBUT_KEY) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+}
+function markDebutSeen(id: string): void {
+  try {
+    localStorage.setItem(DEBUT_KEY, JSON.stringify([...new Set([...debutsSeen(), id])]));
+  } catch {
+    /* 保存できなくても続ける */
+  }
+}
+/** まだ見ていない登場映像（公開しているキャラだけ）。はじめての人には出さない（全部見たことにする） */
+function pendingDebut(): DebutDef | undefined {
+  const list = DEBUTS.filter((d) => !HIDDEN_CHARS.includes(d.charId));
+  if (!progress.tutorialAsked) {
+    for (const d of list) markDebutSeen(d.id);
+    return undefined;
+  }
+  const seen = debutsSeen();
+  return list.find((d) => !seen.includes(d.id));
+}
+/** 登場映像を流す。終わったら、CPU戦（そのキャラを選んだ状態）かメニューへ */
+function playDebut(def: DebutDef): void {
+  markDebutSeen(def.id);
+  screensEl.innerHTML = '';
+  renderer.setMenuChar(null);
+  const s = new DebutSession(def, renderer, sfx, logoUrl, (act) => {
+    renderer.celebrate(null);
+    startDemo();
+    if (act === 'cpu') {
+      settings.charId = def.charId;
+      saveSettings(settings);
+      showLocalSetup();
+    } else showMenu();
+  });
+  startSession(s);
+  music.play('debut');
+}
+
 /** 起動してから、まだ読んでいないお知らせを自動で出したか */
 let newsShownOnce = false;
 
@@ -1673,6 +1727,15 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
     },
   );
   renderer.setMenuChar(settings.charId, myCostume(settings.charId));
+  // 新キャラの登場映像：その版で最初にメニューを開いたときに1回だけ（ログインボーナスのあと・お知らせの前）
+  const debut = !sub && !debutShownOnce ? pendingDebut() : undefined;
+  if (debut && !screensEl.querySelector('.lb-pop')) {
+    debutShownOnce = true;
+    setTimeout(() => {
+      if (screensEl.querySelector('.menu-screen') && !screensEl.querySelector('.modal')) playDebut(debut);
+    }, 400);
+    return;
+  }
   // 新しいアップデートがあれば、起動して最初のメニューで1回だけお知らせを出す（ログインボーナスが出ているときは次の機会に）
   if (!newsShownOnce && !sub && unreadNews().length && !screensEl.querySelector('.lb-pop')) {
     newsShownOnce = true;
@@ -1700,7 +1763,13 @@ function showLoginBonus(root: HTMLElement, day: number, amount: number): void {
   sfx.gacha(4);
   pop.querySelector('#lb-ok')!.addEventListener('click', () => {
     pop.remove();
-    // 受け取ったら、まだ読んでいないアップデートのお知らせをすぐ出す
+    // 受け取ったら、新キャラの登場映像（あれば）、なければ読んでいないお知らせをすぐ出す
+    const debut = !debutShownOnce ? pendingDebut() : undefined;
+    if (debut) {
+      debutShownOnce = true;
+      playDebut(debut);
+      return;
+    }
     if (!newsShownOnce && unreadNews().length && !screensEl.querySelector('.modal')) {
       newsShownOnce = true;
       showNews();

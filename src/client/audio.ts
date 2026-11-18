@@ -187,7 +187,7 @@ export class Sfx {
 // ---------------------------------------------------------------------------
 // BGM（Web Audio でその場で組み立てるオリジナル曲。音声ファイルは使わない）
 
-export type TrackId = 'menu' | 'plain' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym' | 'livebar' | 'room';
+export type TrackId = 'menu' | 'plain' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym' | 'livebar' | 'room' | 'debut';
 
 interface Track {
   bpm: number;
@@ -214,6 +214,8 @@ const TRACKS: Record<TrackId, Track> = {
   // データセンター屋上：夜景の疾走感（A短調 i-VI-VII-v）
   rooftop: { bpm: 128, root: 45, chords: [[0, 3, 7], [8, 12, 15], [10, 14, 17], [7, 10, 14]], scale: MINOR, drums: 'drive', seed: 53, lead: 'sawtooth' },
   // 夜のライブバー：大人っぽいジャズ寄りのグルーヴ（E♭のドリアン i-IV-VII-iv）
+  // 新キャラの登場映像：だんだん盛り上がる（Aマイナー i-VI-III-VII、速め）
+  debut: { bpm: 132, root: 45, chords: [[0, 3, 7], [8, 12, 15], [3, 7, 10], [10, 14, 17]], scale: MINOR, drums: 'drive', seed: 151, lead: 'sawtooth' },
   // 深夜のワンルーム：かわいくて少しさみしい（Eマイナー i-VI-III-VII）
   room: { bpm: 96, root: 52, chords: [[0, 3, 7], [8, 12, 15], [3, 7, 10], [10, 14, 17]], scale: MINOR, drums: 'half', seed: 131, lead: 'sine' },
   livebar: { bpm: 104, root: 51, chords: [[0, 3, 7, 10], [5, 9, 12], [10, 14, 17], [5, 8, 12]], scale: DORIAN, drums: 'half', seed: 113, lead: 'triangle' },
