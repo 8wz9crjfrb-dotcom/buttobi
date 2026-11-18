@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 37;
+export const PROTOCOL_VERSION = 38;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -182,7 +182,7 @@ export interface EncodedState {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const SHOT_KINDS = ['text', 'bullet', 'mail', 'malware', 'coin', 'thanks', 'badge', 'stone', 'bag', 'orb', 'gold', 'spark', 'packet', 'laser', 'comment', 'notif', 'capsule', 'scooter', 'beam', 'thread', 'phone'];
+const SHOT_KINDS = ['text', 'bullet', 'mail', 'malware', 'coin', 'thanks', 'badge', 'stone', 'bag', 'orb', 'gold', 'spark', 'packet', 'laser', 'comment', 'notif', 'capsule', 'scooter', 'beam', 'thread', 'phone', 'scissors'];
 const ENTITY_KINDS: ViewEntity['kind'][] = ['wall', 'trap', 'popup', 'food', 'decoy', 'drone', 'item', 'leash', 'call', 'heart'];
 
 export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {

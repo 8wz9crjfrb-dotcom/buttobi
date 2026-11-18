@@ -516,6 +516,7 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'bnew') sfx.notify();
     else if (e.k === 'ring') sfx.notify();
     else if (e.k === 'heavy') sfx.buff();
+    else if (e.k === 'alarm') sfx.alarm();
     else if (e.k === 'leashDmg') sfx.hit(Math.min(20, e.p));
     else if (e.k === 'cry') sfx.poof();
     else if (e.k === 'coin' && (e.s === mySlot || e.v > 1)) sfx.beep(true);

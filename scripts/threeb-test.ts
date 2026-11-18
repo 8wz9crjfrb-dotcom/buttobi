@@ -75,18 +75,23 @@ const place = (sim: Sim, dx: number) => {
 
 // ---- 美容師
 {
+  // シザーブーメラン：ハサミを前へ投げる。離れた相手に届き、しばらく進むと戻ってくる
   const once = make(0);
-  place(once, 0.9);
-  let finish = false;
-  for (let i = 0; i < 60; i++) {
+  place(once, 5);
+  let maxX = -99;
+  let back = false;
+  let thrown = false;
+  for (let i = 0; i < 140; i++) {
     once.step(new Map([[0, i === 0 ? { mx: 0, my: 0, buttons: BTN_B } : N]]));
-    if (once.fighters[1].state === 'hitstun' && Math.abs(once.fighters[1].vx) > 4) finish = true;
+    const sc = once.projectiles.find((p) => p.kind === 'scissors');
+    if (sc) {
+      thrown = true;
+      maxX = Math.max(maxX, sc.x);
+      if (sc.x < maxX - 2) back = true;
+    }
   }
-  const mash = make(0);
-  place(mash, 0.9);
-  run(mash, 130, (i) => (i < 80 && i % 6 === 0 ? { mx: 0, my: 0, buttons: BTN_B } : N));
-  check('シザーラッシュ：連続で当たり、最後にふっとばす', once.fighters[1].damage > 5 && finish, `${once.fighters[1].damage.toFixed(1)}%`);
-  check('シザーラッシュ：Bを連打すると長く続いてダメージが増える', mash.fighters[1].damage > once.fighters[1].damage * 1.4, `連打 ${mash.fighters[1].damage.toFixed(1)}% / 1回 ${once.fighters[1].damage.toFixed(1)}%`);
+  check('シザーブーメラン：ハサミを投げて、5m先の相手に当たる', thrown && once.fighters[1].damage > 4, `${once.fighters[1].damage.toFixed(1)}%`);
+  check('シザーブーメラン：しばらく進むと戻ってくる', back, `最も遠くでx=${maxX.toFixed(1)}`);
   const blow = make(0);
   place(blow, 1.6);
   run(blow, 50, at(0, { mx: 1, my: 0, buttons: BTN_B }));

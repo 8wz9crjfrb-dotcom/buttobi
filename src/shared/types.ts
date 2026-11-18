@@ -231,6 +231,7 @@ export type GameEvent =
   | { k: 'leashDmg'; s: number; x: number; y: number; p: number }
   /** 重い愛のハート（深夜のワンルームのギミック）を拾った */
   | { k: 'heavy'; s: number; x: number; y: number }
+  | { k: 'alarm'; s: number; x: number; y: number }
   /** メガホン（アイテム）の衝撃波 */
   | { k: 'shout'; x: number; y: number }
   /** ステージギミックの予告（h = 種類、x/y = 位置、d = 向き） */

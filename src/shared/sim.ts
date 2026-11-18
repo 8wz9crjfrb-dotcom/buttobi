@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { ALARM, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -123,6 +123,7 @@ const SNAPSHOT_KEYS = [
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
   'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'warpSlow', 'moveAim',
   'leashT', 'leashBy', 'leashDmg', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'dereCd', 'floatT', 'heavyT',
+  'alarmT', 'alarmUsed',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -256,6 +257,9 @@ export class Fighter {
   dereCd = 0;
   /** 重い愛のハート（深夜のワンルーム）を拾って重くなっている残り時間 */
   heavyT = 0;
+  /** 緊急警報（警備員）：攻撃力アップの残り時間と、このストックで使ったか */
+  alarmT = 0;
+  alarmUsed = false;
   /** ハート風船（メンヘラ）のあと、ゆっくり落ちる残り時間 */
   floatT = 0;
   /** 無限スクロールを続けた回数 */
@@ -327,9 +331,9 @@ export class Fighter {
     applySize(this);
   }
 
-  /** ガードの最大値（警備員の特性「巡回中」は1.5倍） */
+  /** ガードの最大値 */
   get shieldMax(): number {
-    return this.def.id === 'guard' ? SHIELD_MAX * 1.5 : SHIELD_MAX;
+    return SHIELD_MAX;
   }
 
   get hw(): number {
@@ -1359,7 +1363,7 @@ export class Sim {
     if (f.invuln > 0) f.invuln--;
     if (f.ledgeCooldown > 0) f.ledgeCooldown--;
     if (f.dropThrough > 0) f.dropThrough--;
-    if (f.state !== 'shield' && f.shield < f.shieldMax) f.shield = Math.min(f.shieldMax, f.shield + (f.def.id === 'guard' ? 0.12 : 0.08));
+    if (f.state !== 'shield' && f.shield < f.shieldMax) f.shield = Math.min(f.shieldMax, f.shield + 0.08);
     if (f.speedBuff > 0) f.speedBuff--;
     if (f.speedCd > 0) f.speedCd--;
     if (f.armor > 0) f.armor--;
@@ -1846,6 +1850,8 @@ export class Sim {
     }
     // 早着替え（3B）：ジョブチェンジのあとしばらく強い
     if (a.jobBuff > 0) dmg *= THREEB_RULES.buffMul;
+    // 緊急警報（警備員）
+    if (a.alarmT > 0) dmg *= ALARM.dmg;
     if (a.chargedMove) {
       dmg *= 1.6;
       kb *= 1.2;
@@ -1868,6 +1874,13 @@ export class Sim {
 
   /** メンヘラの技と特性の時間を進める（かまってちゃん・赤い糸・鬼電の爆発・気まずい・ハート風船） */
   private menheraTimers(f: Fighter): void {
+    // 緊急警報（警備員）：ダメージが100%をこえたら警報が鳴り、しばらく攻撃力アップ（1ストックに1回）
+    if (f.alarmT > 0) f.alarmT--;
+    if (f.def.id === 'guard' && f.alive && !f.alarmUsed && f.damage >= ALARM.at && this.setup.rules.mode !== 'stamina') {
+      f.alarmUsed = true;
+      f.alarmT = ALARM.time;
+      this.events.push({ k: 'alarm', s: f.slot, x: f.x, y: f.y + f.h + 0.4 });
+    }
     if (f.def.id === 'menhera' && f.alive) {
       const wasYami = f.lonely >= MENHERA.lonely;
       if (f.lonely < MENHERA.lonely) f.lonely++;
@@ -1936,6 +1949,7 @@ export class Sim {
     const atkUp =
       f.powerBuff > 0 ||
       f.jobBuff > 0 ||
+      f.alarmT > 0 ||
       f.absorbCharge ||
       f.buzz > 0 ||
       (f.def.id === 'menhera' && (f.lonely >= MENHERA.lonely || this.fighters.some((v) => v !== f && v.leashT > 0 && v.leashBy === f.slot)));
@@ -3084,6 +3098,8 @@ export class Sim {
     f.dereCd = 0;
     f.heavyT = 0;
     f.floatT = 0;
+    f.alarmT = 0;
+    f.alarmUsed = false;
     f.absorbCharge = false;
     f.recentMoves = [];
     f.learnHits = f.learnHits.map(() => 0);

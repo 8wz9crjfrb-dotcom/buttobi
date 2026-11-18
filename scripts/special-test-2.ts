@@ -270,8 +270,32 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
 }
 // ---- 既存4体の特性
 {
+  // 緊急警報：ダメージが100%をこえると、1ストックに1回、約5秒だけ攻撃力1.3倍
   const sim = make('guard', 'hacker');
-  check('巡回中：警備員のガードは1.5倍', sim.fighters[0].shield === 75 && sim.fighters[1].shield === 50, `${sim.fighters[0].shield} / ${sim.fighters[1].shield}`);
+  const g = sim.fighters[0];
+  const priv = sim as unknown as { powerMul(f: unknown): { dmg: number } };
+  const base = priv.powerMul(g).dmg;
+  g.damage = 99;
+  run(sim, 2);
+  const notYet = g.alarmT === 0;
+  g.damage = 100;
+  let rang = false;
+  for (let i = 0; i < 2; i++) {
+    run(sim, 1);
+    if (sim.events.some((e) => e.k === 'alarm')) rang = true;
+  }
+  check('緊急警報：99%では鳴らず、100%で鳴る', notYet && rang && g.alarmT > 0);
+  check('緊急警報：鳴っている間は攻撃力1.3倍', Math.abs(priv.powerMul(g).dmg / base - 1.3) < 0.001, `${(priv.powerMul(g).dmg / base).toFixed(2)}倍`);
+  run(sim, 300);
+  check('緊急警報：約5秒で終わる', g.alarmT === 0 && Math.abs(priv.powerMul(g).dmg - base) < 0.001);
+  g.damage = 140;
+  let again = false;
+  for (let i = 0; i < 30; i++) {
+    run(sim, 1);
+    if (sim.events.some((e) => e.k === 'alarm')) again = true;
+  }
+  check('緊急警報：1ストックに1回だけ', !again && g.alarmT === 0);
+  check('ガードの耐久はほかのキャラと同じ', g.shield === sim.fighters[1].shield, `${g.shield} / ${sim.fighters[1].shield}`);
 }
 {
   const shieldDrop = (attacker: string) => {

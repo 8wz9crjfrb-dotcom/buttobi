@@ -176,6 +176,10 @@ export class Sfx {
     // スマホの通知音っぽい「ポロン」を重ねる
     [0, 70, 140].forEach((d, i) => setTimeout(() => this.tone(1175 + i * 220, 0.12, 'sine', 0.13), d));
   }
+  /** 緊急警報（警備員）：ウーウーと上がり下がりするサイレン */
+  alarm(): void {
+    [0, 260, 520].forEach((d) => setTimeout(() => this.tone(620, 0.24, 'sawtooth', 0.1, 980), d));
+  }
   beep(high = false): void {
     this.tone(high ? 880 : 440, high ? 0.4 : 0.15, 'square', 0.15);
   }

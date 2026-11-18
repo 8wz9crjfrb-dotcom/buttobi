@@ -1129,6 +1129,14 @@ export class GameRenderer {
       this.shake = Math.max(this.shake, 0.35);
       return;
     }
+    if (e.k === 'alarm') {
+      // 緊急警報（警備員）：赤い輪が2重に広がり、「緊急警報！」
+      this.spawn(this.ringGeo, 0xff3030, e.x, e.y - 0.6, 0, 0, 0.45, 20, 0.12);
+      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y - 0.6, 0, 0, 0.3, 14, 0.09);
+      this.props.showText('緊急警報！', '#ff4a4a', e.x, e.y + 0.8, true, 80, true);
+      this.shake = Math.max(this.shake, 0.2);
+      return;
+    }
     if (e.k === 'heavy') {
       // 重い愛のハートを拾った：ピンクの輪と「重い…！」
       this.spawn(this.ringGeo, 0xff4f9a, e.x, e.y, 0, 0, 0.4, 18, 0.1);

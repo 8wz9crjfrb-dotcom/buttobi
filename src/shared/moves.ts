@@ -17,6 +17,7 @@ export type ShotKind =
   | 'thanks'
   | 'badge'
   | 'stone'
+  | 'scissors'
   | 'bag'
   | 'orb'
   | 'gold'
@@ -655,8 +656,22 @@ export const MENHERA = {
 const JOBCHANGE: MoveDef = { cd: 57, startup: 7, active: 6, end: 8, hitboxes: [{ x: 0, y: 0.95, r: 0.95 }], dmg: 3, base: 6, growth: 3, angle: 60, air: true, special: 'jobchange' };
 const THREEB: Specials[] = [
   {
-    // 美容師：シザーラッシュ（Bを連打すると続き、最後の一撃でふっとばす）
-    nspecial: { startup: 5, active: 15, end: 14, hitboxes: [{ x: 0.85, y: 1.0, r: 0.62 }], dmg: 1.6, base: 1.2, growth: 0, angle: 0, air: true, special: 'rush', rehit: 4, hitstunMul: 1.35, landLag: 8, cd: 60 },
+    // 美容師：シザーブーメラン（ハサミを回しながら前へ投げる。しばらく進むと戻ってくるので、行きと帰りの2回当てられる）
+    nspecial: {
+      startup: 8,
+      active: 1,
+      end: 16,
+      hitboxes: [],
+      dmg: 0,
+      base: 0,
+      growth: 0,
+      angle: 0,
+      air: true,
+      special: 'shot',
+      cd: 60,
+      landLag: 8,
+      shots: [{ at: 0, kind: 'scissors', x: 0.7, y: 1.0, vx: 20, vy: 0, life: 140, r: 0.38, dmg: 4.5, base: 4.5, growth: 5, angle: 40, boomerang: 40 }],
+    },
     // ブローアップ：熱風を当てながら踏み込む連続ヒット
     sspecial: { startup: 7, active: 16, end: 16, hitboxes: [{ x: 0.9, y: 0.95, r: 0.7 }], dmg: 1.8, base: 3, growth: 1, angle: 10, air: true, special: 'dash', dashSpeed: 7, rehit: 4, landLag: 10, cd: 60 },
     dspecial: JOBCHANGE,
@@ -719,6 +734,8 @@ export const POPUP = { life: 200, w: 2.4 };
 export const SPEEDUP = { duration: 420, cooldown: 330, speed: 1.35, frame: 0.75 };
 /** 課金：増えるダメージ%、効果時間、攻撃力・ふっとばし力の倍率 */
 export const PAY = { cost: 8, duration: 360, dmg: 1.3, kb: 1.15 };
+/** 緊急警報（警備員の特性）：ダメージがこの%以上になると、1ストックに1回、しばらく攻撃力アップ */
+export const ALARM = { at: 100, time: 300, dmg: 1.3 };
 /** 自転車：乗っていられる時間、速さ、ぶつかったときに同じ相手へ再び当たるまで */
 export const BIKE = {
   duration: 240,

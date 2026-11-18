@@ -280,7 +280,11 @@ export class CpuController {
         // 3B：ときどき着替えて（早着替えで強くなる）、仕事ごとの得意技を使う
         if (f.jobCd === 0 && f.jobBuff === 0 && adx < 3.5 && this.rng.chance(skill * 0.12)) return { mx: 0, my: -1, buttons: BTN_B };
         if (f.job === 0) {
-          if (near && adx < 1.6 && this.rng.chance(skill * 0.25)) return { mx: 0, my: 0, buttons: BTN_B };
+          // シザーブーメラン：同じくらいの高さの、少し離れた相手に投げる
+          if (adx > 1.8 && adx < 8 && Math.abs(t.y - f.y) < 1.6 && this.rng.chance(skill * 0.18)) {
+            if (dir !== f.facing) return { mx: dir, my: 0, buttons: 0 };
+            return { mx: 0, my: 0, buttons: BTN_B };
+          }
           if (near && adx > 1.8 && adx < 3.8 && this.rng.chance(skill * 0.18)) return { mx: dir, my: 0, buttons: BTN_B };
         } else if (f.job === 1) {
           if (near && adx < 1.9 && this.rng.chance(skill * 0.22)) {
