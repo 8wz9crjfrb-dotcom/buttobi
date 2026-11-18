@@ -330,8 +330,7 @@ const SPECIALS: Record<string, Specials> = {
       angle: 0,
       air: true,
       special: 'shot', cd: 60,
-      // 少しゆっくり飛ぶ（届く距離はほぼ同じ）
-      shots: [{ at: 0, kind: 'coin', x: 0.7, y: 1.3, vx: 9.5, vy: 8.8, gravity: 26.5, life: 84, r: 0.3, dmg: 6, base: 5, growth: 5, angle: 45 }],
+      shots: [{ at: 0, kind: 'coin', x: 0.7, y: 1.3, vx: 10, vy: 9, gravity: 28, life: 80, r: 0.3, dmg: 6, base: 5, growth: 5, angle: 45 }],
     },
     // 切り抜き：少し先へ瞬間移動して斬る
     sspecial: { startup: 10, active: 4, end: 18, hitboxes: [{ x: 0.6, y: 0.9, r: 0.85 }], dmg: 10, base: 6.5, growth: 9, angle: 40, air: true, special: 'teleport', landLag: 10, cd: 60 },
