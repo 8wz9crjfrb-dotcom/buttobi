@@ -1,3 +1,4 @@
+import { HIDDEN_CHARS, PREVIEW } from './characters';
 // 衣装（着せ替え）のデータ。各キャラに「いつもの服」と、ガチャで引ける SR 2着と、SSR・UR（それぞれ1着まで）。
 // SSR・UR はまわりに舞うエフェクトと、攻撃が当たったときの特別なエフェクトが付く。UR はさらに虹色で、専用の豪華な小物が付く。
 
@@ -83,7 +84,22 @@ export type Accessory =
   /** 頭の上の、王冠の形をしたプロテインの粉のうず（UR） */
   | 'powderCrown'
   /** まわりを回るプロテインのシェイカー（UR） */
-  | 'shakerOrbit';
+  | 'shakerOrbit'
+  // メンヘラ
+  /** 前髪のハートのヘアピン */
+  | 'heartPins'
+  /** 推し色の法被（はっぴ。白いえりに文字の帯） */
+  | 'happi'
+  /** 左手のうちわ（ハート入り） */
+  | 'uchiwa'
+  /** 髪の羽根のヘアピン */
+  | 'featherPins'
+  /** 背中のハートの翼（UR） */
+  | 'heartWings'
+  /** ハートがならんだ王冠（UR） */
+  | 'heartCrown'
+  /** まわりを回るラブレター（UR） */
+  | 'letterOrbit';
 
 /** SSR のエフェクト：まわりに舞う粒の種類と色、攻撃が当たったときの色 */
 export interface CostumeFx {
@@ -125,7 +141,8 @@ export interface Costume {
   };
 }
 
-export const COSTUMES: Costume[] = [
+/** すべての衣装（まだ公開していないキャラの衣装も含む） */
+export const ALL_COSTUMES: Costume[] = [
   {
     id: 'guard-default',
     charId: 'guard',
@@ -210,7 +227,7 @@ export const COSTUMES: Costume[] = [
 
 // ---------------------------------------------------------------- ガチャで引ける衣装（キャラごとに SR 2着・SSR/UR 1着ずつまで）
 const c = (main: number, sub: number, accent: number, hair: number, skin: number, pants: number, shoes: number) => ({ main, sub, accent, hair, skin, pants, shoes });
-COSTUMES.push(
+ALL_COSTUMES.push(
   // データセンター警備員
   { id: 'guard-night', charId: 'guard', name: '夜勤シフト', rarity: 4, colors: c(0x1b1c26, 0xff3a3a, 0xc0c4cc, 0x2a2420, 0xf1c8a0, 0x14151c, 0x101010), extras: ['sunglasses'] },
   { id: 'guard-formal', charId: 'guard', name: '白の礼装', rarity: 4, colors: c(0xf2f2f5, 0xd9b44a, 0xd9b44a, 0x3a2a20, 0xf1c8a0, 0xe0e2ea, 0x2a2a2a), extras: ['sash'], extraColor: 0xc23a3a },
@@ -292,31 +309,48 @@ COSTUMES.push(
 );
 
 // 新しい SSR（UR に格上げしたキャラの SSR の枠）
-COSTUMES.push({
+ALL_COSTUMES.push({
   id: 'guard-cyber', charId: 'guard', name: 'サイバー機動隊', rarity: 5, colors: c(0x101826, 0x39ff88, 0x39ff88, 0x0e1420, 0xf1c8a0, 0x0a0f18, 0x39ff88),
   extras: ['sunglasses', 'headphones', 'miniDrones'], extraColor: 0x1a2a3a, fx: { particle: 'data', color: 0x39ff88, hit: 0x39ff88 },
 });
 
-COSTUMES.push({ id: 'streamer-gamer', charId: 'streamer', name: '深夜のゲーム実況', rarity: 5, colors: c(0x1b1a2e, 0x2c2a4a, 0x5ab8ff, 0x7a5cff, 0xffe0cc, 0x14131f, 0x5ab8ff),
+ALL_COSTUMES.push({ id: 'streamer-gamer', charId: 'streamer', name: '深夜のゲーム実況', rarity: 5, colors: c(0x1b1a2e, 0x2c2a4a, 0x5ab8ff, 0x7a5cff, 0xffe0cc, 0x14131f, 0x5ab8ff),
   extras: ['micBoom', 'rgbKeys'], extraColor: 0x5ab8ff, fx: { particle: 'pixel', color: 0x8a7cff, hit: 0x5ab8ff } });
-COSTUMES.push({ id: 'dopa-arcade', charId: 'dopa', name: 'ゲーセン荒らし', rarity: 5, colors: c(0x1f2a66, 0xf3ead2, 0xe5304a, 0xff8a1a, 0xffe0cc, 0x2a2a3a, 0xf3ead2),
+ALL_COSTUMES.push({ id: 'dopa-arcade', charId: 'dopa', name: 'ゲーセン荒らし', rarity: 5, colors: c(0x1f2a66, 0xf3ead2, 0xe5304a, 0xff8a1a, 0xffe0cc, 0x2a2a3a, 0xf3ead2),
   extras: ['capFront', 'jacketRib', 'medalPouch'], extraColor: 0xe5304a, fx: { particle: 'medal', color: 0xffd23f, hit: 0xffd23f, hitText: '777' } });
-COSTUMES.push({ id: 'gacha-allnight', charId: 'gacha', name: '徹夜明けの廃人', rarity: 5, colors: c(0x9cc4e8, 0xe8f2fb, 0xffd23f, 0x3b3046, 0xead2c0, 0x9cc4e8, 0x7a8aa8),
+ALL_COSTUMES.push({ id: 'gacha-allnight', charId: 'gacha', name: '徹夜明けの廃人', rarity: 5, colors: c(0x9cc4e8, 0xe8f2fb, 0xffd23f, 0x3b3046, 0xead2c0, 0x9cc4e8, 0x7a8aa8),
   extras: ['nightcap', 'eyeBags', 'pajama', 'phone2'], extraColor: 0x4a6fa8, fx: { particle: 'zzz', color: 0xbfd8ff, hit: 0x3d7bff, hitText: '10連！' } });
-COSTUMES.push({ id: 'ai-quantum', charId: 'ai', name: '量子コンピュータ技師', rarity: 5, colors: c(0xf4f6fa, 0xd9b44a, 0x8ad8ff, 0x2d3a5a, 0xf3d6bd, 0xf4f6fa, 0xd9b44a),
+ALL_COSTUMES.push({ id: 'ai-quantum', charId: 'ai', name: '量子コンピュータ技師', rarity: 5, colors: c(0xf4f6fa, 0xd9b44a, 0x8ad8ff, 0x2d3a5a, 0xf3d6bd, 0xf4f6fa, 0xd9b44a),
   extras: ['glassHelmet', 'goldPipes'], extraColor: 0xd9b44a, fx: { particle: 'qubit', color: 0xb8e8ff, hit: 0x2f8fe0, hitText: '|0〉|1〉' } });
-COSTUMES.push({ id: 'threeb-santo', charId: 'threeb', name: '三刀流', rarity: 5, colors: c(0xece6d6, 0x24305a, 0xd9b44a, 0xf0d9a0, 0xf3d6bd, 0x1a1a22, 0x2a2a2e),
+ALL_COSTUMES.push({ id: 'threeb-santo', charId: 'threeb', name: '三刀流', rarity: 5, colors: c(0xece6d6, 0x24305a, 0xd9b44a, 0xf0d9a0, 0xf3d6bd, 0x1a1a22, 0x2a2a2e),
   extras: ['haori', 'triCrest'], extraColor: 0xd9b44a, fx: { particle: 'sparkle', color: 0xffc83f, hit: 0xff8a1a, hitText: '三刀流！' }, jobHair: [0xf0d9a0, 0x8a2a3a, 0x16161c] });
-COSTUMES.push({ id: 'hacker-ur', charId: 'hacker', name: '電脳の支配者', rarity: 6, colors: c(0x0c0e14, 0x05060a, 0x39ff88, 0x1c1c22, 0xf3d2b3, 0x0c0e14, 0x39ff88),
+ALL_COSTUMES.push({ id: 'hacker-ur', charId: 'hacker', name: '電脳の支配者', rarity: 6, colors: c(0x0c0e14, 0x05060a, 0x39ff88, 0x1c1c22, 0xf3d2b3, 0x0c0e14, 0x39ff88),
   extras: ['circuitCoat', 'monitorOrbit'], extraColor: 0x39ff88, fx: { particle: 'data', color: 0x39ff88, hit: 0x1fd870, hitText: 'ACCESS GRANTED' } });
-COSTUMES.push({ id: 'thief-ur', charId: 'thief', name: 'データの大富豪', rarity: 6, colors: c(0x111118, 0x08080c, 0xffd23f, 0x1c1424, 0xe9c3a3, 0x111118, 0xffd23f),
+ALL_COSTUMES.push({ id: 'thief-ur', charId: 'thief', name: 'データの大富豪', rarity: 6, colors: c(0x111118, 0x08080c, 0xffd23f, 0x1c1424, 0xe9c3a3, 0x111118, 0xffd23f),
   extras: ['rainbowTie', 'dataSack', 'fileOrbit'], extraColor: 0xffd23f, fx: { particle: 'data', color: 0xffd23f, hit: 0xffb81f, hitText: '全部いただき！' } });
-COSTUMES.push({ id: 'courier-ur', charId: 'courier', name: '時空配達人', rarity: 6, colors: c(0x1a2350, 0x0e1430, 0xffd23f, 0x5a3a24, 0xd9a77e, 0x0e1430, 0xffd23f),
+ALL_COSTUMES.push({ id: 'courier-ur', charId: 'courier', name: '時空配達人', rarity: 6, colors: c(0x1a2350, 0x0e1430, 0xffd23f, 0x5a3a24, 0xd9a77e, 0x0e1430, 0xffd23f),
   extras: ['suitLines', 'clockRing', 'gearOrbit'], extraColor: 0xffd23f, fx: { particle: 'gear', color: 0xffd23f, hit: 0xffb81f, hitText: '注文前にお届け' } });
-COSTUMES.push({ id: 'trainer-ur', charId: 'trainer', name: 'プロテインの王', rarity: 6, colors: c(0xf6f4ee, 0xd9b44a, 0xffd23f, 0x2a1e16, 0xc98a5e, 0xf6f4ee, 0xd9b44a),
+ALL_COSTUMES.push({ id: 'trainer-ur', charId: 'trainer', name: 'プロテインの王', rarity: 6, colors: c(0xf6f4ee, 0xd9b44a, 0xffd23f, 0x2a1e16, 0xc98a5e, 0xf6f4ee, 0xd9b44a),
   extras: ['goldStripes', 'powderCrown', 'shakerOrbit'], extraColor: 0xd9b44a, fx: { particle: 'sparkle', color: 0xffe9a8, hit: 0xe0a020, hitText: 'プロテインは裏切らない' } });
-/** ガチャで引ける衣装 */
-export const GACHA_COSTUMES = COSTUMES.filter((x) => x.rarity >= 4);
+// メンヘラ（まだ公開していない）
+ALL_COSTUMES.push(
+  { id: 'menhera-ryosan', charId: 'menhera', name: '量産型', rarity: 4, colors: c(0xfaf2f6, 0xffb8d2, 0xff8fb8, 0x9a6a5a, 0xffe4d8, 0xfaf2f6, 0xffb8d2), extras: ['bow', 'heartPins'], extraColor: 0xffb8d2 },
+  { id: 'menhera-oshi', charId: 'menhera', name: '推し活', rarity: 4, colors: c(0x1e1a24, 0x7ad8ff, 0x2fc8ff, 0x7ad8ff, 0xffe4d8, 0x1e1a24, 0x7ad8ff), extras: ['happi', 'uchiwa'], extraColor: 0x2fc8ff },
+  {
+    id: 'menhera-tenshi', charId: 'menhera', name: '天使界隈', rarity: 5, colors: c(0xffffff, 0xbfe8ff, 0x8fd0ff, 0xdcf2ff, 0xfff0ea, 0xffffff, 0xbfe8ff),
+    extras: ['halo', 'wings', 'featherPins'], extraColor: 0xbfe8ff, fx: { particle: 'petal', color: 0xe8f6ff, hit: 0x8fd0ff, hitText: '尊い…' },
+  },
+  {
+    id: 'menhera-ur', charId: 'menhera', name: '永遠の愛', rarity: 6, colors: c(0xfff4f8, 0xff4f9a, 0xffd23f, 0x2a1c2a, 0xffe4d8, 0xfff4f8, 0xff4f9a),
+    extras: ['heartWings', 'heartCrown', 'letterOrbit'], extraColor: 0xff4f9a, fx: { particle: 'heart', color: 0xff7ab8, hit: 0xff4f9a, hitText: 'ずっと一緒だよ' },
+  },
+);
+
+/** まだ公開していないキャラの衣装は、ふだんは出さない（ガチャ・衣装の数・着せ替え） */
+export const COSTUMES: Costume[] = PREVIEW ? ALL_COSTUMES : ALL_COSTUMES.filter((x) => !HIDDEN_CHARS.includes(x.charId));
+
+/** ガチャで引ける衣装（まだ公開していないキャラの衣装は、確認用の ?preview でも出さない） */
+export const GACHA_COSTUMES = ALL_COSTUMES.filter((x) => x.rarity >= 4 && !HIDDEN_CHARS.includes(x.charId));
 
 /** レア度の表示名 */
 export function rarityName(r: number): string {
@@ -324,10 +358,10 @@ export function rarityName(r: number): string {
 }
 
 export function defaultCostume(charId: string): Costume {
-  return COSTUMES.find((c) => c.charId === charId && c.rarity === 1) ?? COSTUMES[0];
+  return ALL_COSTUMES.find((c) => c.charId === charId && c.rarity === 1) ?? ALL_COSTUMES[0];
 }
 
 export function getCostume(id: string | undefined, charId: string): Costume {
-  const c = id ? COSTUMES.find((x) => x.id === id && x.charId === charId) : undefined;
+  const c = id ? ALL_COSTUMES.find((x) => x.id === id && x.charId === charId) : undefined;
   return c ?? defaultCostume(charId);
 }

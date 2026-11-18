@@ -1639,6 +1639,86 @@ export class FighterModel {
           this.part(h, new THREE.TorusGeometry(0.318, 0.032, 6, 28), this.toon(col), [0, 0.42, 0], { rot: [Math.PI / 2 + 0.12, 0, 0], outline: false });
           this.part(h, new THREE.BoxGeometry(0.08, 0.18, 0.02), this.toon(col), [0.12, 0.33, -0.3], { rot: [0.2, 0.3, -0.4], outline: false });
           break;
+        case 'heartPins':
+          // 前髪のハートのヘアピン（左右）
+          for (const x of [0.17, -0.2]) this.heart(h, 0.055, col, [x, top - 0.16, 0.24]).rotation.z = x > 0 ? -0.3 : 0.3;
+          break;
+        case 'featherPins':
+          // 髪の白い羽根のヘアピン（2枚ずつ）
+          for (const x of [0.2, -0.2]) {
+            for (const r of [0.3, -0.2]) this.part(h, new THREE.SphereGeometry(0.06, 10, 8), this.toon(0xffffff), [x, top - 0.14, 0.2], { scale: [0.45, 1.3, 0.2], rot: [0, 0, (x > 0 ? -1 : 1) * (0.6 + r)] });
+          }
+          break;
+        case 'happi': {
+          // 推し色の法被：前の開いた短い上着、白いえり、広いそで
+          const mat = this.toon(col);
+          mat.side = THREE.DoubleSide;
+          this.part(b, new THREE.CylinderGeometry(0.235 * wide, 0.27 * wide, 0.5, 18, 1, true, 0.45, Math.PI * 2 - 0.9), mat, [0, 0.88, 0], { scale: [1, 1, 0.85] });
+          for (const x of [0.085, -0.085]) this.part(b, new THREE.BoxGeometry(0.06, 0.5, 0.02), this.toon(0xffffff), [x * wide, 0.9, 0.17], { rot: [0.05, 0, x > 0 ? -0.08 : 0.08], outline: false });
+          // えりの文字（推し）
+          for (const x of [0.085, -0.085]) this.part(b, new THREE.BoxGeometry(0.03, 0.08, 0.005), this.toon(col), [x * wide, 0.98, 0.182], { outline: false });
+          for (const arm of [this.armL, this.armR]) this.part(arm, new THREE.CylinderGeometry(0.1, 0.13, 0.26, 14), mat, [0, -0.15, 0]);
+          break;
+        }
+        case 'uchiwa': {
+          // 左手のうちわ（まるい面にハート）
+          const hnd = this.hand(this.armL);
+          this.part(hnd, new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), this.toon(0xf2f2f5), [0, -0.06, 0.06], { outline: false });
+          const face = new THREE.Group();
+          face.position.set(0, -0.26, 0.06);
+          hnd.add(face);
+          this.part(face, new THREE.CylinderGeometry(0.16, 0.16, 0.015, 24), this.toon(0xffffff), [0, 0, 0], { rot: [Math.PI / 2, 0, 0] });
+          this.heart(face, 0.07, col, [0, 0, 0.012]);
+          break;
+        }
+        case 'heartWings':
+          // 背中の大きなハートの翼（はばたく）
+          for (const x of [1, -1]) {
+            const sw = new THREE.Group();
+            sw.position.set(x * 0.1, 1.0, -0.2);
+            b.add(sw);
+            this.heart(sw, 0.3, col, [x * 0.32, 0.12, -0.02]).rotation.set(0, 0, x * 0.45);
+            this.heart(sw, 0.18, 0xffffff, [x * 0.26, -0.12, -0.04]).rotation.set(0, 0, x * 0.9);
+            this.wingGroups.push({ g: sw, side: x });
+          }
+          break;
+        case 'heartCrown': {
+          // ハートがならんだ王冠
+          const g = new THREE.Group();
+          g.position.set(0, top - 0.02, 0.02);
+          g.rotation.z = -0.1;
+          h.add(g);
+          const ring = this.toon(0xffd23f);
+          ring.side = THREE.DoubleSide;
+          this.part(g, new THREE.CylinderGeometry(0.14, 0.13, 0.06, 18, 1, true), ring, [0, 0.03, 0]);
+          for (let k = 0; k < 5; k++) {
+            const ang = (k / 5) * Math.PI * 2;
+            const hg = this.heart(g, 0.05, col, [Math.cos(ang) * 0.13, 0.1, Math.sin(ang) * 0.13]);
+            hg.rotation.y = -ang + Math.PI / 2;
+          }
+          break;
+        }
+        case 'letterOrbit': {
+          // まわりを回るラブレター（白い封筒にハートのシール）
+          const g = new THREE.Group();
+          g.position.y = 1.0;
+          b.add(g);
+          for (let k = 0; k < 5; k++) {
+            const pv = new THREE.Group();
+            pv.rotation.y = (k / 5) * Math.PI * 2;
+            g.add(pv);
+            const y = Math.sin(k * 1.7) * 0.2;
+            const paper = this.glow(0xfff8fb);
+            paper.side = THREE.DoubleSide;
+            this.part(pv, new THREE.PlaneGeometry(0.2, 0.13), paper, [0, y, 0.8], { outline: false });
+            const flap = this.glow(0xffe0ec);
+            flap.side = THREE.DoubleSide;
+            this.part(pv, new THREE.CircleGeometry(0.1, 3), flap, [0, y + 0.02, 0.803], { rot: [0, 0, -Math.PI / 2], scale: [1, 0.7, 1], outline: false });
+            this.heart(pv, 0.03, col, [0, y - 0.01, 0.81]);
+          }
+          this.spinners.push({ g, speed: 0.9 });
+          break;
+        }
         case 'coat': {
           const mat = this.toon(col);
           mat.side = THREE.DoubleSide;

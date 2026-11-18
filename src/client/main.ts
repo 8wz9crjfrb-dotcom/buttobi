@@ -2,7 +2,7 @@
 
 import './styles.css';
 import { CpuController } from '../shared/ai';
-import { ballTeamOf, CHARACTERS, getCharacter, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
+import { ballTeamOf, CHARACTERS, getCharacter, HIDDEN_CHARS, PREVIEW, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
@@ -602,6 +602,11 @@ let friendPick = 'me';
 /** フレンド画面の「フレンドを追加」の小窓を開いている */
 let friendAddOpen = false;
 
+/** その衣装を持っているか（確認用の ?preview では、まだ公開していないキャラの衣装は持っていることにする） */
+function ownsCostume(id: string, charId: string): boolean {
+  return wallet.owned.includes(id) || (PREVIEW && HIDDEN_CHARS.includes(charId));
+}
+
 /** 持っているガチャの衣装の数 */
 const ownedCostumeCount = () => new Set(wallet.owned).size;
 
@@ -612,7 +617,7 @@ function myProfile(): Profile {
   let costume = p ? p.costume : (myCostume(charId) ?? '');
   const c = COSTUMES.find((x) => x.id === costume && x.charId === charId);
   // 持っていない衣装（引き継ぎ前など）は、ふつうの衣装にする
-  if (!c || (c.rarity >= 4 && !wallet.owned.includes(c.id))) costume = getCostume(undefined, charId).id;
+  if (!c || (c.rarity >= 4 && !ownsCostume(c.id, c.charId))) costume = getCostume(undefined, charId).id;
   const titleNames = progress.titles.map((id) => TITLES.find((t) => t.id === id)?.name ?? '').filter(Boolean);
   const title = p?.title && titleNames.includes(p.title) ? p.title : '';
   return {
@@ -837,7 +842,7 @@ function showProfileEdit(): void {
   let scroll = 0;
   const draw = () => {
     const p: Profile = { ...cur, ...draft };
-    const owned = COSTUMES.filter((c) => c.charId === draft.charId && (c.rarity < 4 || wallet.owned.includes(c.id)));
+    const owned = COSTUMES.filter((c) => c.charId === draft.charId && (c.rarity < 4 || ownsCostume(c.id, c.charId)));
     const chip = (attr: string, val: string | number, label: string, on: boolean, cls = '') => `<button type="button" class="pe-chip ${cls} ${on ? 'on' : ''}" data-${attr}="${val}">${label}</button>`;
     showScreen(
       `<h2>プロフィールの編集 <small class="h2-sub">フレンドに見えます</small></h2>
@@ -1200,7 +1205,7 @@ function myCostume(charId: string): string | undefined {
 /** キャラ選択の衣装の切り替え（いつもの服＋持っている衣装） */
 function costumeChips(charId: string): string {
   const cur = getCostume(myCostume(charId), charId).id;
-  const list = COSTUMES.filter((c) => c.charId === charId && (c.rarity < 4 || wallet.owned.includes(c.id)));
+  const list = COSTUMES.filter((c) => c.charId === charId && (c.rarity < 4 || ownsCostume(c.id, c.charId)));
   const total = COSTUMES.filter((c) => c.charId === charId && c.rarity >= 4).length;
   const have = list.filter((c) => c.rarity >= 4).length;
   return `<span class="cr-label">衣装 ${have}/${total}</span>${list
@@ -3111,7 +3116,7 @@ function showCollection(charId: string): void {
   let shown = cur;
   const items = list
     .map((c) => {
-      const have = c.rarity < 4 || wallet.owned.includes(c.id);
+      const have = c.rarity < 4 || ownsCostume(c.id, c.charId);
       return `<div class="gcard r${c.rarity} ${have ? '' : 'locked'} ${c.id === cur ? 'on' : ''}" data-id="${c.id}"><b>${rarityName(c.rarity) || 'ふつう'}</b><div class="gn">${have ? c.name : '？？？'}</div>${c.id === cur ? '<div class="gnew">着ている</div>' : ''}${c.rarity === 6 ? URSP : ''}</div>`;
     })
     .join('');
@@ -3131,7 +3136,7 @@ function showCollection(charId: string): void {
       root.querySelectorAll<HTMLElement>('.gcard').forEach((el) =>
         el.addEventListener('click', () => {
           const c = COSTUMES.find((x) => x.id === el.dataset.id)!;
-          const have = c.rarity < 4 || wallet.owned.includes(c.id);
+          const have = c.rarity < 4 || ownsCostume(c.id, c.charId);
           if (!have) return toast('まだ持っていません（ガチャで出ます）');
           shown = c.id;
           root.querySelectorAll('.gcard').forEach((x) => x.classList.toggle('on', x === el));
