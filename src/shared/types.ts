@@ -103,7 +103,7 @@ export const MOVE_IDS: MoveId[] = [
 ];
 
 /** stock = 残機制、time = タイム制、stamina = 体力制（HPが0になるか場外で撃墜） */
-export type RuleMode = 'stock' | 'time' | 'stamina' | 'area' | 'ball' | 'crown' | 'vault';
+export type RuleMode = 'stock' | 'time' | 'stamina' | 'area' | 'ball' | 'crown' | 'vault' | 'bounty' | 'coins';
 
 /** 赤・青の2チームで戦うルール（玉入れ・金庫まもり）。チームはいつも2つで、選んだ番号を2で割った余りで決まる */
 export function isTwoTeam(mode: RuleMode | undefined): boolean {
@@ -112,7 +112,7 @@ export function isTwoTeam(mode: RuleMode | undefined): boolean {
 
 /** 残機を使わない（何度でも復活する）ルール */
 export function isNoStock(mode: RuleMode | undefined): boolean {
-  return mode === 'time' || mode === 'area' || mode === 'ball' || mode === 'crown' || mode === 'vault';
+  return mode === 'time' || mode === 'area' || mode === 'ball' || mode === 'crown' || mode === 'vault' || mode === 'bounty' || mode === 'coins';
 }
 /** エリアバトルのエリアの形：移動する1つ／動かない2つ／おまかせ（試合ごとにどちらか） */
 export type AreaShape = 'move' | 'fix2' | 'random';
@@ -214,6 +214,13 @@ export type GameEvent =
   /** 金庫まもり：金庫に攻撃が当たった（t = 金庫の番号、p = ダメージ）・壊れた */
   | { k: 'vhit'; x: number; y: number; t: number; p: number }
   | { k: 'vbreak'; x: number; y: number; t: number }
+  /** 賞金首：撃墜で点が入った（s = 倒した人、p = 入った点、b = 賞金首を倒した） */
+  | { k: 'bpt'; s: number; x: number; y: number; p: number; b: boolean }
+  /** 賞金首：新しい賞金首が決まった */
+  | { k: 'bnew'; s: number }
+  /** コイン集め：コインを拾った（v = 枚数）・攻撃を受けてコインを落とした（p = 枚数） */
+  | { k: 'coin'; s: number; x: number; y: number; v: number }
+  | { k: 'cdrop'; s: number; x: number; y: number; p: number }
   /** サドンデスが始まった */
   | { k: 'sudden' }
   /** メガホン（アイテム）の衝撃波 */
@@ -306,6 +313,10 @@ export interface ViewState {
   crown?: CrownView;
   /** 金庫まもりの状態 */
   vault?: VaultView;
+  /** 賞金首の状態 */
+  bounty?: BountyView;
+  /** コイン集めの状態 */
+  coins?: CoinsView;
   /** サドンデス中（1位が同点のときの延長戦） */
   sudden?: boolean;
 }
@@ -322,6 +333,22 @@ export interface CrownView {
   pts: [number, number][];
   /** 勝ちになる時間（フレーム） */
   goal: number;
+}
+
+/** 賞金首の画面用の状態 */
+export interface BountyView {
+  /** 賞金首の slot（-1 = いない） */
+  holder: number;
+  /** 点：[slot, 点] */
+  pts: [number, number][];
+}
+
+/** コイン集めの画面用の状態 */
+export interface CoinsView {
+  /** 落ちているコイン（v = 枚数。1 = ふつう、5 以上 = 大きいコイン） */
+  list: { x: number; y: number; v: number }[];
+  /** 持っている枚数：[slot, 枚数] */
+  held: [number, number][];
 }
 
 /** 金庫まもりの画面用の状態（0 = 赤チームの金庫、1 = 青チームの金庫） */
@@ -385,4 +412,8 @@ export interface ResultEntry {
   vaultBroke?: number;
   /** 投げた回数 */
   throws?: number;
+  /** 賞金首：点（自分） */
+  bounty?: number;
+  /** コイン集め：持っていたコイン（自分） */
+  coins?: number;
 }

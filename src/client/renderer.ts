@@ -4,9 +4,9 @@ import * as THREE from 'three';
 import { areaColor, getCharacter, ITEM_COLORS, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES, TEAM_COLORS } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
-import { BALL, ballBaskets, COUNTDOWN_FRAMES, gimmickAt, gimmickPhase, isSlippery, ROULETTE, WARP, warpSpots } from '../shared/sim';
+import { BALL, ballBaskets, COUNTDOWN_FRAMES, gimmickAt, gimmickPhase, isSlippery, ROULETTE, SIZE_REQ, WARP, warpSpots } from '../shared/sim';
 import { GIMMICK, VAULT } from '../shared/moves';
-import { FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
+import { FX_BIG, FX_SMALL, FX_SPEED, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
 import { getCostume } from '../shared/costumes';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -168,6 +168,8 @@ export class GameRenderer {
     if (setup.rules.mode === 'ball') this.buildBall(stage);
     if (setup.rules.mode === 'crown') this.buildCrown();
     if (setup.rules.mode === 'vault') this.buildVaults(stage);
+    if (setup.rules.mode === 'bounty') this.buildBounty();
+    if (setup.rules.mode === 'coins') this.buildCoins();
     const m = stage.main;
     this.camLook.set((m.x1 + m.x2) / 2, 3, 0);
     this.camPos.set(this.camLook.x, 5, 26);
@@ -208,6 +210,14 @@ export class GameRenderer {
     if (this.vaultObj) {
       this.disposeBeam(this.vaultObj.root);
       this.vaultObj = null;
+    }
+    if (this.bountyObj) {
+      this.disposeBeam(this.bountyObj.root);
+      this.bountyObj = null;
+    }
+    if (this.coinObj) {
+      this.disposeBeam(this.coinObj.root);
+      this.coinObj = null;
     }
     for (const z of this.areaMeshes) this.disposeBeam(z.g);
     this.areaMeshes = [];
@@ -702,6 +712,8 @@ export class GameRenderer {
       this.updateBall(view, dt);
       this.updateCrown(view);
       this.updateVaults(view);
+      this.updateBounty(view);
+      this.updateCoins(view);
       for (const f of view.fighters) {
         const m = this.models.get(f.slot);
         if (!m) continue;
@@ -1072,6 +1084,40 @@ export class GameRenderer {
       // 王冠を手に入れた・奪った
       this.spawn(this.ringGeo, 0xffd84a, e.x, e.y, 0, 0, 0.3, 14, 0.1);
       this.props.showText('王冠ゲット！', '#ffd84a', e.x, e.y + 1.2, false, 50);
+      return;
+    }
+    if (e.k === 'bpt') {
+      // 賞金首：撃墜で点が入った（賞金首を倒したら大きく）
+      if (e.b) {
+        for (let i = 0; i < 14; i++) {
+          const a = Math.random() * Math.PI;
+          const sp = 3 + Math.random() * 5;
+          this.spawn(this.sparkGeo, i % 2 ? 0xffd23f : 0xff4a5a, e.x, Math.max(e.y, 0), Math.cos(a) * sp, Math.sin(a) * sp, 0.18, 26, -0.004);
+        }
+      }
+      const f = view.fighters.find((o) => o.slot === e.s);
+      if (f) this.props.showText(e.b ? `賞金首撃破！ +${e.p}` : `+${e.p}`, e.b ? '#ff4a5a' : '#ffd84a', f.x, f.y + 2.2, e.b, e.b ? 70 : 45);
+      return;
+    }
+    if (e.k === 'bnew') {
+      const f = view.fighters.find((o) => o.slot === e.s);
+      if (f) {
+        this.spawn(this.ringGeo, 0xff4a5a, f.x, f.y + 1, 0, 0, 0.3, 16, 0.1);
+        this.props.showText('賞金首！', '#ff4a5a', f.x, f.y + 2.4, false, 55);
+      }
+      return;
+    }
+    if (e.k === 'coin') {
+      // コインを拾った：小さな金色の粒
+      for (let i = 0; i < (e.v > 1 ? 8 : 3); i++) {
+        const a = Math.random() * Math.PI * 2;
+        this.spawn(this.sparkGeo, 0xffd23f, e.x, e.y + 0.3, Math.cos(a) * 2.5, Math.sin(a) * 2.5 + 1.5, 0.08, 12, -0.003);
+      }
+      if (e.v > 1) this.props.showText(`+${e.v}`, '#ffd84a', e.x, e.y + 1.2, false, 40);
+      return;
+    }
+    if (e.k === 'cdrop') {
+      this.props.showText(`-${e.p}`, '#ff8a3a', e.x, e.y + 0.6, false, 40);
       return;
     }
     if (e.k === 'vhit') {
@@ -1488,6 +1534,101 @@ export class GameRenderer {
       o.ring.position.set(c.x, c.y + 0.03, 0.3);
       (o.ring.material as THREE.MeshBasicMaterial).opacity = 0.45 + 0.3 * Math.sin(t * 5);
     }
+  }
+
+  // ---------------------------------------------------------------- 賞金首の目印（頭の上の賞金袋と、赤い輪）
+  private bountyObj: { root: THREE.Group; bag: THREE.Group; ring: THREE.Mesh } | null = null;
+
+  private buildBounty(): void {
+    const root = new THREE.Group();
+    this.scene.add(root);
+    const bag = new THREE.Group();
+    // ふくらんだ袋・しばった口・ひも・袋に描いた金色の丸
+    const cloth = new THREE.MeshToonMaterial({ color: 0xc98a3a, emissive: 0x3a2000, emissiveIntensity: 0.5 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), cloth);
+    body.scale.set(1, 0.9, 0.85);
+    bag.add(body);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 0.14, 12), cloth);
+    neck.position.y = 0.3;
+    bag.add(neck);
+    const top = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.14, 12), cloth);
+    top.position.y = 0.42;
+    top.rotation.x = Math.PI;
+    bag.add(top);
+    const tie = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.025, 6, 16), new THREE.MeshBasicMaterial({ color: 0xff4a5a }));
+    tie.rotation.x = Math.PI / 2;
+    tie.position.y = 0.32;
+    bag.add(tie);
+    const mark = new THREE.Mesh(new THREE.CircleGeometry(0.13, 20), new THREE.MeshToonMaterial({ color: 0xffd23f, emissive: 0x7a5a00 }));
+    mark.position.set(0, 0, 0.26);
+    bag.add(mark);
+    const ol = new THREE.Mesh(new THREE.SphereGeometry(0.33, 16, 12), new THREE.MeshBasicMaterial({ color: 0x1b1b28, side: THREE.BackSide }));
+    ol.scale.set(1, 0.9, 0.85);
+    bag.add(ol);
+    root.add(bag);
+    // 賞金首の体のうしろで光る赤い輪
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.1, 40), new THREE.MeshBasicMaterial({ color: 0xff4a5a, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+    root.add(ring);
+    root.visible = false;
+    this.bountyObj = { root, bag, ring };
+  }
+
+  private updateBounty(view: ViewState): void {
+    const o = this.bountyObj;
+    if (!o) return;
+    const h = view.bounty && view.bounty.holder >= 0 ? view.fighters.find((f) => f.slot === view.bounty!.holder) : undefined;
+    const show = !!h && h.state !== 'dead' && !view.ended;
+    o.root.visible = show;
+    if (!h || !show) return;
+    const t = this.time;
+    // 体の高さ（大きさのアイテムで変わる）
+    const id = this.models.get(h.slot)?.charId ?? 'guard';
+    const height = 1.8 * getCharacter(id).scale * (h.fx & FX_BIG ? SIZE_REQ.big : h.fx & FX_SMALL ? SIZE_REQ.small : 1);
+    o.bag.position.set(h.x, h.y + height + 0.75 + Math.sin(t * 4) * 0.06, 0.2);
+    o.bag.rotation.set(0, Math.sin(t * 2) * 0.5, Math.sin(t * 3) * 0.08);
+    o.ring.position.set(h.x, h.y + height * 0.5, -0.4);
+    o.ring.scale.setScalar(Math.max(1, height / 1.9));
+    (o.ring.material as THREE.MeshBasicMaterial).opacity = 0.4 + 0.25 * Math.sin(t * 6);
+  }
+
+  // ---------------------------------------------------------------- コイン集めのコイン
+  private coinObj: { root: THREE.Group; pool: THREE.Group[]; geo: THREE.BufferGeometry; mat: THREE.Material; ol: THREE.Material } | null = null;
+
+  private buildCoins(): void {
+    const root = new THREE.Group();
+    this.scene.add(root);
+    const geo = new THREE.CylinderGeometry(0.22, 0.22, 0.06, 20);
+    const mat = new THREE.MeshToonMaterial({ color: 0xffd23f, emissive: 0x7a5a00, emissiveIntensity: 0.7 });
+    const ol = new THREE.MeshBasicMaterial({ color: 0x1b1b28, side: THREE.BackSide });
+    this.coinObj = { root, pool: [], geo, mat, ol };
+  }
+
+  private updateCoins(view: ViewState): void {
+    const o = this.coinObj;
+    if (!o) return;
+    const list = view.coins?.list ?? [];
+    while (o.pool.length < list.length) {
+      const g = new THREE.Group();
+      const m = new THREE.Mesh(o.geo, o.mat);
+      m.rotation.x = Math.PI / 2;
+      g.add(m);
+      const line = new THREE.Mesh(o.geo, o.ol);
+      line.rotation.x = Math.PI / 2;
+      line.scale.set(1.15, 1.6, 1.15);
+      g.add(line);
+      o.root.add(g);
+      o.pool.push(g);
+    }
+    const t = this.time;
+    o.pool.forEach((g, i) => {
+      const c = list[i];
+      g.visible = !!c;
+      if (!c) return;
+      const big = c.v > 1;
+      g.position.set(c.x, c.y + (big ? 0.42 : 0.3) + Math.sin(t * 3 + i) * 0.04, 0.25);
+      g.rotation.y = t * 3 + i;
+      g.scale.setScalar(big ? 1.7 : 1);
+    });
   }
 
   // ---------------------------------------------------------------- 金庫まもりの金庫

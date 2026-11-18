@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 36;
+export const PROTOCOL_VERSION = 37;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -175,6 +175,10 @@ export interface EncodedState {
   c?: number[];
   /** 金庫まもり：[赤の耐久, 青の耐久, 最大] */
   v?: number[];
+  /** 賞金首：[賞金首, ...[slot, 点]] */
+  bo?: number[];
+  /** コイン集め：[落ちている数, ...[x*100, y*100, 枚数], ...[slot, 持っている枚数]] */
+  co?: number[];
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -210,6 +214,8 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
     ev: events.map((e) => ('x' in e ? { ...e, x: r2(e.x), y: r2(e.y) } : e)),
     ...(v.sudden ? { sd: 1 as const } : {}),
     ...(v.crown ? { c: [Math.round(v.crown.x * 100), Math.round(v.crown.y * 100), v.crown.holder, v.crown.on ? 1 : 0, v.crown.goal, ...v.crown.pts.flat()] } : {}),
+    ...(v.bounty ? { bo: [v.bounty.holder, ...v.bounty.pts.flat()] } : {}),
+    ...(v.coins ? { co: [v.coins.list.length, ...v.coins.list.flatMap((c) => [Math.round(c.x * 100), Math.round(c.y * 100), c.v]), ...v.coins.held.flat()] } : {}),
     ...(v.vault ? { v: [Math.round(v.vault.hp[0] * 10) / 10, Math.round(v.vault.hp[1] * 10) / 10, v.vault.max] } : {}),
     ...(v.ball ? { b: [Math.round(v.ball.x * 100), Math.round(v.ball.y * 100), Math.round(v.ball.vx * 10), v.ball.on ? 1 : 0, v.ball.score[0], v.ball.score[1], v.ball.target] } : {}),
     ...(v.area
@@ -267,6 +273,13 @@ export function decodeState(s: EncodedState): ViewState {
         }
       : undefined,
     vault: s.v ? { hp: [s.v[0], s.v[1]], max: s.v[2] } : undefined,
+    bounty: s.bo ? { holder: s.bo[0], pts: pairs(s.bo, 1) } : undefined,
+    coins: s.co
+      ? {
+          list: Array.from({ length: s.co[0] }, (_, k) => ({ x: s.co![1 + k * 3] / 100, y: s.co![2 + k * 3] / 100, v: s.co![3 + k * 3] })),
+          held: pairs(s.co, 1 + s.co[0] * 3),
+        }
+      : undefined,
     ball: s.b ? { x: s.b[0] / 100, y: s.b[1] / 100, vx: s.b[2] / 10, on: s.b[3] === 1, score: [s.b[4], s.b[5]], target: s.b[6] } : undefined,
     area: s.a
       ? {
@@ -291,4 +304,11 @@ export function sanitizeName(name: unknown): string {
 
 export function isRoomCode(code: string): boolean {
   return /^\d{4}$/.test(code);
+}
+
+/** a[from] から先を [番号, 値] の組に分ける */
+function pairs(a: number[], from: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = from; i + 1 < a.length; i += 2) out.push([a[i], a[i + 1]]);
+  return out;
 }

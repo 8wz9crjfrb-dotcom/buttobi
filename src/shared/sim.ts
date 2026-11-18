@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { CLOSE, CROWN, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { CLOSE, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -28,6 +28,8 @@ import {
   type AreaView,
   type BallView,
   type CrownView,
+  type BountyView,
+  type CoinsView,
   type VaultView,
   isNoStock,
   isTwoTeam,
@@ -552,6 +554,7 @@ export class Sim {
     if (setup.rules.mode === 'ball') this.resetBall();
     if (setup.rules.mode === 'crown') this.resetCrown();
     if (setup.rules.mode === 'vault') this.setupVaults();
+    if (setup.rules.mode === 'coins') this.coinTimer = 30;
   }
 
   // ---------------------------------------------------------------- 王冠うばい
@@ -662,6 +665,150 @@ export class Sim {
 
   private crownView(): CrownView {
     return { x: this.crown.x, y: this.crown.y, holder: this.crown.holder, on: this.crown.on, pts: [...this.crownPts.entries()], goal: this.crownGoalFrames };
+  }
+
+  // ---------------------------------------------------------------- 賞金首
+  /** 点（slot ごと） */
+  bountyPts = new Map<number, number>();
+  /** 賞金首の slot（-1 = いない） */
+  bountyHolder = -1;
+
+  /** 撃墜されたとき：倒した人に点（賞金首なら上乗せ）。自分で落ちたら点が減る */
+  private bountyOnKo(f: Fighter, by: number | undefined): void {
+    const k = by === undefined ? undefined : this.fighter(by);
+    const pts = this.bountyPts;
+    if (k && k !== f && k.team !== f.team) {
+      const wasBounty = f.slot === this.bountyHolder;
+      const p = BOUNTY.ko + (wasBounty ? BOUNTY.bonus : 0);
+      pts.set(k.slot, (pts.get(k.slot) ?? 0) + p);
+      this.events.push({ k: 'bpt', s: k.slot, x: f.x, y: f.y, p, b: wasBounty });
+    } else if (!k) {
+      pts.set(f.slot, Math.max(0, (pts.get(f.slot) ?? 0) - BOUNTY.self));
+    }
+    this.updateBountyHolder();
+  }
+
+  /** 賞金首は、点が一番多い人（同点の1位が何人もいるとき・点が足りないときはいない。今の賞金首は同点なら続ける） */
+  private updateBountyHolder(): void {
+    let top = -1;
+    let best = -1;
+    let tie = false;
+    for (const f of this.fighters) {
+      const p = this.bountyPts.get(f.slot) ?? 0;
+      if (p > best) {
+        best = p;
+        top = f.slot;
+        tie = false;
+      } else if (p === best) tie = true;
+    }
+    const cur = this.bountyHolder;
+    let next = -1;
+    if (best >= BOUNTY.min) {
+      if (!tie) next = top;
+      else if (cur >= 0 && (this.bountyPts.get(cur) ?? 0) === best) next = cur;
+    }
+    if (next !== cur) {
+      this.bountyHolder = next;
+      if (next >= 0) this.events.push({ k: 'bnew', s: next });
+    }
+  }
+
+  private bountyView(): BountyView {
+    return { holder: this.bountyHolder, pts: [...this.bountyPts.entries()] };
+  }
+
+  // ---------------------------------------------------------------- コイン集め
+  /** 落ちているコイン（no = 拾えない人の slot、noT = 拾えない残りフレーム） */
+  coins: { x: number; y: number; vx: number; vy: number; v: number; no: number; noT: number }[] = [];
+  /** 持っている枚数（slot ごと） */
+  coinsHeld = new Map<number, number>();
+  coinTimer = 0;
+
+  /** コインを (x, y) から飛び散らせる（n 枚。多すぎるときはまとめて大きいコインにする） */
+  private scatterCoins(x: number, y: number, n: number, no: number): void {
+    const room = Math.max(1, 30 - this.coins.length);
+    const pieces = Math.min(n, room);
+    for (let i = 0; i < pieces; i++) {
+      const v = Math.floor(n / pieces) + (i < n % pieces ? 1 : 0);
+      const a = pieces === 1 ? 0 : (i / (pieces - 1) - 0.5) * 2;
+      this.coins.push({ x, y, vx: a * 3.2 + (this.rng.next() - 0.5) * 0.8, vy: 7 + this.rng.next() * 2.5, v, no, noT: COINS.noPick });
+    }
+  }
+
+  private updateCoins(): void {
+    // 決まった間隔で、ステージの上からコインが降ってくる
+    if (--this.coinTimer <= 0) {
+      this.coinTimer = COINS.every;
+      if (this.coins.length < COINS.max) {
+        const m = this.stage.main;
+        const x = m.x1 + 1 + this.rng.next() * (m.x2 - m.x1 - 2);
+        const big = this.rng.chance(COINS.bigChance);
+        this.coins.push({ x, y: m.top + 7, vx: 0, vy: 0, v: big ? COINS.big : 1, no: -1, noT: 0 });
+      }
+    }
+    const m = this.stage.main;
+    const keep: typeof this.coins = [];
+    for (const c of this.coins) {
+      if (c.noT > 0) c.noT--;
+      const py = c.y;
+      c.vy = Math.max(-14, c.vy - 25 * DT);
+      c.x += c.vx * DT;
+      c.y += c.vy * DT;
+      let landed = false;
+      if (c.x >= m.x1 && c.x <= m.x2 && py >= m.top && c.y <= m.top) {
+        c.y = m.top;
+        landed = true;
+      }
+      for (const sp of this.stage.platforms) {
+        const p = platformAt(sp, this.frame);
+        if (c.x >= p.x1 && c.x <= p.x2 && py >= p.prevY - 0.001 && c.y <= p.y) {
+          c.y = p.y;
+          landed = true;
+        }
+      }
+      if (landed) {
+        c.vy = 0;
+        c.vx = 0;
+      }
+      // 場外に落ちたコインは消える
+      if (c.y < this.stage.blast.bottom || c.x < this.stage.blast.left || c.x > this.stage.blast.right) continue;
+      const taker = this.fighters.find(
+        (v) => v.alive && !v.out && v.state !== 'grabbed' && !(c.noT > 0 && v.slot === c.no) && circleHitsBox(c.x, c.y + 0.3, COINS.r, v),
+      );
+      if (taker) {
+        this.coinsHeld.set(taker.slot, (this.coinsHeld.get(taker.slot) ?? 0) + c.v);
+        this.events.push({ k: 'coin', s: taker.slot, x: c.x, y: c.y, v: c.v });
+        continue;
+      }
+      keep.push(c);
+    }
+    this.coins = keep;
+  }
+
+  /** 攻撃を受けた：ダメージに合わせてコインを落とす */
+  private coinsOnHit(v: Fighter, dmg: number, from: number): void {
+    if (from < 0 || from === v.slot || this.friendly(from, v)) return;
+    const held = this.coinsHeld.get(v.slot) ?? 0;
+    if (held <= 0) return;
+    const n = Math.min(held, COINS.hitMax, Math.max(1, Math.floor(dmg / COINS.perDmg)));
+    this.coinsHeld.set(v.slot, held - n);
+    this.scatterCoins(v.x, v.y + v.h * 0.6, n, v.slot);
+    this.events.push({ k: 'cdrop', s: v.slot, x: v.x, y: v.y + v.h, p: n });
+  }
+
+  /** 撃墜された：持っているコインの半分を、ステージの中央の上からばらまく */
+  private coinsOnKo(f: Fighter): void {
+    const held = this.coinsHeld.get(f.slot) ?? 0;
+    const n = Math.ceil(held * COINS.ko);
+    if (n <= 0) return;
+    this.coinsHeld.set(f.slot, held - n);
+    const m = this.stage.main;
+    this.scatterCoins((m.x1 + m.x2) / 2, m.top + 6, n, -1);
+    this.events.push({ k: 'cdrop', s: f.slot, x: (m.x1 + m.x2) / 2, y: m.top + 6, p: n });
+  }
+
+  private coinsView(): CoinsView {
+    return { list: this.coins.map((c) => ({ x: c.x, y: c.y, v: c.v })), held: [...this.coinsHeld.entries()] };
   }
 
   // ---------------------------------------------------------------- 金庫まもり
@@ -1086,6 +1233,7 @@ export class Sim {
     if (playing && !this.solo && this.setup.rules.mode === 'ball') this.updateBall();
     if (playing && !this.solo && this.setup.rules.mode === 'crown') this.updateCrown();
     if (playing && !this.solo && this.setup.rules.mode === 'vault') this.updateVaults();
+    if (playing && !this.solo && this.setup.rules.mode === 'coins') this.updateCoins();
     for (const f of this.fighters) this.updateAntiLock(f);
     if (this.lagComp.size) {
       this.posHist.push(new Map(this.fighters.map((f) => [f.slot, { x: f.x, y: f.y }])));
@@ -3153,6 +3301,8 @@ export class Sim {
   private knock(v: Fighter, dir: number, dmg: number, base: number, growth: number, angle: number, kbMul: number, from: number): void {
     // 王冠うばい：王冠を持っている人に当てたら奪う
     if (this.setup.rules.mode === 'crown') this.crownSteal(v, from);
+    // コイン集め：攻撃を受けた人はコインを落とす
+    if (this.setup.rules.mode === 'coins' && !this.solo) this.coinsOnHit(v, dmg, from);
     // 学習データ（AIエンジニア）：同じ相手からの攻撃ほどダメージが減る
     if (v.def.id === 'ai' && from >= 0 && from < v.learnHits.length) {
       dmg *= 1 - 0.05 * Math.min(5, v.learnHits[from]);
@@ -3493,6 +3643,8 @@ export class Sim {
       }
     }
     if (this.setup.rules.mode === 'crown' && !this.solo) this.crownOnKo(f, by);
+    if (this.setup.rules.mode === 'bounty' && !this.solo) this.bountyOnKo(f, by);
+    if (this.setup.rules.mode === 'coins' && !this.solo) this.coinsOnKo(f);
     if (f.grabbing >= 0) this.endGrab(f, this.fighter(f.grabbing));
     f.buzz = 0;
     f.move = null;
@@ -3617,6 +3769,10 @@ export class Sim {
     const ball = this.setup.rules.mode === 'ball';
     const crown = this.setup.rules.mode === 'crown';
     const vault = this.setup.rules.mode === 'vault';
+    const bounty = this.setup.rules.mode === 'bounty';
+    const coins = this.setup.rules.mode === 'coins';
+    const bp = (f: Fighter) => this.bountyPts.get(f.slot) ?? 0;
+    const cn = (f: Fighter) => this.coinsHeld.get(f.slot) ?? 0;
     const gauge = (f: Fighter) => this.areaGauge.get(this.areaKey(f)) ?? 0;
     const held = (f: Fighter) => this.crownPts.get(this.crownKey(f)) ?? 0;
     /** そのチームが相手の金庫に与えたダメージ */
@@ -3625,7 +3781,11 @@ export class Sim {
       return v ? v.max - v.hp : 0;
     };
     const score = (f: Fighter) =>
-      crown
+      bounty
+        ? bp(f) * 1000 + (f.kos - f.falls)
+        : coins
+        ? cn(f) * 1000 + (f.kos - f.falls)
+        : crown
         ? held(f) * 1000 + (f.kos - f.falls)
         : vault
         ? f.vaultDmg * 1000 + (f.kos - f.falls)
@@ -3640,7 +3800,11 @@ export class Sim {
     const teamScore = new Map<number, number>();
     for (const f of this.fighters) {
       const members = this.fighters.filter((o) => o.team === f.team);
-      const v = crown
+      const v = bounty
+        ? members.reduce((n, o) => n + bp(o), 0) * 1000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
+        : coins
+        ? members.reduce((n, o) => n + cn(o), 0) * 1000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
+        : crown
         ? held(f) * 1000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
         : vault
         ? broke(f.team) * 100000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
@@ -3677,6 +3841,8 @@ export class Sim {
         ...(area ? { area: Math.floor((gauge(e.f) / this.areaGoal) * 100) } : {}),
         ...(ball ? { goals: e.f.goals, teamGoals: this.ballScore[e.f.team] } : {}),
         ...(crown ? { crown: Math.floor(held(e.f) / 60) } : {}),
+        ...(bounty ? { bounty: bp(e.f) } : {}),
+        ...(coins ? { coins: cn(e.f) } : {}),
         ...(vault ? { vaultDmg: Math.round(e.f.vaultDmg), vaultBroke: Math.floor((broke(e.f.team) / (this.vaults[0]?.max || 1)) * 1000) / 10 } : {}),
       };
     });
@@ -3729,6 +3895,8 @@ export class Sim {
       area: this.setup.rules.mode === 'area' ? this.areaView() : undefined,
       crown: this.setup.rules.mode === 'crown' ? this.crownView() : undefined,
       vault: this.setup.rules.mode === 'vault' ? this.vaultView() : undefined,
+      bounty: this.setup.rules.mode === 'bounty' ? this.bountyView() : undefined,
+      coins: this.setup.rules.mode === 'coins' ? this.coinsView() : undefined,
       sudden: this.sudden || undefined,
       ball: this.setup.rules.mode === 'ball' ? this.ballView() : undefined,
     };

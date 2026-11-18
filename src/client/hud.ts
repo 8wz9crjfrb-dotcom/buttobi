@@ -1,5 +1,6 @@
 // 対戦中の表示（ダメージ%・残機・タイマー・カウントダウン）
 
+import { BOUNTY } from '../shared/moves';
 import { areaColor, ballTeamOf, getCharacter, playerColor, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { COUNTDOWN_FRAMES } from '../shared/sim';
 import { clashMark } from './icons';
@@ -30,6 +31,8 @@ export class Hud {
   private ball: { root: HTMLElement; red: HTMLElement; blue: HTMLElement; last: string } | null = null;
   /** 王冠うばい：人（チーム）ごとの持っていた時間のゲージ */
   private crownHud: { bars: Map<number, { root: HTMLElement; fill: HTMLElement; num: HTMLElement }>; notice: HTMLElement; names: Map<number, string>; teams: boolean; teamOf: Map<number, number>; last: string } | null = null;
+  /** 賞金首・コイン集め：人（チーム）ごとの点・枚数 */
+  private scoreHud: { mode: 'bounty' | 'coins'; bars: Map<number, { root: HTMLElement; fill: HTMLElement; num: HTMLElement }>; notice: HTMLElement; names: Map<number, string>; teams: boolean; teamOf: Map<number, number>; last: string; lastNotice: string } | null = null;
   /** 金庫まもり：赤・青の金庫の耐久 */
   private vaultHud: { fills: HTMLElement[]; nums: HTMLElement[] } | null = null;
   /** 自分の枠に出す、必殺技の待ち時間（B・横B・下B・上B） */
@@ -118,7 +121,33 @@ export class Hud {
     this.area = null;
     this.ball = null;
     this.crownHud = null;
+    this.scoreHud = null;
     this.vaultHud = null;
+    if (setup.rules.mode === 'bounty' || setup.rules.mode === 'coins') {
+      // タイマーの下に、点（枚数）を横に並べる（チーム戦はチームごと、個人戦は人ごと）
+      const box = document.createElement('div');
+      box.className = 'hud-area';
+      const keys = setup.rules.teams ? [...new Set(setup.players.map((p) => p.team ?? 0))].sort((a, b) => a - b) : setup.players.map((p) => p.slot);
+      const bars = new Map<number, { root: HTMLElement; fill: HTMLElement; num: HTMLElement }>();
+      for (const k of keys) {
+        const root = document.createElement('div');
+        root.className = 'ab';
+        root.style.setProperty('--ac', hex(areaColor(setup, k)));
+        const fill = document.createElement('i');
+        const num = document.createElement('b');
+        num.textContent = '0';
+        root.append(fill, num);
+        box.appendChild(root);
+        bars.set(k, { root, fill, num });
+      }
+      box.classList.toggle('many', keys.length >= 5);
+      const notice = document.createElement('div');
+      notice.className = 'hud-area-notice crown';
+      this.el.append(box, notice);
+      const names = new Map(setup.players.map((p) => [p.slot, p.name] as [number, string]));
+      const teamOf = new Map(setup.players.map((p) => [p.slot, p.team ?? 0] as [number, number]));
+      this.scoreHud = { mode: setup.rules.mode, bars, notice, names, teams: !!setup.rules.teams, teamOf, last: '', lastNotice: '' };
+    }
     if (setup.rules.mode === 'crown') {
       // タイマーの下に、持っていた時間のゲージを横に並べる（チーム戦はチームごと、個人戦は人ごと）
       const box = document.createElement('div');
@@ -205,6 +234,39 @@ export class Hud {
     if (msg !== c.last) {
       c.notice.textContent = msg;
       c.last = msg;
+    }
+  }
+
+  /** 賞金首・コイン集め：点（枚数）のゲージと、賞金首の名前 */
+  private updateScore(v: ViewState): void {
+    const s = this.scoreHud;
+    if (!s) return;
+    const list = s.mode === 'bounty' ? v.bounty?.pts : v.coins?.held;
+    if (!list) return;
+    const sum = new Map<number, number>();
+    for (const [slot, n] of list) {
+      const k = s.teams ? s.teamOf.get(slot) ?? 0 : slot;
+      sum.set(k, (sum.get(k) ?? 0) + n);
+    }
+    const holder = s.mode === 'bounty' ? v.bounty!.holder : -1;
+    const holderKey = holder < 0 ? null : s.teams ? s.teamOf.get(holder) ?? null : holder;
+    const key = [...sum].join(',') + '|' + holder;
+    if (key !== s.last) {
+      s.last = key;
+      // ゲージは一番多い人（チーム）を満タンにした割合
+      const top = Math.max(1, ...sum.values());
+      for (const [k, bar] of s.bars) {
+        const val = sum.get(k) ?? 0;
+        bar.fill.style.width = `${(val / top) * 100}%`;
+        bar.num.textContent = `${val}`;
+        bar.root.classList.toggle('on', k === holderKey);
+      }
+    }
+    const name = holder >= 0 ? s.names.get(holder) ?? '' : '';
+    const msg = v.ended || s.mode !== 'bounty' ? '' : name ? `賞金首：${name}（倒すと+${BOUNTY.ko + BOUNTY.bonus}点）` : '撃墜で1点。1位は賞金首に！';
+    if (msg !== s.lastNotice) {
+      s.notice.textContent = msg;
+      s.lastNotice = msg;
     }
   }
 
@@ -321,6 +383,7 @@ export class Hud {
     }
     this.updateArea(v);
     this.updateCrown(v);
+    this.updateScore(v);
     this.updateVault(v);
     if (this.ball && v.ball) {
       const key = v.ball.score.join('-');

@@ -602,7 +602,7 @@ export class Room extends DurableObject<Env> {
         if (this.sim || slot !== l.hostSlot) return;
         const r = msg.rules;
         l.rules = {
-          mode: (['time', 'stamina', 'area', 'ball', 'crown', 'vault'] as const).find((m) => m === r?.mode) ?? 'stock',
+          mode: (['time', 'stamina', 'area', 'ball', 'crown', 'vault', 'bounty', 'coins'] as const).find((m) => m === r?.mode) ?? 'stock',
           crownGoal: [20, 30, 45].includes(Number(r?.crownGoal)) ? Number(r.crownGoal) : 30,
           vaultHp: [250, 400, 600].includes(Number(r?.vaultHp)) ? Number(r.vaultHp) : 400,
           stocks: Math.max(1, Math.min(5, r?.stocks | 0 || 3)),

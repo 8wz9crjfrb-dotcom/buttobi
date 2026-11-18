@@ -134,6 +134,11 @@ export class CpuController {
       const go = this.crownMove(sim, f, lv);
       if (go) return go;
     }
+    // コイン集め：近くのコインを拾いに行く（相手がすぐそばにいれば戦う）
+    if (sim.setup.rules.mode === 'coins') {
+      const go = this.coinMove(sim, f, lv);
+      if (go) return go;
+    }
     // 玉入れ：ボールの後ろに回って、かごまでの距離に合う技で打つ
     if (sim.setup.rules.mode === 'ball') {
       const go = this.ballMove(sim, f, lv);
@@ -366,6 +371,28 @@ export class CpuController {
     return { mx: dir, my: 0, buttons: 0 };
   }
 
+  private coinMove(sim: Sim, f: Fighter, lv: number): InputState | null {
+    if (!f.grounded) return null;
+    const foe = sim.fighters.some((o) => o !== f && o.alive && !o.out && !sim.sameTeam(o, f) && Math.abs(o.x - f.x) < 1.8 && Math.abs(o.y - f.y) < 1.5);
+    if (foe && this.rng.chance(0.75)) return null;
+    // 近くて、大きいほど魅力的なコイン
+    let best: { x: number; y: number } | null = null;
+    let bestD = 7 + lv * 0.4;
+    for (const c of sim.coins) {
+      if (c.noT > 0 && c.no === f.slot) continue;
+      const d = Math.abs(c.x - f.x) + Math.max(0, c.y - f.y) * 0.8 - (c.v > 1 ? 3 : 0);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    if (!best || !this.rng.chance(0.55 + lv * 0.04)) return null;
+    const dx = best.x - f.x;
+    if (best.y - f.y > 1.4 && Math.abs(dx) < 2.5) return { mx: Math.sign(dx) * 0.6, my: 0, buttons: BTN_JUMP };
+    if (Math.abs(dx) > 0.3) return { mx: Math.sign(dx), my: 0, buttons: 0 };
+    return null;
+  }
+
   private ballMove(sim: Sim, f: Fighter, lv: number): InputState | null {
     const b = sim.ball;
     const t = this.target(sim, f);
@@ -474,6 +501,11 @@ export class CpuController {
         }
         if (guard) return guard;
       }
+    }
+    // 賞金首：賞金首（相手）が近くにいれば、その人をねらう
+    if (rules.mode === 'bounty' && sim.bountyHolder >= 0 && sim.bountyHolder !== f.slot) {
+      const h = sim.fighter(sim.bountyHolder);
+      if (h && h.alive && !h.out && !sim.sameTeam(h, f) && Math.abs(h.x - f.x) + Math.abs(h.y - f.y) < 9) return h;
     }
     // 金庫まもり：近くに相手がいなければ、相手の金庫をねらう
     if (rules.mode === 'vault' && sim.vaults.length === 2) {
