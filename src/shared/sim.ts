@@ -19,6 +19,7 @@ import {
   FX_WARPCD,
   FX_YAMI,
   FX_AWK,
+  FX_HEAVY,
   FX_CHARGED,
   FX_JOB_SHIFT,
   FX_CONFUSED,
@@ -115,7 +116,7 @@ const SNAPSHOT_KEYS = [
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
   'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'warpSlow', 'moveAim',
-  'leashT', 'leashBy', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'floatT',
+  'leashT', 'leashBy', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'dereCd', 'floatT', 'heavyT',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -243,6 +244,10 @@ export class Fighter {
   /** かまってちゃん（メンヘラ）：最後に攻撃を当ててからのフレーム数と、デレモードの残り時間 */
   lonely = 0;
   dere = 0;
+  /** デレモードの移動アップが、次に出るまでの残り時間 */
+  dereCd = 0;
+  /** 重い愛のハート（深夜のワンルーム）を拾って重くなっている残り時間 */
+  heavyT = 0;
   /** ハート風船（メンヘラ）のあと、ゆっくり落ちる残り時間 */
   floatT = 0;
   /** 無限スクロールを続けた回数 */
@@ -1684,7 +1689,7 @@ export class Sim {
   }
 
   private jump(f: Fighter): void {
-    f.vy = f.def.jumpV;
+    f.vy = f.def.jumpV * this.jumpMul(f);
     f.grounded = false;
     f.groundRef = -1;
     f.shortHopArmed = this.held(f, BTN_JUMP);
@@ -1706,7 +1711,7 @@ export class Sim {
       const wantJump = this.pressed(f, BTN_JUMP) || (f.flickY === 0 && inp.my > 0.7);
       if (wantJump && f.jumpsLeft > 0) {
         f.jumpsLeft--;
-        f.vy = d.airJumpV;
+        f.vy = d.airJumpV * this.jumpMul(f);
         f.fastFall = false;
         if (Math.abs(inp.mx) > 0.3) f.vx = inp.mx * d.airSpeed;
         this.setState(f, 'air');
@@ -1844,6 +1849,8 @@ export class Sim {
       dmg *= MENHERA.yamiDmg;
       kb *= MENHERA.yamiKb;
     }
+    // 赤い糸（メンヘラ）で相手とつながっている間は、攻撃力アップ
+    if (a.def.id === 'menhera' && this.fighters.some((v) => v !== a && v.leashT > 0 && v.leashBy === a.slot)) dmg *= MENHERA.threadMul;
     // 泣き落とし（メンヘラ）で気まずいと、攻撃力が下がる
     if (a.awkward > 0) dmg *= MENHERA.cry.mul;
     return { dmg, kb };
@@ -1858,13 +1865,16 @@ export class Sim {
       if (!wasYami && f.lonely >= MENHERA.lonely) this.events.push({ k: 'buff', s: f.slot });
     }
     if (f.dere > 0) f.dere--;
+    if (f.dereCd > 0) f.dereCd--;
+    if (f.heavyT > 0) f.heavyT--;
     if (f.awkward > 0) f.awkward--;
     if (f.floatT > 0 && (f.grounded || f.state === 'hitstun' || f.state === 'ledge')) f.floatT = 0;
     else if (f.floatT > 0) f.floatT--;
     if (f.leashT > 0) {
       const o = this.fighter(f.leashBy);
-      // つないだ人がいなくなった・自分が撃墜された・強くふっとばされたら、糸は切れる
-      if (!o || !o.alive || o.out || !f.alive || f.tumble) f.leashT = 0;
+      // つないだ人がいなくなった・自分が撃墜された・強くふっとばされた・つないだ人が場外に出たら、糸は切れる
+      // （つないだまま一緒に場外へ落ちて道連れにする使い方を防ぐ）
+      if (!o || !o.alive || o.out || !f.alive || f.tumble || this.outsideStage(o)) f.leashT = 0;
       else f.leashT--;
     }
     if (f.callT > 0) {
@@ -1874,6 +1884,53 @@ export class Sim {
       }
       if (--f.callT === 0) this.callBoom(f);
     }
+  }
+
+  /** 重い愛のハート（深夜のワンルームのギミック） */
+  heart: { x: number; y: number; vy: number; life: number } | null = null;
+
+  /** ジャンプの高さの倍率（重い愛のハートで重いと低い） */
+  private jumpMul(f: Fighter): number {
+    return f.heavyT > 0 ? MENHERA.heavy.jump : 1;
+  }
+
+  private updateHeart(at: number): void {
+    const H = MENHERA.heavy;
+    const m = this.stage.main;
+    if (at === 0) this.heart = { x: m.x1 + 1.5 + this.rng.next() * (m.x2 - m.x1 - 3), y: m.top + 9, vy: 0, life: H.life };
+    const h = this.heart;
+    if (!h) return;
+    if (--h.life <= 0) {
+      this.events.push({ k: 'poof', x: h.x, y: h.y + 0.5 });
+      this.heart = null;
+      return;
+    }
+    const py = h.y;
+    h.vy = Math.max(-8, h.vy - 18 * DT);
+    h.y += h.vy * DT;
+    if (h.x >= m.x1 && h.x <= m.x2 && py >= m.top && h.y <= m.top) {
+      h.y = m.top;
+      h.vy = 0;
+    }
+    for (const sp of this.stage.platforms) {
+      const p = platformAt(sp, this.frame);
+      if (h.x >= p.x1 && h.x <= p.x2 && py >= p.prevY - 0.001 && h.y <= p.y) {
+        h.y = p.y;
+        h.vy = 0;
+      }
+    }
+    const taker = this.fighters.find((v) => v.alive && !v.out && v.state !== 'grabbed' && circleHitsBox(h.x, h.y + 0.5, H.r, v));
+    if (taker) {
+      taker.heavyT = H.time;
+      this.events.push({ k: 'heavy', s: taker.slot, x: h.x, y: h.y + 0.6 });
+      this.heart = null;
+    }
+  }
+
+  /** 台の外（左右の端より外か、台の高さより下）にいるか */
+  private outsideStage(f: Fighter): boolean {
+    const m = this.stage.main;
+    return f.x < m.x1 - 0.2 || f.x > m.x2 + 0.2 || f.y < m.top - 0.8;
   }
 
   /** 鬼電の爆発：着信音でダメージとふっとばし（ガード中なら盾が減るだけ） */
@@ -2151,24 +2208,8 @@ export class Sim {
         }
         break;
       case 'room':
-        // 運命の赤い糸：ランダムな2人（チーム戦なら敵どうし）が、しばらく赤い糸でつながる（互いに離れられない）
-        if (at === 0 && !this.solo) {
-          const alive = this.fighters.filter((f) => f.alive && !f.out);
-          if (alive.length < 2) break;
-          const a = alive[Math.floor(this.rng.next() * alive.length)];
-          const others = alive.filter((f) => f !== a && !this.friendly(a.slot, f));
-          if (!others.length) break;
-          const b = others[Math.floor(this.rng.next() * others.length)];
-          for (const [x, y] of [
-            [a, b],
-            [b, a],
-          ] as const) {
-            x.leashT = MENHERA.fate;
-            x.leashBy = y.slot;
-            this.events.push({ k: 'poof', x: x.x, y: x.y + x.h });
-          }
-          this.events.push({ k: 'fate', s: a.slot, t: b.slot });
-        }
+        // 重い愛のハート：大きなハートが1つ、ランダムな場所に降ってくる。触れた人はしばらく重くなる
+        if (!this.solo) this.updateHeart(at);
         break;
       case 'arcade':
         // 床を走り抜けるスクーター
@@ -3002,6 +3043,8 @@ export class Sim {
     f.awkward = 0;
     f.lonely = 0;
     f.dere = 0;
+    f.dereCd = 0;
+    f.heavyT = 0;
     f.floatT = 0;
     f.absorbCharge = false;
     f.recentMoves = [];
@@ -3041,7 +3084,7 @@ export class Sim {
     if (this.pressed(f, BTN_JUMP)) {
       f.x = ex - side * 0.3;
       f.y = m.top + 0.05;
-      f.vy = f.def.jumpV;
+      f.vy = f.def.jumpV * this.jumpMul(f);
       f.ledgeSide = 0;
       f.ledgeCooldown = 30;
       f.grounded = false;
@@ -3507,16 +3550,21 @@ export class Sim {
       const att = this.fighter(from);
       if (att) {
         att.dealt += dmg;
-        // かまってちゃん（メンヘラ）：攻撃を当てたらデレモード
+        // かまってちゃん（メンヘラ）：攻撃を当てたらデレモード（移動アップは一度出たら約7秒は出ない）
         if (att.def.id === 'menhera') {
           att.lonely = 0;
-          att.dere = MENHERA.dere;
+          if (att.dereCd <= 0) {
+            att.dere = MENHERA.dere;
+            att.dereCd = MENHERA.dereCd;
+          }
         }
       }
     }
     // 体力制：ふっとびはダメージで大きくなりにくい（HPを削り切るのが主な撃墜方法）
     const kbDamage = rules.mode === 'stamina' ? Math.min(v.damage, STAMINA_KB_CAP) : v.damage;
-    const speed = ((base + (growth * KB_GROWTH_SCALE * kbDamage) / 100) * kbMul) / v.def.weight;
+    // 重い愛のハートで重いと、ふっとびにくい
+    const weight = v.def.weight * (v.heavyT > 0 ? MENHERA.heavy.weight : 1);
+    const speed = ((base + (growth * KB_GROWTH_SCALE * kbDamage) / 100) * kbMul) / weight;
     // 自転車（配達員）：耐久が残っていれば、弱い攻撃では降りずに少し減速するだけ（ダメージは受ける）
     if (v.bike > 0 && v.bikeHp > 0 && speed < BIKE.armorLimit && v.state !== 'grabbed') {
       v.bikeHp -= dmg;
@@ -4077,6 +4125,7 @@ export class Sim {
           (f.warpCd > 0 ? FX_WARPCD : 0) |
           (f.def.id === 'menhera' && f.lonely >= MENHERA.lonely ? FX_YAMI : 0) |
           (f.awkward > 0 ? FX_AWK : 0) |
+          (f.heavyT > 0 ? FX_HEAVY : 0) |
           (f.job << FX_JOB_SHIFT) |
           (f.buzz << 5),
       })),
@@ -4088,6 +4137,7 @@ export class Sim {
           ...(f.leashT > 0 ? [{ kind: 'leash' as const, x: f.x, y: f.y, owner: f.leashBy, life: f.leashT, dir: f.slot }] : []),
           ...(f.callT > 0 ? [{ kind: 'call' as const, x: f.x, y: f.y, owner: f.callBy, life: f.callT, dir: f.slot }] : []),
         ]),
+        ...(this.heart ? [{ kind: 'heart' as const, x: this.heart.x, y: this.heart.y, owner: -1, life: this.heart.life, dir: 0 }] : []),
       ],
       events: this.events,
       ended: this.ended,

@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { threebDef, type CharacterDef } from '../shared/characters';
 import type { Accessory, Costume, CostumeFx } from '../shared/costumes';
 import { moveOf } from '../shared/moves';
-import { FX_ARMOR, FX_AWK, FX_YAMI, FX_BIG, FX_BIKE, FX_CHARGED, FX_POWER, FX_SMALL, FX_SPEED, fxJob, type ViewFighter } from '../shared/types';
+import { FX_ARMOR, FX_AWK, FX_HEAVY, FX_YAMI, FX_BIG, FX_BIKE, FX_CHARGED, FX_POWER, FX_SMALL, FX_SPEED, fxJob, type ViewFighter } from '../shared/types';
 import { SIZE_REQ } from '../shared/sim';
 
 const FWD = -Math.PI / 2; // 腕・脚を前に向ける回転（x軸まわり）
@@ -2543,7 +2543,7 @@ export class FighterModel {
     const pulse = 0.5 + 0.5 * Math.sin(time * 10);
     // プロテイン（ひるまない）はオレンジ
     // メンヘラの病みモードは紫、泣き落としで気まずいときは青白く
-    const fxGlow = v.fx & FX_POWER ? 0x5a1010 : v.fx & FX_CHARGED ? 0x0a4a5a : v.fx & FX_ARMOR ? 0x5a2a00 : v.fx & FX_YAMI ? 0x3a0a5a : v.fx & FX_SPEED ? 0x10305a : v.fx & FX_AWK ? 0x1a2a3a : 0;
+    const fxGlow = v.fx & FX_POWER ? 0x5a1010 : v.fx & FX_CHARGED ? 0x0a4a5a : v.fx & FX_ARMOR ? 0x5a2a00 : v.fx & FX_YAMI ? 0x3a0a5a : v.fx & FX_SPEED ? 0x10305a : v.fx & FX_HEAVY ? 0x4a1030 : v.fx & FX_AWK ? 0x1a2a3a : 0;
     for (const m of this.mats) {
       m.emissive.setHex(flash ? 0x555555 : charging ? 0xffaa00 : poisoned ? 0x5a1a7a : helpless ? 0x220022 : fxGlow);
       m.emissiveIntensity = charging ? 0.12 + 0.1 * Math.sin(time * 30) : fxGlow && !flash && !poisoned ? 0.6 + 0.6 * pulse : 1;

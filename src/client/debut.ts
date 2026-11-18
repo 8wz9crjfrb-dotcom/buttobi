@@ -5,6 +5,7 @@ import { Sim, COUNTDOWN_FRAMES, type Fighter } from '../shared/sim';
 import { BTN_B, type GameEvent, type InputState, type MatchSetup, type ViewState } from '../shared/types';
 import type { GameRenderer } from './renderer';
 import type { Sfx } from './audio';
+import { threebDef } from '../shared/characters';
 
 /** 登場映像の中身（キャラごと） */
 export interface DebutDef {
@@ -20,6 +21,8 @@ export interface DebutDef {
   costumes: { id: string; label: string }[];
   /** 最初の暗い画面の吹き出し */
   intro: string;
+  /** 相手のキャラ（3B は仕事の番号も） */
+  foe: { charId: string; job?: number };
 }
 
 export const DEBUTS: DebutDef[] = [
@@ -37,6 +40,8 @@ export const DEBUTS: DebutDef[] = [
       { id: 'menhera-ur', label: 'UR　永遠の愛' },
     ],
     intro: '既読、まだ？',
+    // 相手は 3B のバンドマン
+    foe: { charId: 'threeb', job: 1 },
   },
 ];
 
@@ -93,7 +98,7 @@ export class DebutSession {
     this.setup = {
       players: [
         { slot: 0, name: def.name, charId: def.charId, cpu: false, cpuLevel: 1 },
-        { slot: 1, name: '相手', charId: 'guard', cpu: false, cpuLevel: 1 },
+        { slot: 1, name: '相手', charId: def.foe.charId, cpu: false, cpuLevel: 1 },
       ],
       stageId: def.stageId,
       rules: { mode: 'stock', stocks: 99, timeLimit: 0 },
@@ -138,6 +143,13 @@ export class DebutSession {
   private newSim(): Sim {
     const sim = new Sim(this.setup);
     while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+    // 相手：3B なら仕事を切り替える。技が当たったときに大きめにふっとぶよう、ダメージを溜めておく
+    const foe = sim.fighters[1];
+    if (foe.def.id === 'threeb' && this.def.foe.job) {
+      foe.job = this.def.foe.job;
+      foe.def = threebDef(foe.job);
+    }
+    foe.damage = 85;
     return sim;
   }
 
@@ -198,9 +210,10 @@ export class DebutSession {
         t1: 11,
         fresh: true,
         caption: moves[3],
-        init: (me, foe) => ((me.x = 0), (me.facing = 1), (foe.x = 8.6)),
-        input: (f) => [f === 6 ? press(0, 1) : N, N],
-        cam: (me) => ({ x: me.x + 0.5, y: me.y + 1.6, z: 7.5, lx: me.x, ly: me.y + 1.4 }),
+        init: (me, foe) => ((me.x = -2.5), (me.facing = 1), (foe.x = 8.6)),
+        // 上昇したら、ふわふわ降りながら横へ流れる（ゆっくり落ちるのが分かるように）
+        input: (f) => [f === 6 ? press(0, 1) : f > 30 ? { mx: 1, my: 0, buttons: 0 } : N, N],
+        cam: (me, _f, u) => ({ x: me.x + 0.3, y: me.y + 1.2, z: 8 + u * 0.5, lx: me.x + 0.3, ly: me.y + 1.0 }),
       },
       // 11〜15秒：衣装の早着替え（SR・SR・SSR）
       { t0: 11, t1: 15, fresh: true, init: (me, foe) => ((me.x = 0), (me.facing = 1), (foe.x = 8.6)), cam: (me, _f, u) => ({ ...close(me, 5.2 - u * 0.6, 1.0), x: me.x + Math.sin(u * 3) * 0.8 }) },
@@ -243,6 +256,9 @@ export class DebutSession {
       for (const e of this.sim.events) {
         events.push(e);
         if (e.k === 'hit' || e.k === 'ring' || e.k === 'cry') this.slowUntil = t + 0.3;
+        // 当たった音・着信音（映像なので、試合の効果音の代わりにここで鳴らす）
+        if (e.k === 'hit') this.sfx.hit(Math.min(20, e.p));
+        if (e.k === 'ring') this.sfx.notify();
       }
     }
     const u = Math.min(1, (t - shot.t0) / Math.max(0.1, shot.t1 - shot.t0));
@@ -263,12 +279,13 @@ export class DebutSession {
       if (!c) return;
       this.renderer.setCostume(0, c.id);
       this.whiteFlash(step === 3 ? 0.5 : 0.25);
-      this.sfx.poof();
+      // 着替えの音：きらっとした音（UR はガチャの当たりの音）
+      if (step === 3) this.sfx.gachaOpen(5);
+      else this.sfx.heal();
       this.setCaption(c.label, step === 3);
       if (step === 3) {
         // UR：勝ちポーズ（ハート）で、まわりを暗くする
         this.renderer.celebrate(0);
-        this.sfx.buff();
       }
     }
   }

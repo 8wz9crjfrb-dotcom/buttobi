@@ -139,26 +139,78 @@ check('隠していても、キャラとステージの中身はある', getChar
   check('かまってちゃん：攻撃を当てるとデレモード（少し速い）に戻る', f.lonely < MENHERA.lonely && f.dere > 0 && Math.abs(p.speedMul(f) - MENHERA.dereSpeed) < 1e-9, `lonely=${f.lonely} dere=${f.dere}`);
 }
 
-// ---- 深夜のワンルームのギミック：運命の赤い糸（2人がしばらくつながる）
+// ---- 深夜のワンルームのギミック：重い愛のハート（1つ降ってきて、触れた人が重くなる）
 {
   const players = ['guard', 'thief', 'hacker'].map((c, i) => ({ slot: i, name: 'p' + i, charId: c, cpu: false, cpuLevel: 1 }));
   const sim = new Sim({ players, stageId: 'room', rules: { mode: 'stock', stocks: 3, timeLimit: 300, gimmicks: true }, seed: 4 });
-  let tied: number[] = [];
-  for (let i = 0; i < 60 * 30 && !tied.length; i++) {
+  let got = -1;
+  let fell = false;
+  for (let i = 0; i < 60 * 40 && got < 0; i++) {
     sim.step(new Map());
-    if (sim.events.some((e) => e.k === 'fate')) tied = sim.fighters.filter((f) => f.leashT > 0).map((f) => f.slot);
+    if (sim.heart) {
+      fell = true;
+      // 降りてきたハートを、1人の足元へ動かす
+      const f = sim.fighters[0];
+      if (sim.heart.vy === 0) {
+        sim.heart.x = f.x;
+        sim.heart.y = f.y;
+      }
+    }
+    const e = sim.events.find((x) => x.k === 'heavy');
+    if (e && e.k === 'heavy') got = e.s;
   }
-  check('運命の赤い糸：ランダムな2人がつながる', tied.length === 2, `${tied.join('と')}`);
-  const [a, b] = tied.map((s2) => sim.fighter(s2)!);
-  check('運命の赤い糸：おたがいにつながっている', a.leashBy === b.slot && b.leashBy === a.slot);
-  let far = 0;
-  for (let i = 0; i < 120; i++) {
-    sim.step(new Map([[a.slot, { mx: -1, my: 0, buttons: 0 }], [b.slot, { mx: 1, my: 0, buttons: 0 }]]));
-    far = Math.max(far, Math.hypot(a.x - b.x, a.y - b.y));
+  check('重い愛のハート：大きなハートが1つ降ってくる', fell);
+  check('重い愛のハート：触れた人が重くなる', got === 0 && sim.fighters[0].heavyT > 0 && !sim.heart, `slot ${got}`);
+  // 重いとジャンプが低い・ふっとびにくい
+  const f = sim.fighters[0];
+  const g = sim.fighters[1];
+  for (const x of [f, g]) {
+    x.x = x === f ? -3 : 3;
+    x.y = 0;
+    x.vy = 0;
+    x.grounded = true;
+    x.damage = 50;
   }
-  check('運命の赤い糸：反対へ走っても離れられない', far <= MENHERA.leashLen + 0.05, `最大${far.toFixed(2)}m`);
-  for (let i = 0; i < MENHERA.fate; i++) sim.step(new Map());
-  check('運命の赤い糸：約5秒で切れる', a.leashT === 0 && b.leashT === 0);
+  sim.step(new Map());
+  sim.step(new Map([[0, { mx: 0, my: 0, buttons: 4 }], [1, { mx: 0, my: 0, buttons: 4 }]]));
+  check('重い愛のハート：重いとジャンプが低い', f.vy < g.vy * 0.85, `${f.vy.toFixed(1)} と ${g.vy.toFixed(1)}`);
+}
+
+// ---- 赤い糸：つながっている間は攻撃力1.2倍・自分が台の外に出ると切れる
+{
+  const sim = make('menhera', 'guard');
+  place(sim, 2.5);
+  const p = sim as unknown as Priv;
+  const me = sim.fighters[0];
+  me.lonely = 0;
+  const before = p.powerMul(me).dmg;
+  run(sim, 30, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+  me.lonely = 0;
+  check('赤い糸：つながっている間は攻撃力1.2倍', Math.abs(p.powerMul(me).dmg / before - MENHERA.threadMul) < 1e-9, `${(p.powerMul(me).dmg / before).toFixed(2)}倍`);
+  // 自分が台の外へ出ると切れる（一緒に落ちて道連れにできない）
+  me.x = sim.stage.main.x2 + 2;
+  me.y = -2;
+  run(sim, 2);
+  check('赤い糸：自分が台の外に出ると切れる', sim.fighters[1].leashT === 0);
+}
+
+// ---- デレモードの移動アップは約7秒に1回
+{
+  const sim = make('menhera', 'guard');
+  const me = sim.fighters[0];
+  const hit = () => {
+    place(sim, 1.0);
+    run(sim, 20, at(0, { mx: 0, my: 0, buttons: 1 }));
+  };
+  hit();
+  const first = me.dere > 0;
+  run(sim, MENHERA.dere + 5);
+  hit();
+  check('デレモード：当てると移動アップ', first);
+  check('デレモード：一度出たら約7秒は出ない', me.dere === 0 && me.dereCd > 0, `dere=${me.dere} cd=${me.dereCd}`);
+  run(sim, me.dereCd + 2);
+  hit();
+  check('デレモード：約7秒たつと、また出る', me.dere > 0);
 }
 
 // ---- CPUだけで最後まで遊べる・勝率の目安

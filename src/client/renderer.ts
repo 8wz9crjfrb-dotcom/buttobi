@@ -1122,14 +1122,10 @@ export class GameRenderer {
       if (f) this.props.showText(e.b ? `賞金首撃破！ +${e.p}` : `+${e.p}`, e.b ? '#ff4a5a' : '#ffd84a', f.x, f.y + 2.2, e.b, e.b ? 70 : 45);
       return;
     }
-    if (e.k === 'fate') {
-      // 運命の赤い糸：つながった2人の間にハートを出す
-      const a = view.fighters.find((f) => f.slot === e.s);
-      const b = view.fighters.find((f) => f.slot === e.t);
-      if (a && b) {
-        this.props.showText('運命の赤い糸！', '#ff3b6c', (a.x + b.x) / 2, Math.max(a.y, b.y) + 2.6, true, 80);
-        for (const f of [a, b]) this.spawn(this.ringGeo, 0xff3b6c, f.x, f.y + 1, 0, 0, 0.3, 16, 0.1);
-      }
+    if (e.k === 'heavy') {
+      // 重い愛のハートを拾った：ピンクの輪と「重い…！」
+      this.spawn(this.ringGeo, 0xff4f9a, e.x, e.y, 0, 0, 0.4, 18, 0.1);
+      this.props.showText('愛が重い…！', '#ff7ab8', e.x, e.y + 1.6, false, 60);
       return;
     }
     if (e.k === 'ring') {
@@ -1387,7 +1383,7 @@ export class GameRenderer {
       lab: 'AIの光線が来る！',
       gym: '清掃タイム！床がすべる',
       livebar: '照明が落ちる！',
-      room: '運命の赤い糸！（だれか2人がつながる）',
+      room: '重い愛のハートが降ってくる！（さわると重くなる）',
     };
     if (e.h === 'livebar') this.blackoutAt = this.time + 1.5;
     // 画面の上の端で切れないよう、今のカメラで「画面の上から約1/4」の高さに出す（ステージより低くはしない）

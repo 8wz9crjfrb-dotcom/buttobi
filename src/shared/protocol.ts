@@ -183,7 +183,7 @@ export interface EncodedState {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const SHOT_KINDS = ['text', 'bullet', 'mail', 'malware', 'coin', 'thanks', 'badge', 'stone', 'bag', 'orb', 'gold', 'spark', 'packet', 'laser', 'comment', 'notif', 'capsule', 'scooter', 'beam', 'thread', 'phone'];
-const ENTITY_KINDS: ViewEntity['kind'][] = ['wall', 'trap', 'popup', 'food', 'decoy', 'drone', 'item', 'leash', 'call'];
+const ENTITY_KINDS: ViewEntity['kind'][] = ['wall', 'trap', 'popup', 'food', 'decoy', 'drone', 'item', 'leash', 'call', 'heart'];
 
 export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
   return {
