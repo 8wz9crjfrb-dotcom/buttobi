@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { CLOSE, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { getStage, platformAt, type StageDef } from './stages';
 import {
@@ -17,6 +17,8 @@ import {
   FX_BIG,
   FX_SMALL,
   FX_WARPCD,
+  FX_YAMI,
+  FX_AWK,
   FX_CHARGED,
   FX_JOB_SHIFT,
   FX_CONFUSED,
@@ -77,6 +79,9 @@ export interface Projectile {
   returning: boolean;
   /** 貫通する飛び道具（ブーメラン）が当てた相手 */
   hits: number[];
+  /** 赤い糸・鬼電（メンヘラ） */
+  leash?: number;
+  call?: number;
   /** 当たっても消えずに進む（ステージギミック） */
   pierce?: boolean;
 }
@@ -110,6 +115,7 @@ const SNAPSHOT_KEYS = [
   'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
   'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'warpSlow', 'moveAim',
+  'leashT', 'leashBy', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'floatT',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -226,6 +232,19 @@ export class Fighter {
   bikeHitCd: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
   /** 左右の操作が逆になっている残り時間 */
   confused = 0;
+  /** 赤い糸（メンヘラ）でつながれている残り時間と、つないだ人 */
+  leashT = 0;
+  leashBy = -1;
+  /** 鬼電（メンヘラ）の印：爆発までの残り時間と、印を付けた人 */
+  callT = 0;
+  callBy = -1;
+  /** 泣き落とし（メンヘラ）で「気まずい」（攻撃力が下がる）残り時間 */
+  awkward = 0;
+  /** かまってちゃん（メンヘラ）：最後に攻撃を当ててからのフレーム数と、デレモードの残り時間 */
+  lonely = 0;
+  dere = 0;
+  /** ハート風船（メンヘラ）のあと、ゆっくり落ちる残り時間 */
+  floatT = 0;
   /** 無限スクロールを続けた回数 */
   chain = 0;
   /** 次の動画へで方向転換したか */
@@ -1333,6 +1352,7 @@ export class Sim {
     if (f.jobCd > 0) f.jobCd--;
     if (f.warpCd > 0) f.warpCd--;
     if (f.warpSlow > 0) f.warpSlow--;
+    this.menheraTimers(f);
     // 必殺技の待ち時間は、その技を出し終わってから減り始める
     for (const id of ['nspecial', 'sspecial', 'dspecial', 'uspecial'] as const) {
       const k = SPECIAL_CD[id];
@@ -1495,6 +1515,8 @@ export class Sim {
       f.vy -= g * DT;
       const maxFall = f.state === 'hitstun' ? d.fallMax * 2 : f.fastFall ? d.fallMax * 1.5 : d.fallMax;
       if (f.vy < -maxFall) f.vy = -maxFall;
+      // ハート風船（メンヘラ）のあとは、ゆっくり落ちる
+      if (f.floatT > 0 && f.state !== 'hitstun' && f.vy < -MENHERA.floatFall) f.vy = -MENHERA.floatFall;
       if (f.shortHopArmed && !this.held(f, BTN_JUMP) && f.vy > 0 && f.stateTime < 10) {
         f.vy *= 0.55;
         f.shortHopArmed = false;
@@ -1517,6 +1539,7 @@ export class Sim {
     const prevY = f.y;
     f.x += f.vx * DT;
     f.y += f.vy * DT;
+    this.applyLeash(f);
     this.collide(f, prevX, prevY, inp);
   }
 
@@ -1542,6 +1565,8 @@ export class Sim {
   private speedMul(f: Fighter): number {
     let m = f.speedBuff > 0 ? SPEEDUP.speed : 1;
     if (f.def.id === 'courier') m *= 1 + Math.min(0.25, f.runTime / 240);
+    // デレモード（メンヘラ）：少し速い
+    if (f.dere > 0) m *= MENHERA.dereSpeed;
     return m;
   }
 
@@ -1814,7 +1839,100 @@ export class Sim {
       dmg *= 2.5;
       kb *= 1.8;
     }
+    // かまってちゃん（メンヘラ）：病みモード中は強い
+    if (a.def.id === 'menhera' && a.lonely >= MENHERA.lonely) {
+      dmg *= MENHERA.yamiDmg;
+      kb *= MENHERA.yamiKb;
+    }
+    // 泣き落とし（メンヘラ）で気まずいと、攻撃力が下がる
+    if (a.awkward > 0) dmg *= MENHERA.cry.mul;
     return { dmg, kb };
+  }
+
+  /** メンヘラの技と特性の時間を進める（かまってちゃん・赤い糸・鬼電の爆発・気まずい・ハート風船） */
+  private menheraTimers(f: Fighter): void {
+    if (f.def.id === 'menhera' && f.alive) {
+      const wasYami = f.lonely >= MENHERA.lonely;
+      if (f.lonely < MENHERA.lonely) f.lonely++;
+      // 病みモードになった瞬間
+      if (!wasYami && f.lonely >= MENHERA.lonely) this.events.push({ k: 'buff', s: f.slot });
+    }
+    if (f.dere > 0) f.dere--;
+    if (f.awkward > 0) f.awkward--;
+    if (f.floatT > 0 && (f.grounded || f.state === 'hitstun' || f.state === 'ledge')) f.floatT = 0;
+    else if (f.floatT > 0) f.floatT--;
+    if (f.leashT > 0) {
+      const o = this.fighter(f.leashBy);
+      // つないだ人がいなくなった・自分が撃墜された・強くふっとばされたら、糸は切れる
+      if (!o || !o.alive || o.out || !f.alive || f.tumble) f.leashT = 0;
+      else f.leashT--;
+    }
+    if (f.callT > 0) {
+      if (!f.alive) {
+        f.callT = 0;
+        return;
+      }
+      if (--f.callT === 0) this.callBoom(f);
+    }
+  }
+
+  /** 鬼電の爆発：着信音でダメージとふっとばし（ガード中なら盾が減るだけ） */
+  private callBoom(v: Fighter): void {
+    const o = this.fighter(v.callBy);
+    const c = MENHERA.call;
+    this.events.push({ k: 'ring', x: v.x, y: v.y + v.h + 0.3, s: v.slot });
+    if (!o || v.invuln > 0 || v.state === 'grabbed') return;
+    if (v.state === 'shield') {
+      v.shield -= c.dmg * 1.3;
+      this.events.push({ k: 'shield', x: v.x, y: v.y + v.h / 2 });
+      if (v.shield <= 0) this.breakShield(v);
+      return;
+    }
+    const pm = this.powerMul(o);
+    const dir = v.x >= o.x ? 1 : -1;
+    this.knock(v, dir, c.dmg * pm.dmg, c.base, c.growth, c.angle, pm.kb, o.slot);
+    v.hitlag = 6;
+    this.events.push({ k: 'hit', x: v.x, y: v.y + v.h, p: c.dmg, s: v.slot, a: o.slot });
+  }
+
+  /** 赤い糸：つないだ人から一定の距離より遠くへは行けない（離れる向きの勢いは消える） */
+  private applyLeash(f: Fighter): void {
+    if (f.leashT <= 0 || f.state === 'grabbed' || f.state === 'ledge') return;
+    const o = this.fighter(f.leashBy);
+    if (!o) return;
+    const dx = f.x - o.x;
+    const dy = f.y - o.y;
+    const d = Math.hypot(dx, dy);
+    const len = MENHERA.leashLen;
+    if (d <= len || d < 0.001) return;
+    const nx = dx / d;
+    const ny = dy / d;
+    f.x = o.x + nx * len;
+    f.y = o.y + ny * len;
+    const out = f.vx * nx + f.vy * ny;
+    if (out > 0) {
+      f.vx -= out * nx;
+      f.vy -= out * ny;
+    }
+  }
+
+  /** 泣き落とし：周りの相手を「気まずい」状態にする（攻撃力ダウン）。ガードで防げる */
+  private cry(f: Fighter, md: MoveDef): void {
+    this.events.push({ k: 'cry', x: f.x, y: f.y + f.h * 0.7, s: f.slot });
+    const pm = this.powerMul(f);
+    for (const v of this.fighters) {
+      if (v === f || !v.alive || v.invuln > 0 || this.friendly(f.slot, v)) continue;
+      if (Math.hypot(v.x - f.x, v.y + v.h / 2 - (f.y + f.h / 2)) > MENHERA.cry.range) continue;
+      if (v.state === 'shield') {
+        this.events.push({ k: 'shield', x: v.x, y: v.y + v.h / 2 });
+        continue;
+      }
+      if (this.tryCounter(v, f, md.dmg * pm.dmg)) continue;
+      const dir = v.x >= f.x ? 1 : -1;
+      this.knock(v, dir, md.dmg * pm.dmg, md.base, md.growth, md.angle, pm.kb, f.slot);
+      v.awkward = MENHERA.cry.time;
+      this.events.push({ k: 'hit', x: v.x, y: v.y + v.h / 2, p: md.dmg, s: v.slot, a: f.slot });
+    }
   }
 
   /** ガチャを引く：レア度 0=大外れ 1=回復 2=N 3=R 4=SR 5=SSR（天井つき） */
@@ -2394,6 +2512,18 @@ export class Sim {
             this.events.push({ k: 'buff', s: f.slot });
           }
           break;
+        case 'balloon':
+          // ハート風船：ふわっと上昇。上昇のあとはしばらくゆっくり落ちる
+          f.vy = md.riseV ?? 13;
+          f.vx = inp.mx * 2.5;
+          f.grounded = false;
+          f.groundRef = -1;
+          f.fastFall = false;
+          f.floatT = (md.startup + md.active + md.end) + MENHERA.float;
+          break;
+        case 'cry':
+          this.cry(f, md);
+          break;
         case 'redirect':
           f.vy = md.riseV ?? 15;
           f.vx = 0;
@@ -2671,6 +2801,8 @@ export class Sim {
       age: 0,
       returning: false,
       hits: [],
+      leash: spec.leash,
+      call: spec.call,
     });
     this.events.push({ k: 'shot', s: f.slot });
   }
@@ -2845,6 +2977,12 @@ export class Sim {
     f.powerBuff = 0;
     f.bike = 0;
     f.confused = 0;
+    f.leashT = 0;
+    f.callT = 0;
+    f.awkward = 0;
+    f.lonely = 0;
+    f.dere = 0;
+    f.floatT = 0;
     f.absorbCharge = false;
     f.recentMoves = [];
     f.learnHits = f.learnHits.map(() => 0);
@@ -3347,7 +3485,14 @@ export class Sim {
     v.damage = Math.min(999, v.damage + dmg);
     if (from >= 0 && from !== v.slot) {
       const att = this.fighter(from);
-      if (att) att.dealt += dmg;
+      if (att) {
+        att.dealt += dmg;
+        // かまってちゃん（メンヘラ）：攻撃を当てたらデレモード
+        if (att.def.id === 'menhera') {
+          att.lonely = 0;
+          att.dere = MENHERA.dere;
+        }
+      }
     }
     // 体力制：ふっとびはダメージで大きくなりにくい（HPを削り切るのが主な撃墜方法）
     const kbDamage = rules.mode === 'stamina' ? Math.min(v.damage, STAMINA_KB_CAP) : v.damage;
@@ -3607,6 +3752,15 @@ export class Sim {
             // 飛び道具のひるみは半分
             if (v.state === 'hitstun') v.hitstun = Math.max(1, Math.round(v.hitstun * SHOT_HITSTUN));
             if (p.confuse > 0) v.confused = Math.max(v.confused, p.confuse);
+            // 赤い糸：つながる。鬼電：着信中の印（すでに印があれば付け直さない）
+            if (p.leash) {
+              v.leashT = p.leash;
+              v.leashBy = p.owner;
+            }
+            if (p.call && v.callT <= 0) {
+              v.callT = p.call;
+              v.callBy = p.owner;
+            }
             if (p.poison > 0) {
               v.poison = Math.max(v.poison, p.poison);
               v.poisonFrom = p.owner;
@@ -3901,11 +4055,20 @@ export class Sim {
           (f.armor > 0 ? FX_ARMOR : 0) |
           (f.size === 1 ? FX_BIG : f.size === 2 ? FX_SMALL : 0) |
           (f.warpCd > 0 ? FX_WARPCD : 0) |
+          (f.def.id === 'menhera' && f.lonely >= MENHERA.lonely ? FX_YAMI : 0) |
+          (f.awkward > 0 ? FX_AWK : 0) |
           (f.job << FX_JOB_SHIFT) |
           (f.buzz << 5),
       })),
       projectiles: this.projectiles.map((p) => ({ x: p.x, y: p.y, owner: p.owner, kind: p.kind })),
-      entities: this.entities.map((e) => ({ kind: e.kind, x: e.x, y: e.y, owner: e.owner, life: e.life, dir: e.dir })),
+      entities: [
+        ...this.entities.map((e) => ({ kind: e.kind, x: e.x, y: e.y, owner: e.owner, life: e.life, dir: e.dir })),
+        // 赤い糸・鬼電の印（メンヘラ）：画面に出すため、つながれた人・付けられた人ごとに足す
+        ...this.fighters.flatMap((f) => [
+          ...(f.leashT > 0 ? [{ kind: 'leash' as const, x: f.x, y: f.y, owner: f.leashBy, life: f.leashT, dir: f.slot }] : []),
+          ...(f.callT > 0 ? [{ kind: 'call' as const, x: f.x, y: f.y, owner: f.callBy, life: f.callT, dir: f.slot }] : []),
+        ]),
+      ],
       events: this.events,
       ended: this.ended,
       horde: this.setup.rules.horde ? this.hordeDefeated : undefined,

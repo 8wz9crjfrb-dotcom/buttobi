@@ -171,6 +171,57 @@ export class PropRenderer {
       }
       case 'malware':
         return new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), new THREE.MeshToonMaterial({ color: 0x9b4fff, emissive: 0x4a1a8a }));
+      case 'thread': {
+        // 赤い糸（メンヘラ）：先に小さなハートが付いた糸
+        const g = new THREE.Group();
+        const line = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6), basic(0xff3b6c));
+        line.rotation.z = Math.PI / 2;
+        line.position.x = -0.45;
+        g.add(line);
+        const heart = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), basic(0xff3b6c));
+        heart.scale.set(1, 0.85, 0.5);
+        g.add(heart);
+        return g;
+      }
+      case 'phone': {
+        // 鬼電（メンヘラ）：着信中の光るスマホ
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.38, 0.05), new THREE.MeshToonMaterial({ color: 0xff9ec8 })));
+        const screen = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.32, 0.01), basic(0xbfe8ff));
+        screen.position.z = 0.03;
+        g.add(screen);
+        return g;
+      }
+      case 'leash': {
+        // 赤い糸のつながり：持ち主とつながれた人の間に伸ばす（長さは毎フレーム合わせる）
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 6), basic(0xff3b6c, { transparent: true, opacity: 0.9 })));
+        return g;
+      }
+      case 'call': {
+        // 鬼電の印：頭の上の「着信中」の吹き出し
+        const tex = canvasTexture(160, 96, (c) => {
+          c.fillStyle = '#ff3b6c';
+          c.beginPath();
+          c.roundRect(6, 6, 148, 64, 18);
+          c.fill();
+          c.beginPath();
+          c.moveTo(70, 68);
+          c.lineTo(80, 90);
+          c.lineTo(92, 68);
+          c.fill();
+          c.fillStyle = '#ffffff';
+          c.font = `bold 34px ${FONT}`;
+          c.textAlign = 'center';
+          c.fillText('着信中', 80, 50);
+        });
+        this.textures.push(tex);
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
+        sp.scale.set(1.0, 0.6, 1);
+        const g = new THREE.Group();
+        g.add(sp);
+        return g;
+      }
       case 'coin': {
         const m = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.06, 18), new THREE.MeshToonMaterial({ color: 0xffd23f, emissive: 0x7a5a00 }));
         m.rotation.x = Math.PI / 2;
@@ -561,6 +612,13 @@ export class PropRenderer {
       o.position.set(p.x, p.y, 0.2);
       if (p.kind === 'malware') o.rotation.set(time * 4, time * 5, 0);
       else if (p.kind === 'coin') o.rotation.y = time * 10;
+      else if (p.kind === 'phone') o.rotation.z = time * 12;
+      else if (p.kind === 'thread') {
+        // 糸は進む向きに向ける
+        const px = o.userData.px as number | undefined;
+        if (px !== undefined && Math.abs(p.x - px) > 0.001) o.rotation.y = p.x > px ? 0 : Math.PI;
+        o.userData.px = p.x;
+      }
       else if (p.kind === 'mail') o.rotation.z = Math.sin(time * 12) * 0.25;
       else if (p.kind === 'thanks') o.scale.setScalar(0.6);
       else if (p.kind === 'stone' || p.kind === 'gold') o.rotation.set(time * 3, time * 4, 0);
@@ -621,6 +679,30 @@ export class PropRenderer {
         });
         // 残り時間が少ないと点滅
         o.visible = e.life > 60 || Math.floor(time * 10) % 2 === 0;
+      } else if (e.kind === 'leash') {
+        // 赤い糸：持ち主の手元から、つながれた人の胸まで
+        const a = view.fighters.find((f) => f.slot === e.owner);
+        const b = view.fighters.find((f) => f.slot === e.dir);
+        if (!a || !b) {
+          o.visible = false;
+          continue;
+        }
+        const ax = a.x;
+        const ay = a.y + 1.0;
+        const bx = b.x;
+        const by = b.y + 0.9;
+        const len = Math.max(0.01, Math.hypot(bx - ax, by - ay));
+        o.position.set((ax + bx) / 2, (ay + by) / 2, 0.25);
+        o.rotation.z = Math.atan2(by - ay, bx - ax) - Math.PI / 2;
+        o.scale.set(1, len, 1);
+        // 切れそうになると点滅
+        o.visible = e.life > 45 || Math.floor(time * 10) % 2 === 0;
+      } else if (e.kind === 'call') {
+        // 着信中：頭の上でふるえ、爆発が近いほど速く点滅して大きくなる
+        const near = e.life < 50;
+        o.position.set(e.x + Math.sin(time * 40) * 0.05, e.y + 2.3, 0.6);
+        o.scale.setScalar(near ? 1.15 + Math.sin(time * 30) * 0.08 : 1);
+        o.visible = !near || Math.floor(time * 12) % 2 === 0;
       } else if (e.kind === 'trap') {
         o.position.set(e.x, e.y, 0);
         const led = o.getObjectByName('led');

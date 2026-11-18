@@ -21,6 +21,9 @@ export type ShotKind =
   | 'orb'
   | 'gold'
   | 'spark'
+  // メンヘラ
+  | 'thread'
+  | 'phone'
   // ステージギミック
   | 'packet'
   | 'laser'
@@ -58,6 +61,10 @@ export interface ShotSpec {
   homing?: number;
   /** 一定フレーム後に持ち主のところへ戻ってくる（ブーメラン） */
   boomerang?: number;
+  /** 赤い糸（メンヘラ）：当たった相手と、このフレーム数の間つながる */
+  leash?: number;
+  /** 鬼電（メンヘラ）：当たった相手に、このフレーム数のあとに爆発する印を付ける */
+  call?: number;
 }
 
 export type SpecialKind =
@@ -102,7 +109,10 @@ export type SpecialKind =
   | 'rush'
   | 'dive'
   | 'bottle'
-  | 'slide';
+  | 'slide'
+  // メンヘラ
+  | 'cry'
+  | 'balloon';
 
 export interface MoveDef {
   startup: number;
@@ -558,6 +568,71 @@ const SPECIALS: Record<string, Specials> = {
       helpless: true,
     },
   },
+  menhera: {
+    // 赤い糸：前に糸を投げる。当たった相手とつながり、離れられなくする
+    nspecial: {
+      startup: 9,
+      active: 1,
+      end: 16,
+      hitboxes: [],
+      dmg: 0,
+      base: 0,
+      growth: 0,
+      angle: 0,
+      air: true,
+      special: 'shot', cd: 150,
+      shots: [{ at: 0, kind: 'thread', x: 0.6, y: 1.0, vx: 14, vy: 0, life: 22, r: 0.35, dmg: 2, base: 2.5, growth: 1, angle: 30, leash: 240 }],
+    },
+    // 鬼電：スマホを投げる。当たった相手に「着信中」の印を付け、しばらくしてから爆発
+    sspecial: {
+      startup: 10,
+      active: 1,
+      end: 16,
+      hitboxes: [],
+      dmg: 0,
+      base: 0,
+      growth: 0,
+      angle: 0,
+      air: true,
+      special: 'shot', cd: 120,
+      shots: [{ at: 0, kind: 'phone', x: 0.6, y: 1.2, vx: 10, vy: 4, gravity: 16, life: 50, r: 0.32, dmg: 3, base: 3, growth: 2, angle: 40, call: 150 }],
+    },
+    // 泣き落とし：周りに涙を飛ばし、当たった相手の攻撃力を下げる
+    dspecial: { startup: 12, active: 1, end: 22, hitboxes: [], dmg: 2, base: 3, growth: 0, angle: 60, air: true, special: 'cry', cd: 360 },
+    // ハート風船：ふわっと上昇（真上の相手に当たる）。上昇のあとはゆっくり落ちる
+    uspecial: {
+      startup: 4,
+      active: 22,
+      end: 6,
+      hitboxes: [{ x: 0, y: 1.9, r: 0.8 }],
+      dmg: 4,
+      base: 5,
+      growth: 5,
+      angle: 80,
+      air: true,
+      special: 'balloon',
+      riseV: 15.5,
+      helpless: true,
+    },
+  },
+};
+
+/**
+ * メンヘラ：かまってちゃん（攻撃を当てずにいると病みモード、当てるとデレモード）、赤い糸、鬼電、泣き落とし、ハート風船
+ * lonely = 病みモードになるまで（フレーム）、yami = 病みモードの攻撃力・ふっとばし力、dere = デレモードの時間と移動の速さ、
+ * leashLen = 赤い糸の長さ、call = 鬼電の爆発、cry = 泣き落とし（範囲・時間・相手の攻撃力の倍率）、float = ハート風船のあとゆっくり落ちる時間と落ちる速さ
+ */
+export const MENHERA = {
+  lonely: 180,
+  yamiDmg: 1.25,
+  yamiKb: 1.1,
+  dere: 180,
+  dereSpeed: 1.1,
+  leashLen: 3.5,
+  call: { dmg: 11, base: 7, growth: 8, angle: 70 },
+  cry: { range: 3, time: 240, mul: 0.8 },
+  float: 60,
+  floatFall: 3,
 };
 
 // 3B：下Bのジョブチェンジで、美容師（0）・バンドマン（1）・バーテンダー（2）の必殺技に切り替わる

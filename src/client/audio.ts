@@ -156,6 +156,7 @@ export class Sfx {
       ai: [[440, 554, 659, 880, 1109], 'sine', 95],
       trainer: [[392, 392, 523, 659, 784], 'square', 110],
       threeb: [[622, 740, 932, 831, 1245], 'sawtooth', 85],
+      menhera: [[988, 880, 784, 880, 1319], 'sine', 110],
     };
     const [notes, type, gap] = J[charId] ?? J.guard;
     notes.forEach((f, i) => setTimeout(() => this.tone(f, i === notes.length - 1 ? 0.35 : 0.12, type, 0.12), i * gap));
@@ -186,7 +187,7 @@ export class Sfx {
 // ---------------------------------------------------------------------------
 // BGM（Web Audio でその場で組み立てるオリジナル曲。音声ファイルは使わない）
 
-export type TrackId = 'menu' | 'plain' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym' | 'livebar';
+export type TrackId = 'menu' | 'plain' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym' | 'livebar' | 'room';
 
 interface Track {
   bpm: number;
@@ -213,6 +214,8 @@ const TRACKS: Record<TrackId, Track> = {
   // データセンター屋上：夜景の疾走感（A短調 i-VI-VII-v）
   rooftop: { bpm: 128, root: 45, chords: [[0, 3, 7], [8, 12, 15], [10, 14, 17], [7, 10, 14]], scale: MINOR, drums: 'drive', seed: 53, lead: 'sawtooth' },
   // 夜のライブバー：大人っぽいジャズ寄りのグルーヴ（E♭のドリアン i-IV-VII-iv）
+  // 深夜のワンルーム：かわいくて少しさみしい（Eマイナー i-VI-III-VII）
+  room: { bpm: 96, root: 52, chords: [[0, 3, 7], [8, 12, 15], [3, 7, 10], [10, 14, 17]], scale: MINOR, drums: 'half', seed: 131, lead: 'sine' },
   livebar: { bpm: 104, root: 51, chords: [[0, 3, 7, 10], [5, 9, 12], [10, 14, 17], [5, 8, 12]], scale: DORIAN, drums: 'half', seed: 113, lead: 'triangle' },
   // 24時間ジム：力強く熱い（F音のドリアン i-VII-VI-VII）
   gym: { bpm: 136, root: 41, chords: [[0, 3, 7], [10, 14, 17], [8, 12, 15], [10, 14, 17]], scale: DORIAN, drums: 'drive', seed: 101, lead: 'sawtooth' },

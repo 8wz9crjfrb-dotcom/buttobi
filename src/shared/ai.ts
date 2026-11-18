@@ -297,6 +297,17 @@ export class CpuController {
           if (near && t.grounded && adx > 1.4 && adx < 3.6 && this.rng.chance(skill * 0.3)) return { mx: dir, my: 0, buttons: BTN_B };
         }
         break;
+      case 'menhera': {
+        // 赤い糸で逃げられなくして、鬼電の印を付ける。近くに来たら泣き落とし
+        const tf = t as Partial<Fighter>;
+        if (f.cdD === 0 && near && adx < 2.6 && !(tf.awkward ?? 0) && this.rng.chance(skill * 0.35)) return { mx: 0, my: -1, buttons: BTN_B };
+        if (f.cdN === 0 && near && adx > 1.8 && adx < 4.6 && !(tf.leashT ?? 0) && this.rng.chance(skill * 0.2)) {
+          if (dir !== f.facing) return { mx: dir, my: 0, buttons: 0 };
+          return { mx: 0, my: 0, buttons: BTN_B };
+        }
+        if (f.cdS === 0 && near && adx > 2.5 && adx < 7 && !(tf.callT ?? 0) && this.rng.chance(skill * 0.2)) return { mx: dir, my: 0, buttons: BTN_B };
+        break;
+      }
       case 'trainer':
         // プロテインは近くに相手がいるときに飲む。ガードしている相手や近い相手にはタックル。
         // 上にいる相手にはマッスルジャンプ。近ければダンベルカールを溜めて殴る

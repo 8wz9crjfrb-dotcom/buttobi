@@ -513,6 +513,8 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'vbreak') sfx.boom();
     else if (e.k === 'bpt') (e.b ? sfx.goal() : sfx.buff());
     else if (e.k === 'bnew') sfx.notify();
+    else if (e.k === 'ring') sfx.notify();
+    else if (e.k === 'cry') sfx.poof();
     else if (e.k === 'coin' && (e.s === mySlot || e.v > 1)) sfx.beep(true);
     else if (e.k === 'cdrop') sfx.poof();
     else if (e.k === 'kick') sfx.kick(e.p);

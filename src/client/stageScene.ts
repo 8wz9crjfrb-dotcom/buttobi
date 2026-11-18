@@ -58,6 +58,9 @@ export function buildStageScene(stage: StageDef, quality: Quality): BuiltStage {
     case 'livebar':
       buildLivebar(kit);
       break;
+    case 'room':
+      buildRoom(kit);
+      break;
   }
   return kit.finish();
 }
@@ -1862,4 +1865,158 @@ function buildLivebar(kit: Kit): void {
     }
   });
   kit.particles({ count: high ? 50 : 20, x: [cx - 18, cx + 18], y: [m.top, m.top + 12], z: [-8, 1], color: [th.accentA, th.accentB, 0xffffff], size: 0.12, vy: 0.2, wobble: 0.5, opacity: 0.8 });
+}
+
+/** 深夜のワンルーム（メンヘラ）：夜の窓・ベッド・光るスマホと通知・ぬいぐるみ・ガーランドライト */
+function buildRoom(kit: Kit): void {
+  const { cx, w, m, rnd, high } = kit;
+  const th = kit.stage.theme;
+  // 奥の壁：小さなハート柄の壁紙
+  const paper = kit.tex(128, 128, (g) => {
+    g.fillStyle = '#2a1638';
+    g.fillRect(0, 0, 128, 128);
+    g.fillStyle = '#3a1f4a';
+    for (const [x, y] of [
+      [24, 28],
+      [88, 60],
+      [40, 100],
+      [104, 116],
+    ]) {
+      g.beginPath();
+      g.arc(x - 5, y, 6, 0, Math.PI * 2);
+      g.arc(x + 5, y, 6, 0, Math.PI * 2);
+      g.moveTo(x - 11, y + 2);
+      g.lineTo(x, y + 14);
+      g.lineTo(x + 11, y + 2);
+      g.fill();
+    }
+  }, [12, 5]);
+  kit.plane(130, 50, kit.toon(0xffffff, { map: paper }), cx, 10, -14);
+  // 窓：夜の街と月（カーテンつき）
+  const night = kit.tex(256, 160, (g) => {
+    const gr = g.createLinearGradient(0, 0, 0, 160);
+    gr.addColorStop(0, '#0a0820');
+    gr.addColorStop(1, '#3a1a4a');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 256, 160);
+    g.fillStyle = '#fff4c8';
+    g.beginPath();
+    g.arc(196, 40, 18, 0, Math.PI * 2);
+    g.fill();
+    for (let i = 0; i < 40; i++) {
+      g.fillStyle = 'rgba(255,255,255,0.8)';
+      g.fillRect(rnd() * 256, rnd() * 80, 1.5, 1.5);
+    }
+    for (let x = 0; x < 256; x += 22) {
+      const h = 30 + rnd() * 50;
+      g.fillStyle = '#150f26';
+      g.fillRect(x, 160 - h, 20, h);
+      for (let y = 160 - h + 6; y < 156; y += 10) {
+        for (let k = 0; k < 2; k++) {
+          if (rnd() < 0.45) {
+            g.fillStyle = rnd() < 0.5 ? '#ffd27a' : '#ff9ec8';
+            g.fillRect(x + 4 + k * 8, y, 4, 4);
+          }
+        }
+      }
+    }
+  });
+  const wx = cx - 10;
+  kit.plane(12, 7.5, kit.basic(0xffffff, { map: night }), wx, m.top + 8, -13.8);
+  kit.box(12.6, 0.3, 0.3, kit.toon(0xf2e6ee), wx, m.top + 11.8, -13.6);
+  kit.box(12.6, 0.3, 0.3, kit.toon(0xf2e6ee), wx, m.top + 4.2, -13.6);
+  kit.box(0.2, 7.6, 0.2, kit.toon(0xf2e6ee), wx, m.top + 8, -13.6);
+  // 左右に寄せたカーテン
+  for (const sd of [-1, 1]) kit.box(1.3, 8.4, 0.3, kit.toon(0xff9ec8), wx + sd * 6.8, m.top + 7.9, -13.3);
+  // ガーランドライト（ゆっくり明るさが変わる）
+  const bulbs: THREE.Mesh[] = [];
+  for (let i = 0; i < 26; i++) {
+    const x = cx - 24 + i * 1.9;
+    const y = m.top + 13 - Math.abs(Math.sin(i * 0.6)) * 1.2;
+    bulbs.push(kit.mesh(new THREE.SphereGeometry(0.16, 8, 6), kit.glow(i % 3 === 0 ? th.accentA : i % 3 === 1 ? 0xffd27a : th.accentB, 0.9), x, y, -12.5));
+  }
+  kit.anim((t) => bulbs.forEach((b, i) => (b.scale.setScalar(0.8 + 0.3 * (0.5 + 0.5 * Math.sin(t * 2 + i))))));
+  // 右奥：ベッドとハートのクッション、くまのぬいぐるみ
+  kit.box(9, 1.4, 4, kit.toon(0xe8d8f0), cx + 10, m.top + 0.7, -8);
+  kit.box(9, 0.5, 4.1, kit.toon(0xff9ec8), cx + 10, m.top + 1.55, -8);
+  kit.box(0.6, 3.4, 4.2, kit.toon(0x5a3a6a), cx + 14.6, m.top + 1.7, -8);
+  for (const [x, col] of [
+    [7.4, th.accentA],
+    [9.2, 0xffffff],
+  ] as const) {
+    for (const sx of [-0.3, 0.3]) kit.mesh(new THREE.SphereGeometry(0.42, 12, 10), kit.toon(col), cx + x + sx, m.top + 2.3, -9.4);
+    kit.mesh(new THREE.ConeGeometry(0.6, 0.7, 4), kit.toon(col), cx + x, m.top + 1.85, -9.4).rotation.z = Math.PI;
+  }
+  const bear = new THREE.Group();
+  bear.position.set(cx + 12.2, m.top + 2.4, -8.6);
+  kit.group.add(bear);
+  const fur = kit.toon(0xc8a07a);
+  kit.mesh(new THREE.SphereGeometry(0.6, 14, 10), fur, 0, 0, 0, bear);
+  kit.mesh(new THREE.SphereGeometry(0.45, 14, 10), fur, 0, 0.85, 0, bear);
+  for (const sx of [-0.32, 0.32]) kit.mesh(new THREE.SphereGeometry(0.16, 10, 8), fur, sx, 1.2, 0, bear);
+  kit.mesh(new THREE.BoxGeometry(0.36, 0.06, 0.02), kit.toon(0x1a1420), 0, 0.8, 0.44, bear);
+  kit.anim((t) => (bear.rotation.z = Math.sin(t * 0.7) * 0.06));
+  // 左奥：机と光るスマホ。画面から通知の吹き出しが次々と浮かぶ
+  kit.box(5, 0.25, 2.2, kit.toon(0x3a2a44), cx - 12, m.top + 2.2, -7);
+  for (const sx of [-2.2, 2.2]) kit.box(0.2, 2.2, 0.2, kit.toon(0x3a2a44), cx - 12 + sx, m.top + 1.1, -7);
+  const screen = kit.box(0.9, 1.6, 0.08, kit.glow(0xbfe8ff, 0.95), cx - 12, m.top + 3.2, -7);
+  screen.rotation.x = -0.3;
+  const words = ['既読？', '返信まだ？', '着信 5件', 'いまなにしてる？', 'おやすみ…？'];
+  const bubbles: { mesh: THREE.Mesh; base: number; off: number }[] = [];
+  words.forEach((wd, i) => {
+    const tx = kit.tex(256, 72, (g) => {
+      g.fillStyle = i % 2 ? '#ffffff' : '#ff9ec8';
+      g.beginPath();
+      g.roundRect(4, 4, 248, 56, 24);
+      g.fill();
+      g.fillStyle = '#2a1638';
+      g.font = `bold 34px ${FONT}`;
+      g.textAlign = 'center';
+      g.fillText(wd, 128, 44);
+    });
+    const bm = kit.plane(3, 0.84, kit.basic(0xffffff, { map: tx, transparent: true }), cx - 14 + (i % 2) * 3.6, m.top + 4, -7.5);
+    bubbles.push({ mesh: bm, base: m.top + 4, off: i * 1.4 });
+  });
+  kit.anim((t) =>
+    bubbles.forEach((b) => {
+      const u = ((t * 0.35 + b.off / 7) % 1 + 1) % 1;
+      b.mesh.position.y = b.base + u * 8;
+      (b.mesh.material as THREE.MeshBasicMaterial).opacity = u < 0.1 ? u * 10 : u > 0.8 ? (1 - u) * 5 : 1;
+    }),
+  );
+
+  // 床：ふわふわのラグ（ピンク）と木の縁
+  const rug = kit.tex(128, 128, (g) => {
+    g.fillStyle = '#f2a8cc';
+    g.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 300; i++) {
+      g.fillStyle = rnd() < 0.5 ? '#f8c0dc' : '#e898c0';
+      g.fillRect(rnd() * 128, rnd() * 128, 2, 2);
+    }
+  }, [6, 1.5]);
+  const front = kit.tex(256, 64, (g) => {
+    g.fillStyle = '#4a2a3a';
+    g.fillRect(0, 0, 256, 64);
+    g.fillStyle = '#5a3646';
+    for (let x = 0; x < 256; x += 32) g.fillRect(x, 0, 2, 64);
+  }, [3, 0.75]);
+  mainSlab(kit, kit.toon(0xffffff, { map: rug }), kit.toon(0xffffff, { map: front }), 0.7, 5);
+  kit.box(w - 0.2, 0.06, 0.06, kit.glow(th.accentA), cx, m.top - 0.25, 2.5);
+  kit.box(w * 0.8, 2.4, 3.6, kit.toon(0x2a1a28), cx, m.top - 1.9, 0);
+  accentLights(kit, th.accentA, th.accentB, 45);
+
+  // すり抜け足場：左右はクッション、中央はハートの棚
+  kit.platform((g, pw) => {
+    g.add(kit.slab(pw, 0.3, 1.8, [kit.toon(0xff9ec8), kit.toon(0xffffff)], { radius: 0.12, bevel: 0.06 }));
+    kit.box(pw, 0.05, 0.05, kit.glow(th.accentB), 0, -0.3, 0.9, g);
+    if (pw < 3.8) {
+      const hg = new THREE.Group();
+      hg.position.set(0, 0.9, -0.6);
+      g.add(hg);
+      for (const sx of [-0.28, 0.28]) kit.mesh(new THREE.SphereGeometry(0.34, 12, 10), kit.glow(th.accentA, 0.9), sx, 0.1, 0, hg);
+      kit.mesh(new THREE.ConeGeometry(0.5, 0.6, 4), kit.glow(th.accentA, 0.9), 0, -0.3, 0, hg).rotation.z = Math.PI;
+      kit.anim((t) => hg.scale.setScalar(1 + Math.max(0, Math.sin(t * 5)) * 0.08));
+    }
+  });
+  kit.particles({ count: high ? 40 : 16, x: [cx - 18, cx + 18], y: [m.top, m.top + 12], z: [-8, 1], color: [th.accentA, th.accentB, 0xffffff], size: 0.1, vy: 0.15, wobble: 0.4, opacity: 0.7 });
 }

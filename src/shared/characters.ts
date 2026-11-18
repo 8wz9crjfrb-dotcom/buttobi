@@ -38,7 +38,8 @@ export interface CharacterDef {
   trait: { name: string; desc: string };
 }
 
-export const CHARACTERS: CharacterDef[] = [
+/** すべてのキャラ（まだ公開していないキャラも含む） */
+export const ALL_CHARACTERS: CharacterDef[] = [
   {
     id: 'guard',
     name: 'データセンター警備員',
@@ -281,7 +282,39 @@ export const CHARACTERS: CharacterDef[] = [
     specialNames: { n: 'ハサミ／ギター／ボトル', s: 'ドライヤー／ダイブ／スライド', d: 'ジョブチェンジ', u: 'スプレー／アンコール／シェイカー' },
     trait: { name: '早着替え', desc: 'ジョブチェンジしてから約4秒間、攻撃力が1.25倍。' },
   },
+  {
+    // まだ公開していない（URL に ?preview を付けたときだけ選べる）
+    id: 'menhera',
+    name: 'メンヘラ',
+    role: '粘着・一点集中',
+    desc: '重い愛で相手に絡みつく、かまってちゃん。放っておかれるほど強くなる。',
+    color: 0xff7ab8,
+    accent: 0x1a1420,
+    walkSpeed: 3.8,
+    runSpeed: 8.2,
+    airSpeed: 5.8,
+    airAccel: 44,
+    jumpV: 13.4,
+    airJumpV: 12.2,
+    airJumps: 1,
+    gravity: 34,
+    fallMax: 14,
+    weight: 0.96,
+    dmgMul: 1.03,
+    kbMul: 1.0,
+    frameMul: 0.92,
+    scale: 0.96,
+    specialNames: { n: '赤い糸', s: '鬼電', d: '泣き落とし', u: 'ハート風船' },
+    trait: { name: 'かまってちゃん', desc: '約3秒、相手に攻撃を当てないと「病みモード」になり、攻撃力1.25倍・ふっとばし力1.1倍。攻撃を当てると「デレモード」に戻り、約3秒だけ移動が少し速くなる。' },
+  },
 ];
+
+/** まだ公開していないキャラ・ステージを、確認のために出す（URL に ?preview を付けたとき。サーバーでは出さない） */
+export const PREVIEW = /[?&]preview(=|&|$)/.test((globalThis as { location?: { search?: string } }).location?.search ?? '');
+/** まだ公開していないキャラ */
+export const HIDDEN_CHARS = ['menhera'];
+/** 選べるキャラ（ふだんは公開しているキャラだけ） */
+export const CHARACTERS: CharacterDef[] = PREVIEW ? ALL_CHARACTERS : ALL_CHARACTERS.filter((c) => !HIDDEN_CHARS.includes(c.id));
 
 /** 3B の仕事ごとの体の性能（美容師は基本のまま。バンドマンは遅くて重い一撃、バーテンダーはその中間） */
 const THREEB_JOBS: Partial<CharacterDef>[] = [
@@ -299,7 +332,7 @@ export function threebDef(job: number): CharacterDef {
 }
 
 export function getCharacter(id: string): CharacterDef {
-  return CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0];
+  return ALL_CHARACTERS.find((c) => c.id === id) ?? ALL_CHARACTERS[0];
 }
 
 /** プレイヤー番号ごとの色（頭上の目印・HUDに使う） */
@@ -403,6 +436,12 @@ export const SPECIAL_DESCS: Record<string, { n: string; s: string; d: string; u:
     d: 'AIドローンを呼び出す（1機まで、約5秒）。そばを飛びながら、8m以内の相手を自動で撃つ。攻撃を当てると壊れる。ドローンが消えてから約2秒は呼べない。',
     u: 'ワイヤーを伸ばし、届く範囲（6m）の崖をつかんで復帰する。',
   },
+  menhera: {
+    n: '前に赤い糸を投げる。当たった相手と約4秒つながり、相手は3.5mより遠くへ離れられない（強くふっとばされると切れる）。使ったあと約2.5秒は使えない。',
+    s: 'スマホを投げる。当たった相手の頭の上に「着信中」の印が付き、約2.5秒後に着信音が爆発してダメージとふっとばし（ガードで防げる）。使ったあと約2秒は使えない。',
+    d: 'その場で泣いて、周り（3m以内）に涙を飛ばす。当たった相手は約4秒「気まずい」状態になり、攻撃力が0.8倍に下がる。ガードで防げる。使ったあと約6秒は使えない。',
+    u: 'ハートの風船でふわっと上昇する復帰技（真上の相手に当たる）。上昇のあと約1秒はゆっくり落ちる。使ったあとは着地するまで無防備。',
+  },
 };
 
 /** アピールのセリフ（キャラごとに3つ。SSR衣装のときは ssr のセリフ） */
@@ -417,6 +456,7 @@ export const TAUNT_LINES: Record<string, { lines: string[]; ssr: string }> = {
   ai: { lines: ['推論完了', '学習済みです', 'それ、想定内'], ssr: 'シンギュラリティ到達' },
   trainer: { lines: ['あと1回！', '筋肉は裏切らない', 'いい汗かいた！'], ssr: 'これが鋼の肉体だ！' },
   threeb: { lines: ['今日はどんな感じにします？', '次のライブ来てよ', '何かお作りしましょうか'], ssr: 'これがカリスマの実力' },
+  menhera: { lines: ['既読つけてよ', 'ずっと一緒だよ？', 'なんで返事くれないの'], ssr: '世界でいちばん愛してる' },
 };
 
 /** アイテムの名前（種類の番号順） */

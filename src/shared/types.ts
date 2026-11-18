@@ -224,6 +224,9 @@ export type GameEvent =
   | { k: 'cdrop'; s: number; x: number; y: number; p: number }
   /** サドンデスが始まった */
   | { k: 'sudden' }
+  /** 鬼電（メンヘラ）の着信音が鳴った・泣き落とし */
+  | { k: 'ring'; x: number; y: number; s: number }
+  | { k: 'cry'; x: number; y: number; s: number }
   /** メガホン（アイテム）の衝撃波 */
   | { k: 'shout'; x: number; y: number }
   /** ステージギミックの予告（h = 種類、x/y = 位置、d = 向き） */
@@ -274,6 +277,10 @@ export const FX_BIG = 1024;
 export const FX_SMALL = 2048;
 /** ワープホールをくぐったばかりで、しばらくくぐれない */
 export const FX_WARPCD = 4096;
+/** メンヘラの病みモード */
+export const FX_YAMI = 8192;
+/** 泣き落とし（メンヘラ）で気まずい（攻撃力ダウン） */
+export const FX_AWK = 16384;
 /** 3B の仕事（0〜2）を入れるビットの位置（256〜512） */
 export const FX_JOB_SHIFT = 8;
 export const fxJob = (fx: number) => (fx >> FX_JOB_SHIFT) & 3;
@@ -288,7 +295,8 @@ export interface ViewProjectile {
 
 /** ステージに置かれる物（壁・罠・一時的な足場） */
 export interface ViewEntity {
-  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy' | 'drone' | 'item';
+  /** leash = 赤い糸（owner = つないだ人、dir = つながれた人）、call = 鬼電の印（owner = 付けた人、dir = 付けられた人、life = 爆発までの残り） */
+  kind: 'wall' | 'trap' | 'popup' | 'food' | 'decoy' | 'drone' | 'item' | 'leash' | 'call';
   x: number;
   y: number;
   owner: number;

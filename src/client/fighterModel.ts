@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { threebDef, type CharacterDef } from '../shared/characters';
 import type { Accessory, Costume, CostumeFx } from '../shared/costumes';
 import { moveOf } from '../shared/moves';
-import { FX_ARMOR, FX_BIG, FX_BIKE, FX_CHARGED, FX_POWER, FX_SMALL, FX_SPEED, fxJob, type ViewFighter } from '../shared/types';
+import { FX_ARMOR, FX_AWK, FX_YAMI, FX_BIG, FX_BIKE, FX_CHARGED, FX_POWER, FX_SMALL, FX_SPEED, fxJob, type ViewFighter } from '../shared/types';
 import { SIZE_REQ } from '../shared/sim';
 
 const FWD = -Math.PI / 2; // 腕・脚を前に向ける回転（x軸まわり）
@@ -273,7 +273,7 @@ function eyeTexture(kind: EyeKind, iris: number, side: 1 | -1, sparkle: boolean,
 }
 
 /** 頭のてっぺんの高さ（帽子・髪の上。王冠や天使の輪を置く位置） */
-const HEAD_TOP: Record<string, number> = { guard: 0.67, hacker: 0.7, thief: 0.67, streamer: 0.66, dopa: 0.72, gacha: 0.66, courier: 0.66, ai: 0.64, trainer: 0.68, threeb: 0.68 };
+const HEAD_TOP: Record<string, number> = { guard: 0.67, hacker: 0.7, thief: 0.67, streamer: 0.66, dopa: 0.72, gacha: 0.66, courier: 0.66, ai: 0.64, trainer: 0.68, threeb: 0.68, menhera: 0.68 };
 
 /** SSR の粒の絵 */
 const fxTextures = new Map<string, THREE.Texture>();
@@ -427,6 +427,7 @@ const EYE_COLORS: Record<string, number> = {
   ai: 0x2aa8d8,
   trainer: 0x6a3a1a,
   threeb: 0x8a4ad0,
+  menhera: 0xd0407a,
 };
 
 /** 体の横幅（警備員とトレーナーはがっしり、データ泥棒は細身） */
@@ -1783,6 +1784,15 @@ export class FighterModel {
       this.part(sh, new THREE.CylinderGeometry(0.068, 0.068, 0.06, 14), this.toon(c.main), [0, 0.09, 0.07], { outline: false });
       this.part(sh, new THREE.BoxGeometry(0.11, 0.07, 0.005), this.toon(c.accent), [0, -0.04, 0.135], { outline: false });
       this.attackProps.push({ obj: sh, moves: ['dspecial'] });
+    } else if (id === 'menhera') {
+      // ハート風船（上B）：右手からひもを伸ばした大きなハート
+      const hnd = this.hand(this.armR);
+      const g = new THREE.Group();
+      hnd.add(g);
+      // 腕を上げると手の先が上を向くので、手の先の向き（下）に伸ばす。ハートは上下逆さにして正しい向きにする
+      this.part(g, new THREE.CylinderGeometry(0.008, 0.008, 0.7, 5), this.toon(0xf6f2f6), [0, -0.35, 0.04], { outline: false });
+      this.heart(g, 0.45, c.accent, [0, -0.95, 0.04]).rotation.z = Math.PI;
+      this.attackProps.push({ obj: g, moves: ['uspecial'] });
     } else if (id === 'threeb') {
       const metal = this.toon(0xd8dde6);
       // 美容師：ハサミ（B）・ドライヤー（横B）・スプレー（上B）
@@ -1980,7 +1990,62 @@ export class FighterModel {
       this.part(towel, new THREE.BoxGeometry(0.13, 0.3, 0.04), this.toon(0xf4f4f6), [0.04, -0.15, -0.17], { rot: [0, 0, -0.1] });
     } else if (id === 'threeb') {
       this.buildThreeB();
+    } else if (id === 'menhera') {
+      this.buildMenhera();
     }
+  }
+
+  /** メンヘラ：長いツインテール（内側がピンク）・黒いブラウスとピンクのリボン・フリルのスカート・ハートのバッグ・スマホ */
+  private buildMenhera(): void {
+    const c = this.c;
+    const h = this.head;
+    const b = this.body;
+    this.mouth();
+    this.brows(0.12, c.hair, 0.018, 0.375);
+    this.sparkle = true;
+    const hair = this.hairToon(c.hair);
+    // 頭をおおう髪と、ぱっつん前髪
+    this.part(h, new THREE.SphereGeometry(0.34, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.56), hair, [0, 0.31, -0.03], { rot: [-0.5, 0, 0] });
+    this.part(h, new THREE.BoxGeometry(0.44, 0.09, 0.08), hair, [0, 0.47, 0.24], { rot: [0.35, 0, 0], outline: false });
+    for (const x of [0.27, -0.27]) this.part(h, new THREE.BoxGeometry(0.06, 0.24, 0.1), hair, [x, 0.26, 0.12], { outline: false });
+    // ツインテール（揺れる。先にピンクのメッシュ）
+    for (const x of [0.3, -0.3]) {
+      this.part(h, new THREE.SphereGeometry(0.075, 12, 10), this.toon(c.accent), [x * 0.95, 0.5, -0.06], { outline: false });
+      const sw = this.swingPivot(h, [x, 0.48, -0.08], 0.9);
+      this.part(sw, new THREE.CapsuleGeometry(0.085, 0.42, 4, 10), hair, [x * 0.25, -0.26, 0], { rot: [0, 0, x > 0 ? 0.18 : -0.18] });
+      this.part(sw, new THREE.CapsuleGeometry(0.06, 0.12, 4, 8), this.toon(c.sub), [x * 0.42, -0.52, 0], { rot: [0, 0, x > 0 ? 0.18 : -0.18], outline: false });
+    }
+    // ほっぺ（いつも少し赤い）と、目の下の赤み
+    for (const x of [0.16, -0.16]) this.part(h, new THREE.SphereGeometry(0.05, 10, 8), this.glow(0xff8fb0), [x, 0.2, 0.25], { scale: [1, 0.55, 0.3], outline: false });
+    // 胸の大きなピンクのリボン
+    for (const x of [0.07, -0.07]) this.part(b, new THREE.ConeGeometry(0.07, 0.12, 4), this.toon(c.sub), [x, 1.08, 0.18], { rot: [0, 0, x > 0 ? -Math.PI / 2 : Math.PI / 2], outline: false });
+    this.part(b, new THREE.SphereGeometry(0.035, 10, 8), this.toon(c.accent), [0, 1.08, 0.2], { outline: false });
+    for (const x of [0.04, -0.04]) this.part(b, new THREE.BoxGeometry(0.035, 0.14, 0.01), this.toon(c.sub), [x, 0.99, 0.19], { rot: [0, 0, x > 0 ? -0.25 : 0.25], outline: false });
+    // 白い丸襟
+    this.part(b, new THREE.TorusGeometry(0.15, 0.045, 6, 20, Math.PI), this.toon(0xf6f2f6), [0, 1.15, 0.04], { rot: [Math.PI / 2 + 0.15, 0, Math.PI], outline: false });
+    // フリルのスカート（2段）
+    this.part(b, new THREE.CylinderGeometry(0.25, 0.37, 0.24, 20, 1, true), this.toon(c.main), [0, 0.6, 0], { scale: [1, 1, 0.85] });
+    this.part(b, new THREE.CylinderGeometry(0.37, 0.4, 0.05, 20, 1, true), this.toon(c.sub), [0, 0.47, 0], { scale: [1, 1, 0.85], outline: false });
+    // ハートのショルダーバッグ（左腰で揺れる）
+    this.part(b, new THREE.TorusGeometry(0.3, 0.008, 4, 24, Math.PI * 0.9), this.toon(0x2a2030), [0, 0.88, 0], { rot: [0, Math.PI / 2, 0.9], outline: false });
+    const bag = this.swingPivot(b, [0.27, 0.72, 0.06], 0.7);
+    this.heart(bag, 0.11, c.sub, [0, -0.08, 0]);
+    this.part(bag, new THREE.SphereGeometry(0.025, 8, 6), this.toon(0xffd84a), [0, -0.07, 0.06], { outline: false });
+    // スマホ（右手。いつも握っている）
+    const phone = this.hand(this.armR);
+    this.part(phone, new THREE.BoxGeometry(0.09, 0.16, 0.02), this.toon(c.sub), [0, -0.05, 0.08], { rot: [0.3, 0, 0] });
+    this.part(phone, new THREE.BoxGeometry(0.075, 0.13, 0.005), this.glow(0xbfe8ff), [0, -0.05, 0.093], { rot: [0.3, 0, 0], outline: false });
+  }
+
+  /** ハートの形（2つの玉と、とがった下） */
+  private heart(parent: THREE.Object3D, size: number, color: number, pos: [number, number, number]): THREE.Group {
+    const g = new THREE.Group();
+    g.position.set(...pos);
+    parent.add(g);
+    const m = this.toon(color);
+    for (const x of [0.5, -0.5]) this.part(g, new THREE.SphereGeometry(size * 0.55, 14, 10), m, [x * size * 0.9, size * 0.25, 0], { scale: [1, 1, 0.55] });
+    this.part(g, new THREE.ConeGeometry(size * 0.95, size * 1.15, 4), m, [0, -size * 0.45, 0], { rot: [Math.PI, Math.PI / 4, 0], scale: [1, 1, 0.55] });
+    return g;
   }
 
   /** 3B：美容師・バンドマン・バーテンダーの3つの見た目を作り、今の仕事のものだけ表示する */
@@ -2396,7 +2461,8 @@ export class FighterModel {
     // 倍速（青）・課金（赤）・吸収済み（水色）は、体がほんのり光る
     const pulse = 0.5 + 0.5 * Math.sin(time * 10);
     // プロテイン（ひるまない）はオレンジ
-    const fxGlow = v.fx & FX_POWER ? 0x5a1010 : v.fx & FX_CHARGED ? 0x0a4a5a : v.fx & FX_ARMOR ? 0x5a2a00 : v.fx & FX_SPEED ? 0x10305a : 0;
+    // メンヘラの病みモードは紫、泣き落としで気まずいときは青白く
+    const fxGlow = v.fx & FX_POWER ? 0x5a1010 : v.fx & FX_CHARGED ? 0x0a4a5a : v.fx & FX_ARMOR ? 0x5a2a00 : v.fx & FX_YAMI ? 0x3a0a5a : v.fx & FX_SPEED ? 0x10305a : v.fx & FX_AWK ? 0x1a2a3a : 0;
     for (const m of this.mats) {
       m.emissive.setHex(flash ? 0x555555 : charging ? 0xffaa00 : poisoned ? 0x5a1a7a : helpless ? 0x220022 : fxGlow);
       m.emissiveIntensity = charging ? 0.12 + 0.1 * Math.sin(time * 30) : fxGlow && !flash && !poisoned ? 0.6 + 0.6 * pulse : 1;
@@ -2581,6 +2647,16 @@ export class FighterModel {
         p.bob = Math.abs(Math.sin(time * 3)) * 0.08;
         p.headTilt = -0.25;
         break;
+      case 'menhera':
+        // スマホを両手で胸に抱えて、ゆらゆら
+        p.armL = FWD * 1.0;
+        p.armLz = -0.45;
+        p.armR = FWD * 1.0;
+        p.armRz = 0.45;
+        p.headTilt = Math.sin(time * 1.6) * 0.18;
+        p.lean = Math.sin(time * 1.6) * 0.06;
+        p.bob = Math.abs(Math.sin(time * 1.6)) * 0.04;
+        break;
       case 'courier':
         // その場で全力ダッシュ
         p.legL = Math.sin(time * 14) * 1.1;
@@ -2684,6 +2760,15 @@ export class FighterModel {
         p.armRz = -0.3;
         p.bob = Math.abs(b) * 0.16;
         p.headTilt = -0.25;
+        break;
+      case 'menhera':
+        // 両手でハートを作って、首をかしげる
+        p.armL = UP * 0.75;
+        p.armLz = -0.55;
+        p.armR = UP * 0.75;
+        p.armRz = 0.55;
+        p.headTilt = 0.22 + Math.sin(time * 2) * 0.05;
+        p.bob = Math.abs(Math.sin(time * 3)) * 0.05;
         break;
       case 'courier':
         // 親指を立てる
@@ -2922,6 +3007,14 @@ export class FighterModel {
         p.headTilt = 0.24;
         p.lean = Math.sin(time * 1.1) * 0.05;
         break;
+      case 'menhera':
+        // スマホをじっと見て、ときどき顔を上げる（返信待ち）
+        p.armR = FWD * 0.9;
+        p.armRz = 0.35;
+        p.armL = 0.25;
+        p.armLz = 0.4;
+        p.headTilt = Math.sin(time * 0.8) > 0.7 ? -0.05 : 0.28;
+        break;
       case 'courier':
         // 腰に手、足踏み
         p.armL = 0.3;
@@ -3045,6 +3138,24 @@ export class FighterModel {
         // データ泥棒・3B（美容師・バーテンダー）は回りながら上がる
         if (def.id === 'thief' || (def.id === 'threeb' && this.job !== 1)) p.spinY = f * 0.6;
         if (md.riseVx) p.lean = 0.5;
+        return;
+      case 'cry':
+        // 両手で顔をおおって泣く（肩が震える）
+        p.armL = FWD * 1.35;
+        p.armLz = -0.55;
+        p.armR = FWD * 1.35;
+        p.armRz = 0.55;
+        p.headTilt = 0.35;
+        p.lean = 0.15;
+        p.bob = Math.sin(f * 1.3) * 0.03;
+        return;
+      case 'balloon':
+        // ハートの風船につかまって上がる
+        p.armR = UP;
+        p.armL = UP * 0.85;
+        p.legL = 0.3;
+        p.legR = -0.2;
+        p.headTilt = -0.2;
         return;
       case 'speedup':
         // スマホを掲げて倍速に

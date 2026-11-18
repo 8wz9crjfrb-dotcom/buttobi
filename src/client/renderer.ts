@@ -1120,6 +1120,23 @@ export class GameRenderer {
       if (f) this.props.showText(e.b ? `賞金首撃破！ +${e.p}` : `+${e.p}`, e.b ? '#ff4a5a' : '#ffd84a', f.x, f.y + 2.2, e.b, e.b ? 70 : 45);
       return;
     }
+    if (e.k === 'ring') {
+      // 鬼電の着信音：ピンクの輪が広がる
+      this.spawn(this.ringGeo, 0xff3b6c, e.x, e.y, 0, 0, 0.3, 16, 0.12);
+      this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.2, 12, 0.09);
+      this.props.showText('プルルル！', '#ff6fae', e.x, e.y + 0.6, false, 45);
+      this.shake = Math.max(this.shake, 0.3);
+      return;
+    }
+    if (e.k === 'cry') {
+      // 泣き落とし：涙のしずくが周りに飛び散る
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        this.spawn(this.sparkGeo, 0x8fd8ff, e.x, e.y, Math.cos(a) * 6, Math.sin(a) * 4 + 2, 0.1, 22, -0.002);
+      }
+      this.props.showText('うぅ…', '#8fd8ff', e.x, e.y + 1.1, false, 45);
+      return;
+    }
     if (e.k === 'bnew') {
       const f = view.fighters.find((o) => o.slot === e.s);
       if (f) {

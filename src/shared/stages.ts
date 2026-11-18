@@ -1,3 +1,4 @@
+import { PREVIEW } from './characters';
 // ステージ定義。足場の上面の高さを y とする（上が +）
 
 export interface Platform {
@@ -13,7 +14,7 @@ export interface Platform {
 }
 
 /** ステージの見た目の種類（キャラごとのステージ。sky はキャラに関係ないデフォルト） */
-export type StageKind = 'sky' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym' | 'livebar';
+export type StageKind = 'room' | 'sky' | 'rooftop' | 'cyber' | 'vault' | 'studio' | 'timeline' | 'gacha' | 'arcade' | 'lab' | 'gym' | 'livebar';
 
 export interface StageTheme {
   kind: StageKind;
@@ -42,7 +43,8 @@ export interface StageDef {
   charId?: string;
 }
 
-export const STAGES: StageDef[] = [
+/** すべてのステージ（まだ公開していないステージも含む） */
+export const ALL_STAGES: StageDef[] = [
   {
     id: 'plain',
     name: 'そらの台地',
@@ -114,12 +116,12 @@ export const STAGES: StageDef[] = [
 ];
 
 // ---- キャラごとのステージ（並びはキャラの順。ガチャ会場とタイムラインは上で定義済み）
-const base = (id: string) => STAGES.find((s) => s.id === id)!;
+const base = (id: string) => ALL_STAGES.find((s) => s.id === id)!;
 const plainShape = base('plain');
 const gachaStage = base('gacha');
 const timelineStage = base('timeline');
-STAGES.length = 1; // そらの台地だけ残して、キャラの順に並べ直す
-STAGES.push(
+ALL_STAGES.length = 1; // そらの台地だけ残して、キャラの順に並べ直す
+ALL_STAGES.push(
   {
     ...plainShape,
     id: 'rooftop',
@@ -287,7 +289,35 @@ STAGES.push(
     respawnY: 10,
     theme: { kind: 'livebar', bright: false, sky: 0x0c0612, skyBottom: 0x2a0f2a, fog: 0x1a0a1e, accentA: 0xc77dff, accentB: 0xff5ea8 },
   },
+  {
+    // 深夜のワンルーム（メンヘラ）：ベッドと棚の足場。まだ公開していない
+    id: 'room',
+    name: '深夜のワンルーム',
+    charId: 'menhera',
+    main: { x1: -9.5, x2: 9.5, top: 0, bottom: -3 },
+    platforms: [
+      { x1: -7.2, x2: -3.6, y: 2.4 },
+      { x1: 3.6, x2: 7.2, y: 2.4 },
+      { x1: -1.8, x2: 1.8, y: 4.4 },
+    ],
+    blast: { left: -22, right: 22, top: 18, bottom: -11 },
+    spawns: [
+      { x: -6, y: 0 },
+      { x: 6, y: 0 },
+      { x: -2, y: 0 },
+      { x: 2, y: 0 },
+      { x: -4, y: 0 },
+      { x: 4, y: 0 },
+    ],
+    respawnY: 10,
+    theme: { kind: 'room', bright: false, sky: 0x120a1c, skyBottom: 0x2a1238, fog: 0x1c1028, accentA: 0xff7ab8, accentB: 0x9b7dff },
+  },
 );
+
+/** まだ公開していないステージ */
+export const HIDDEN_STAGES = ['room'];
+/** 選べるステージ（ふだんは公開しているステージだけ） */
+export const STAGES: StageDef[] = PREVIEW ? ALL_STAGES : ALL_STAGES.filter((s) => !HIDDEN_STAGES.includes(s.id));
 
 /** ステージ「おまかせ」：試合ごとにランダムなステージにする */
 export const RANDOM_STAGE = 'random';
@@ -299,7 +329,7 @@ export function resolveStage(id: string, seed: number): string {
 }
 
 export function getStage(id: string): StageDef {
-  return STAGES.find((s) => s.id === id) ?? STAGES[0];
+  return ALL_STAGES.find((s) => s.id === id) ?? ALL_STAGES[0];
 }
 
 /** 動く足場の、元の位置からのずれ */

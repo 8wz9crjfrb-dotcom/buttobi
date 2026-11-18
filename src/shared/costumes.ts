@@ -197,6 +197,14 @@ export const COSTUMES: Costume[] = [
     jobHair: [0xeedcb4, 0x4a3048, 0x16161c],
     colors: { main: 0xf2f2f5, sub: 0x1a1a22, accent: 0xc77dff, hair: 0x4a3048, skin: 0xf3d6bd, pants: 0x2a2a34, shoes: 0x1a1a22 },
   },
+  {
+    // メンヘラ（まだ公開していない）：黒とピンクの服
+    id: 'menhera-default',
+    charId: 'menhera',
+    name: 'いつもの地雷系',
+    rarity: 1,
+    colors: { main: 0x1e1a24, sub: 0xff9ec8, accent: 0xff4f9a, hair: 0x2a1c2a, skin: 0xffe4d8, pants: 0x1e1a24, shoes: 0x1e1a24 },
+  },
 ];
 
 
