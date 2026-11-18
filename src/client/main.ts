@@ -2095,7 +2095,8 @@ function hideDrop(): void {
 }
 
 function renderDrop(): void {
-  if (session?.kind !== 'net' || session.mySlot !== -1 || session.setup.rules.horde || resultsShown || lobby?.dropOn === false) return hideDrop();
+  // 乱入アイテムはトーナメントのときだけ
+  if (session?.kind !== 'net' || session.mySlot !== -1 || session.setup.rules.horde || resultsShown || lobby?.dropOn === false || !lobby?.tourOn) return hideDrop();
   dropEl.classList.remove('hidden');
   dropEl.innerHTML = dropUsed
     ? `<div class="drop-title">乱入アイテム</div><div class="drop-done">投入済み</div>`
@@ -2115,7 +2116,7 @@ function renderDrop(): void {
 function onDropStart(setup: MatchSetup): void {
   dropUsed = false;
   hideDrop();
-  if (setup.players.some((p) => p.slot === net.slot && net.slot >= 0) || setup.rules.horde || lobby?.dropOn === false) return;
+  if (setup.players.some((p) => p.slot === net.slot && net.slot >= 0) || setup.rules.horde || lobby?.dropOn === false || !lobby?.tourOn) return;
   dropTimer = window.setTimeout(renderDrop, (COUNTDOWN_FRAMES / 60) * 1000);
 }
 
@@ -3994,8 +3995,9 @@ function showLobby(): void {
       <div data-pane="fmt"><div class="setup-grid wide">
         <div class="opt opt-wide">試合の進め方 ${seg('fmt', [['all', '全員で'], ['tour', 'トーナメント']], tourOn ? 'tour' : 'all')}</div>
         <div class="opt" data-fmt-help ${tourOn ? '' : 'hidden'}>3位決定戦 ${seg('third', [['on', 'あり'], ['off', 'なし']], l.tourThird !== false ? 'on' : 'off')}</div>
-        <div class="opt">乱入アイテム ${seg('dropon', [['on', 'あり'], ['off', 'なし']], l.dropOn !== false ? 'on' : 'off')}</div>
-        <div class="opt opt-wide"><span class="muted">乱入アイテム：試合に出ていない人（トーナメントの待ち・観戦）が、1試合に1回アイテムを落とせます</span></div>
+        <div class="opt" data-fmt-help ${tourOn ? '' : 'hidden'}>乱入アイテム ${seg('dropon', [['on', 'あり'], ['off', 'なし']], l.dropOn !== false ? 'on' : 'off')}</div>
+        <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">乱入アイテム：試合に出ていない人（トーナメントの待ち・観戦）が、1試合に1回アイテムを落とせます</span></div>
+        <div class="opt opt-wide" ${tourOn ? 'hidden' : ''}><span class="muted">ルームの全員で同時に戦います。トーナメントにすると、3位決定戦と乱入アイテムも選べます</span></div>
         <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">ルームの全員（CPUも）で1対1の勝ち抜き戦。3人から。人数が半端ならシード（1回戦なし）ができます。始める前に組み合わせ表が出ます。試合に出ない人は勝敗を予想して観戦し、全員が予想すると次の試合が始まります（予想する人がいなければ15秒後、予想を待つのは最長30秒）。全員が「OK！」を押すと、待たずにすぐ始まります。3位決定戦（4人以上のとき）は、決勝の前に準決勝で負けた2人で戦います（次に始めるトーナメントから）。チーム戦の設定は使いません</span></div>
       </div></div>
       <div data-pane="rule"><div class="setup-grid wide">
@@ -4004,7 +4006,7 @@ function showLobby(): void {
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
       </div></div>`
-    : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'} ／ 乱入アイテム${l.dropOn !== false ? 'あり' : 'なし'}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
+    : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}${tourOn ? ` ／ 乱入アイテム${l.dropOn !== false ? 'あり' : 'なし'}` : ''}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
   const teamCount = new Set(l.players.map((p) => (isTwoTeam(l.rules.mode) ? (p.team ?? 0) % 2 : p.team ?? 0))).size;
   // 準備OK：人（CPU以外）のうち押している数。全員そろうとホストの開始ボタンが光る
   const humanList = l.players.filter((p) => !p.cpu && p.connected);

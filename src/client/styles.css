@@ -303,6 +303,10 @@ input[inputmode='numeric'] {
   margin-top: 10px;
 }
 
+/* hidden を付けた項目は隠す（.opt の display より優先） */
+.setup-grid [hidden] {
+  display: none !important;
+}
 .setup-grid .opt {
   display: flex;
   flex-direction: column;

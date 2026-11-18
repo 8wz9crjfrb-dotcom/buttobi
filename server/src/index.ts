@@ -511,7 +511,8 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
-    if (msg.t === 'drop' && this.lobby && this.lobby.dropOn !== false && this.sim && this.setup && (slot >= 0 || slot === SPECTATOR)) {
+    // 乱入アイテムはトーナメントのときだけ
+    if (msg.t === 'drop' && this.lobby && this.lobby.tourOn && this.lobby.dropOn !== false && this.sim && this.setup && (slot >= 0 || slot === SPECTATOR)) {
       // 乱入アイテム：試合に出ていない人だけ、1試合に1回
       if (slot >= 0 && this.setup.players.some((p) => p.slot === slot)) return;
       const key = slot >= 0 ? `h${slot}` : `s${att?.sid ?? 0}`;
