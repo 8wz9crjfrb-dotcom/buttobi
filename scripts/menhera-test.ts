@@ -53,6 +53,38 @@ check('隠していても、キャラとステージの中身はある', getChar
   check('赤い糸：約4秒で切れて、離れられる', v.leashT === 0 && v.x - sim.fighters[0].x > MENHERA.leashLen + 0.5, `${(v.x - sim.fighters[0].x).toFixed(1)}m`);
 }
 {
+  // メンヘラが場外へ出ても、相手は場外へ引きずられない（糸がゆるむ）。台の上に戻ると、また離れられない
+  const sim = make('menhera', 'guard');
+  const [m, v] = sim.fighters;
+  m.x = 5;
+  m.facing = 1;
+  v.x = 7.5;
+  v.facing = -1;
+  run(sim, 30, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+  check('赤い糸（場外）：つながる', v.leashT > 0);
+  // メンヘラを場外の空中へ（台の右端は x=9）。相手はその場に立ったまま
+  m.x = 13;
+  m.y = 2;
+  m.vx = 0;
+  m.vy = 0;
+  m.floatT = 60;
+  m.state = 'helpless';
+  m.grounded = false;
+  const x0 = v.x;
+  run(sim, 20);
+  check('赤い糸（場外）：メンヘラが場外にいる間は、相手を引っ張らない', Math.abs(v.x - x0) < 0.05 && v.leashT > 0, `相手の位置 ${x0.toFixed(1)}→${v.x.toFixed(1)}`);
+  // 台の上に戻ったら、また引っ張る
+  m.x = 3;
+  m.y = 0;
+  m.vx = 0;
+  m.vy = 0;
+  m.grounded = true;
+  m.state = 'idle';
+  m.floatT = 0;
+  run(sim, 2);
+  check('赤い糸（場外）：台の上に戻ると、また離れられない', Math.hypot(v.x - m.x, v.y - m.y) <= MENHERA.leashLen + 0.05, `${Math.hypot(v.x - m.x, v.y - m.y).toFixed(2)}m`);
+}
+{
   // 強くふっとばされたら糸は切れる（撃墜できなくならない）
   const sim = make('menhera', 'guard');
   place(sim, 2.5);

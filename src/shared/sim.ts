@@ -1986,6 +1986,8 @@ export class Sim {
     if (f.leashT <= 0 || f.state === 'grabbed' || f.state === 'ledge') return;
     const o = this.fighter(f.leashBy);
     if (!o) return;
+    // メンヘラがステージの外（台の真上ではない所）にいる間は、糸はゆるむ（相手を場外へ引きずり込めない）
+    if (o.x < this.stage.main.x1 || o.x > this.stage.main.x2) return;
     const dx = f.x - o.x;
     const dy = f.y - o.y;
     const d = Math.hypot(dx, dy);
