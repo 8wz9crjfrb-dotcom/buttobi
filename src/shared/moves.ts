@@ -835,7 +835,8 @@ export const REWIND = { frames: 120, heal: 0.5, invuln: 20 };
 /** 飛び道具が当たったときのひるみ時間の倍率 */
 export const SHOT_HITSTUN = 0.5;
 /** 王冠うばい：勝ちになる時間（秒・初期値）、奪われた直後に奪い返せない時間、自分で落ちたあと中央に出るまで、王冠の大きさ */
-export const CROWN = { goal: 30, stealCd: 45, respawn: 90, r: 0.6 };
+/** 王冠うばい：勝ちになる時間（秒）、奪った直後に奪い返せない時間、出直すまで、拾える大きさ、耐久（持ってから受けたダメージの合計がこれをこえると奪われる） */
+export const CROWN = { goal: 30, stealCd: 45, respawn: 90, r: 0.6, hp: 20 };
 /** 賞金首：撃墜で入る点、賞金首を倒したときに足される点、賞金首になるのに要る点、自分で落ちたときに減る点 */
 export const BOUNTY = { ko: 1, bonus: 2, min: 2, self: 1 };
 /**

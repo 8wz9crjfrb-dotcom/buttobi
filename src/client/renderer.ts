@@ -1547,7 +1547,7 @@ export class GameRenderer {
   }
 
   // ---------------------------------------------------------------- 王冠うばいの王冠
-  private crownObj: { root: THREE.Group; crown: THREE.Group; ring: THREE.Mesh } | null = null;
+  private crownObj: { root: THREE.Group; crown: THREE.Group; ring: THREE.Mesh; bar: THREE.Group; fill: THREE.Mesh } | null = null;
 
   private buildCrown(): void {
     const root = new THREE.Group();
@@ -1574,7 +1574,16 @@ export class GameRenderer {
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.62, 28), new THREE.MeshBasicMaterial({ color: 0xffd84a, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2;
     root.add(ring);
-    this.crownObj = { root, crown, ring };
+    // 王冠の耐久のバー（持っている人の頭の上。減るほど赤くなる）
+    const bar = new THREE.Group();
+    const bg = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.13), new THREE.MeshBasicMaterial({ color: 0x1b1b28, transparent: true, opacity: 0.85, depthTest: false }));
+    const fill = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.08), new THREE.MeshBasicMaterial({ color: 0xffd23f, depthTest: false, transparent: true }));
+    fill.position.z = 0.001;
+    bg.renderOrder = 9;
+    fill.renderOrder = 10;
+    bar.add(bg, fill);
+    root.add(bar);
+    this.crownObj = { root, crown, ring, bar, fill };
   }
 
   private updateCrown(view: ViewState): void {
@@ -1585,6 +1594,13 @@ export class GameRenderer {
     const held = c.holder >= 0;
     o.ring.visible = c.on && !held;
     const t = this.time;
+    // 耐久のバー：持っているときだけ。残りの割合で縮み、少なくなると赤くなる
+    const ratio = c.armorMax ? Math.max(0, Math.min(1, (c.armor ?? 0) / c.armorMax)) : 1;
+    o.bar.visible = c.on && held && !!c.armorMax;
+    o.bar.position.set(c.x, c.y + 0.62, 0.35);
+    o.fill.scale.x = Math.max(0.001, ratio);
+    o.fill.position.x = -0.42 * (1 - ratio);
+    (o.fill.material as THREE.MeshBasicMaterial).color.setHex(ratio > 0.5 ? 0xffd23f : ratio > 0.25 ? 0xff9a3a : 0xff4a4a);
     if (held) {
       // 持っている人の頭の上で、少しゆれる
       o.crown.position.set(c.x, c.y + 0.1 + Math.sin(t * 6) * 0.04, 0.2);

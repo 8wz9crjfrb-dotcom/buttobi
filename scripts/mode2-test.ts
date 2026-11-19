@@ -45,14 +45,19 @@ const step = (sim: Sim, k: number, inp?: Map<number, InputState>) => { for (let 
   step(sim, 2);
   sim.step(new Map([[1, { mx: 0, my: 0, buttons: 1 }]]));
   step(sim, 12);
-  check('王冠：攻撃を当てると奪える', sim.crown.holder === 1, `${sim.crown.holder}`);
+  check('王冠：弱攻撃1回では奪えない（王冠の耐久）', sim.crown.holder === 0 && sim.crown.dmg > 0 && sim.crown.dmg < CROWN.hp, `持っている人${sim.crown.holder} たまったダメージ${sim.crown.dmg.toFixed(1)}`);
+  const s2 = sim as unknown as { crownSteal(v: unknown, from: number, dmg: number): void };
+  // 合計が耐久（20%）をこえたら、最後に当てた人が奪う
+  s2.crownSteal(a, 1, CROWN.hp);
+  check('王冠：受けたダメージの合計が20%をこえると、最後に当てた人が奪える', sim.crown.holder === 1 && sim.crown.dmg === 0, `${sim.crown.holder}`);
   // 奪われた人はすぐには奪い返せない
-  const s2 = sim as unknown as { crownSteal(v: unknown, from: number): void };
-  s2.crownSteal(b, 0);
+  s2.crownSteal(b, 0, 99);
   check('王冠：奪われた直後は奪い返せない', sim.crown.holder === 1);
   step(sim, CROWN.stealCd + 2);
-  s2.crownSteal(b, 0);
-  check('王冠：少したてば奪い返せる', sim.crown.holder === 0);
+  s2.crownSteal(b, 0, 10);
+  check('王冠：奪い返すにも20%が要る（10%では奪えない）', sim.crown.holder === 1);
+  s2.crownSteal(b, 0, 10);
+  check('王冠：少したてば奪い返せる（合計20%）', sim.crown.holder === 0);
   // 持っている人を撃墜した人が王冠を手に入れる
   step(sim, 2);
   a.lastHitBy = 2; a.lastHitFrame = sim.frame; a.x = 99;

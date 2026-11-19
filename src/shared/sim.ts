@@ -602,7 +602,7 @@ export class Sim {
   }
 
   // ---------------------------------------------------------------- 王冠うばい
-  crown = { x: 0, y: 0, vy: 0, holder: -1, on: false, timer: 0, cd: 0, last: -1 };
+  crown = { x: 0, y: 0, vy: 0, holder: -1, on: false, timer: 0, cd: 0, last: -1, dmg: 0 };
   /** 王冠を持っていた時間（フレーム）。番号はチーム戦ならチーム、個人戦なら slot */
   crownPts = new Map<number, number>();
 
@@ -620,7 +620,7 @@ export class Sim {
    */
   private resetCrown(timer = -1): void {
     const m = this.stage.main;
-    this.crown = { x: (m.x1 + m.x2) / 2, y: m.top + 5, vy: 0, holder: -1, on: false, timer, cd: 0, last: -1 };
+    this.crown = { x: (m.x1 + m.x2) / 2, y: m.top + 5, vy: 0, holder: -1, on: false, timer, cd: 0, last: -1, dmg: 0 };
   }
 
   private updateCrown(): void {
@@ -668,6 +668,7 @@ export class Sim {
     );
     if (taker) {
       c.holder = taker.slot;
+      c.dmg = 0;
       this.events.push({ k: 'crown', s: taker.slot, x: c.x, y: c.y });
     }
   }
@@ -683,6 +684,7 @@ export class Sim {
     const k = by === undefined ? undefined : this.fighter(by);
     if (k && k.alive && !k.out && k.team !== f.team) {
       c.holder = k.slot;
+      c.dmg = 0;
       c.on = true;
       c.cd = CROWN.stealCd;
       c.last = f.slot;
@@ -696,11 +698,15 @@ export class Sim {
   }
 
   /** 王冠を持っている人が相手の攻撃を受けた：王冠は攻撃した人に移る */
-  private crownSteal(v: Fighter, from: number): void {
+  private crownSteal(v: Fighter, from: number, dmg: number): void {
     const c = this.crown;
     if (c.holder !== v.slot || c.cd > 0 || from < 0 || from === v.slot) return;
     const a = this.fighter(from);
     if (!a || !a.alive || a.out || this.friendly(from, v)) return;
+    // 王冠の耐久：持ってから相手に受けたダメージの合計が耐久をこえたら、最後に当てた人が奪う
+    c.dmg += dmg;
+    if (c.dmg < CROWN.hp) return;
+    c.dmg = 0;
     c.holder = a.slot;
     c.cd = CROWN.stealCd;
     c.last = v.slot;
@@ -708,7 +714,7 @@ export class Sim {
   }
 
   private crownView(): CrownView {
-    return { x: this.crown.x, y: this.crown.y, holder: this.crown.holder, on: this.crown.on, pts: [...this.crownPts.entries()], goal: this.crownGoalFrames };
+    return { x: this.crown.x, y: this.crown.y, holder: this.crown.holder, on: this.crown.on, pts: [...this.crownPts.entries()], goal: this.crownGoalFrames, armor: Math.max(0, Math.round(CROWN.hp - this.crown.dmg)), armorMax: CROWN.hp };
   }
 
   // ---------------------------------------------------------------- 賞金首
@@ -3633,7 +3639,7 @@ export class Sim {
 
   private knock(v: Fighter, dir: number, dmg: number, base: number, growth: number, angle: number, kbMul: number, from: number, noFlinch = false): void {
     // 王冠うばい：王冠を持っている人に当てたら奪う
-    if (this.setup.rules.mode === 'crown') this.crownSteal(v, from);
+    if (this.setup.rules.mode === 'crown') this.crownSteal(v, from, dmg);
     // コイン集め：攻撃を受けた人はコインを落とす
     if (this.setup.rules.mode === 'coins' && !this.solo) this.coinsOnHit(v, dmg, from);
     // 学習データ（AIエンジニア）：同じ相手からの攻撃ほどダメージが減る

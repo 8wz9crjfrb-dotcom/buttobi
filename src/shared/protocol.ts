@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 42;
+export const PROTOCOL_VERSION = 43;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -218,7 +218,7 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
     n: v.entities.map((e) => [ENTITY_KINDS.indexOf(e.kind), Math.round(e.x * 100), Math.round(e.y * 100), e.owner, e.life, e.dir]),
     ev: events.map((e) => ('x' in e ? { ...e, x: r2(e.x), y: r2(e.y) } : e)),
     ...(v.sudden ? { sd: 1 as const } : {}),
-    ...(v.crown ? { c: [Math.round(v.crown.x * 100), Math.round(v.crown.y * 100), v.crown.holder, v.crown.on ? 1 : 0, v.crown.goal, ...v.crown.pts.flat()] } : {}),
+    ...(v.crown ? { c: [Math.round(v.crown.x * 100), Math.round(v.crown.y * 100), v.crown.holder, v.crown.on ? 1 : 0, v.crown.goal, v.crown.armor ?? 0, v.crown.armorMax ?? 0, ...v.crown.pts.flat()] } : {}),
     ...(v.bounty ? { bo: [v.bounty.holder, ...v.bounty.pts.flat()] } : {}),
     ...(v.coins ? { co: [v.coins.list.length, ...v.coins.list.flatMap((c) => [Math.round(c.x * 100), Math.round(c.y * 100), c.v]), ...v.coins.held.flat()] } : {}),
     ...(v.vault ? { v: [Math.round(v.vault.hp[0] * 10) / 10, Math.round(v.vault.hp[1] * 10) / 10, v.vault.max] } : {}),
@@ -274,7 +274,9 @@ export function decodeState(s: EncodedState): ViewState {
           holder: s.c[2],
           on: s.c[3] === 1,
           goal: s.c[4],
-          pts: Array.from({ length: Math.floor((s.c.length - 5) / 2) }, (_, k) => [s.c![5 + k * 2], s.c![6 + k * 2]] as [number, number]),
+          armor: s.c[5],
+          armorMax: s.c[6],
+          pts: Array.from({ length: Math.floor((s.c.length - 7) / 2) }, (_, k) => [s.c![7 + k * 2], s.c![8 + k * 2]] as [number, number]),
         }
       : undefined,
     vault: s.v ? { hp: [s.v[0], s.v[1]], max: s.v[2] } : undefined,

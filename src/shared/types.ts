@@ -356,6 +356,9 @@ export interface CrownView {
   pts: [number, number][];
   /** 勝ちになる時間（フレーム） */
   goal: number;
+  /** 王冠の残りの耐久（%）と最大 */
+  armor?: number;
+  armorMax?: number;
 }
 
 /** 賞金首の画面用の状態 */
