@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 39;
+export const PROTOCOL_VERSION = 40;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -39,7 +39,8 @@ export function predictCoins(odds: number): number {
 }
 
 /** 定型文のスタンプ（文字を打たずに気持ちを伝える。自由な文は送れない） */
-export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って', 'おめでとう！', '次こそ！', '予想当たった！', '乱入ありがとう！'];
+// 新しいスタンプは最後に足す（番号で送るので、並びを変えない）
+export const STAMPS = ['よろしく！', 'もう1戦！', 'GG', 'ナイス！', 'ありがとう', 'ちょっと待って', 'おめでとう！', '次こそ！', '予想当たった！', '乱入ありがとう！', 'いくぞ！', 'うまい！', 'ドンマイ！', 'くやしい〜', 'ルール変えない？', 'チーム分けしよう', 'キャラ変えるね', 'おつかれさま！', 'またね！'];
 export const MAX_PLAYERS = 6;
 
 export interface LobbyPlayer {
@@ -122,6 +123,8 @@ export type ClientMsg =
   | { t: 'ready'; on: boolean }
   /** 定型文のスタンプ（STAMPS の番号） */
   | { t: 'stamp'; id: number }
+  /** ホストが、ホストの役目をほかの人（slot）に譲る */
+  | { t: 'host'; slot: number }
   /** 乱入アイテム（アイテムの種類）。試合に出ていない人が、1試合に1回だけ落とせる */
   | { t: 'drop'; kind: number }
   /** 勝敗予想（勝つと思う選手の slot）。試合に出ていない人だけ */

@@ -3570,8 +3570,13 @@ table.rec td:first-child {
 /* 定型文のスタンプ */
 .stamp-bar {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  /* スタンプが多いので1列にして、横にスクロールして選ぶ */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  /* 縦に並ぶ画面（ホストのロビー）でつぶれて高さ0にならないように */
+  flex-shrink: 0;
+  scrollbar-width: none;
+  justify-content: flex-start;
   gap: 6px;
   margin: 6px 0;
 }
@@ -5137,4 +5142,33 @@ table.rec td:first-child {
   color: var(--accent, #ffd23f);
   font-weight: 700;
   font-size: 11px;
+}
+
+/* ロビー：自分のコイン */
+.lobby-coins {
+  margin-top: 6px;
+}
+.lobby-coins .coin-badge {
+  display: inline-flex;
+}
+/* ホストを譲る相手の一覧 */
+.host-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.host-list .btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.host-list small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.stamp-bar .stamp-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }

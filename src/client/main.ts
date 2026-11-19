@@ -2148,6 +2148,34 @@ function resultTitle(results: ResultEntry[], setup: MatchSetup, winner: PlayerSe
 const stampLayer = document.createElement('div');
 stampLayer.id = 'stamps';
 document.getElementById('app')!.appendChild(stampLayer);
+/** ホストを譲る相手を選ぶ（選んだら確認してから送る） */
+function openGiveHost(list: { slot: number; name: string; charId: string }[]): void {
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.innerHTML = `<div class="modal-box">
+      <h3>ホストを譲る</h3>
+      <div class="modal-body">
+        <p class="muted">ホストはルールやステージを決めて、対戦を始められます。譲る相手を選んでください。</p>
+        <div class="host-list">${list.map((p) => `<button type="button" class="btn" data-to="${p.slot}"><b>${esc(p.name)}</b><small>${getCharacter(p.charId).name}</small></button>`).join('')}</div>
+      </div>
+      <div class="footer"><button class="btn" data-close>やめる</button></div>
+    </div>`;
+  const close = () => el.remove();
+  el.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (t === el || t.closest('[data-close]')) return close();
+    const b = t.closest<HTMLElement>('[data-to]');
+    if (!b) return;
+    const p = list.find((x) => x.slot === Number(b.dataset.to));
+    if (!p) return;
+    if (!confirm(`${p.name} さんにホストを譲りますか？`)) return;
+    net.giveHost(p.slot);
+    sfx.click();
+    close();
+  });
+  screensEl.appendChild(el);
+}
+
 function stampBar(): string {
   return `<div class="stamp-bar">${STAMPS.map((t, i) => `<button type="button" class="stamp-btn" data-stamp="${i}">${t}</button>`).join('')}</div>`;
 }
@@ -4139,9 +4167,11 @@ function showLobby(): void {
   const okHumans = l.players.filter((p) => !p.cpu && p.connected);
   const okN = (l.again ?? []).filter((s) => okHumans.some((h) => h.slot === s)).length;
   const myOk = (l.again ?? []).includes(net.slot);
+  // ホストを譲れる相手：つながっている、自分以外の人（CPUは除く）
+  const hostCandidates = l.players.filter((p) => !p.cpu && p.connected && p.slot !== net.slot);
   const lobbyEl = showScreen(
     `<div data-lobby class="row" style="justify-content:space-between">
-       <div><div style="font-size:12px;color:var(--muted)">ルームコード（友達に教えてください）</div><div class="code-big">${l.code}</div></div>
+       <div><div style="font-size:12px;color:var(--muted)">ルームコード（友達に教えてください）</div><div class="code-big">${l.code}</div><div class="lobby-coins">${coinBadge()}</div></div>
        <div class="players grow" style="max-width:560px">${slots}</div>
      </div>
      ${tourOn && l.tour ? '<div data-tour class="lobby-tour"></div>' : ''}
@@ -4156,6 +4186,7 @@ function showLobby(): void {
        ${!net.spectating && !isHost && !tourLive ? `<button class="btn small ${meReady ? 'on-toggle' : 'primary'}" id="ready">${meReady ? '準備OK（取り消す）' : '準備OK'}</button>` : ''}
        <button class="btn small" id="invite">招待リンクを送る</button>
        ${isHost ? `<button class="btn small ${roomShared ? 'on-toggle' : ''}" id="share-friends">フレンドに公開：${roomShared ? 'する' : 'しない'}</button>` : ''}
+       ${isHost && !l.inMatch && hostCandidates.length ? '<button class="btn small" id="give-host">ホストを譲る</button>' : ''}
        ${l.spectators ? `<span class="muted">観戦 ${l.spectators}人</span>` : ''}
      </div>
      ${net.spectating ? '' : stampBar()}
@@ -4172,6 +4203,7 @@ function showLobby(): void {
     'overlay',
     (root) => {
       root.querySelector('#invite')!.addEventListener('click', () => void shareInvite(l.code));
+      root.querySelector('#give-host')?.addEventListener('click', () => openGiveHost(hostCandidates));
       root.querySelector('#ready')?.addEventListener('click', () => net.setReady(!meReady));
       root.querySelector('#tour-ok')?.addEventListener('click', () => {
         net.again(!myOk);

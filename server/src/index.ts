@@ -655,6 +655,18 @@ export class Room extends DurableObject<Env> {
         this.pushLobby();
         return;
       }
+      case 'host': {
+        // ホストを譲る：ホストだけが、対戦していないときに、つながっているほかの人へ
+        if (this.sim || this.rouletteSetup || slot !== l.hostSlot) return;
+        const target = Number(msg.slot) | 0;
+        const to = l.humans.find((x) => x.slot === target);
+        if (!to || target === slot || !this.connectedSlots().has(target)) return;
+        l.hostSlot = target;
+        await this.save();
+        this.broadcast({ t: 'notice', msg: `${to.name} さんがホストになりました` });
+        this.pushLobby();
+        return;
+      }
       case 'stamp': {
         // 定型文のスタンプ。送りすぎないよう、1人1.2秒に1回まで
         const id = Number(msg.id) | 0;

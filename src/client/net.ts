@@ -387,6 +387,11 @@ export class NetClient {
     this.send({ t: 'stamp', id });
   }
 
+  /** ホストの役目をほかの人に譲る */
+  giveHost(slot: number): void {
+    this.send({ t: 'host', slot });
+  }
+
   /** 結果画面の「もう1戦したい」 */
   /** 乱入アイテムを落とす（試合に出ていないときだけ。1試合に1回） */
   drop(kind: number): void {
