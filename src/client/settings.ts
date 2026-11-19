@@ -8,6 +8,8 @@ import type { Quality } from './renderer';
 export interface Settings {
   name: string;
   charId: string;
+  /** オンライン対戦のキャラを「おまかせ（試合ごとにランダム）」にする */
+  onlineRandom?: boolean;
   btnSize: 'S' | 'M' | 'L';
   btnOpacity: 'low' | 'mid' | 'high';
   quality: Quality;

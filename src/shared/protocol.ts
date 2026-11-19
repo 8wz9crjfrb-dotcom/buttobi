@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 41;
+export const PROTOCOL_VERSION = 42;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -125,6 +125,8 @@ export type ClientMsg =
   | { t: 'stamp'; id: number }
   /** ホストが、ホストの役目をほかの人（slot）に譲る */
   | { t: 'host'; slot: number }
+  /** ホストが、チームをおまかせで分ける（赤・青に同じ人数ずつ） */
+  | { t: 'autoteam' }
   /** 乱入アイテム（アイテムの種類）。試合に出ていない人が、1試合に1回だけ落とせる */
   | { t: 'drop'; kind: number }
   /** 勝敗予想（勝つと思う選手の slot）。試合に出ていない人だけ */

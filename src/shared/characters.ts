@@ -353,6 +353,9 @@ export function threebDef(job: number): CharacterDef {
   return threebDefs[j];
 }
 
+/** オンライン対戦の「おまかせ」：試合が始まるときに、サーバーがキャラをランダムで決める */
+export const RANDOM_CHAR = 'random';
+
 export function getCharacter(id: string): CharacterDef {
   return ALL_CHARACTERS.find((c) => c.id === id) ?? ALL_CHARACTERS[0];
 }

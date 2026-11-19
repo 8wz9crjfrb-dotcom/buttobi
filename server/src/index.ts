@@ -3,7 +3,7 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import { CpuController } from '../../src/shared/ai';
-import { CHARACTERS, nameCpus } from '../../src/shared/characters';
+import { CHARACTERS, RANDOM_CHAR, nameCpus } from '../../src/shared/characters';
 import { ITEMS } from '../../src/shared/moves';
 import { COSTUMES } from '../../src/shared/costumes';
 import {
@@ -184,6 +184,16 @@ const MAX_SPECTATORS = 8;
 const SPECTATOR = -2;
 
 /** そのキャラの衣装として正しければ id を、そうでなければ undefined を返す */
+/** 選べるキャラか（オンラインでは「おまかせ」も選べる） */
+function validChar(id: unknown): id is string {
+  return id === RANDOM_CHAR || CHARACTERS.some((c) => c.id === id);
+}
+/** 試合で使うキャラ：「おまかせ」なら、ここでランダムに決める（衣装はいつもの服） */
+function pickChar(charId: string, costume: string | undefined): { charId: string; costume: string | undefined } {
+  if (charId !== RANDOM_CHAR) return { charId, costume };
+  return { charId: CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id, costume: undefined };
+}
+
 function validCostume(charId: string, id: unknown): string | undefined {
   return typeof id === 'string' && COSTUMES.some((c) => c.id === id && c.charId === charId) ? id : undefined;
 }
@@ -499,7 +509,7 @@ export class Room extends DurableObject<Env> {
       }
       let s = 0;
       while (l.humans.some((h) => h.slot === s)) s++;
-      const charId = CHARACTERS.some((c) => c.id === msg.charId) ? msg.charId : CHARACTERS[0].id;
+      const charId = validChar(msg.charId) ? msg.charId : CHARACTERS[0].id;
       const token = makeToken();
       l.humans.push({ slot: s, name: sanitizeName(msg.name), charId, costume: validCostume(charId, msg.costume), token, goneAt: 0, ...(isFriendHash(msg.fh) ? { fh: msg.fh } : {}) });
       if (l.humans.length === 1 || !l.humans.some((h) => h.slot === l.hostSlot)) l.hostSlot = s;
@@ -580,7 +590,7 @@ export class Room extends DurableObject<Env> {
       case 'char': {
         if (this.sim) return;
         const h = l.humans.find((x) => x.slot === slot);
-        if (h && CHARACTERS.some((c) => c.id === msg.charId)) {
+        if (h && validChar(msg.charId)) {
           h.charId = msg.charId;
           h.costume = validCostume(h.charId, msg.costume);
         }
@@ -654,6 +664,24 @@ export class Room extends DurableObject<Env> {
         await this.save();
         this.pushLobby();
         return;
+      }
+      case 'autoteam': {
+        // チームをおまかせで分ける：ホストだけ。人もCPUも混ぜてシャッフルし、赤・青に同じ人数ずつ（奇数なら1人差）
+        if (this.sim || this.rouletteSetup || slot !== l.hostSlot || !l.rules.teams) return;
+        const all = this.lobbyInfo().players.map((p) => p.slot);
+        for (let i = all.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [all[i], all[j]] = [all[j], all[i]];
+        }
+        all.forEach((s, i) => {
+          const team = i % 2;
+          const h = l.humans.find((x) => x.slot === s);
+          if (h) h.team = team;
+          else (l.cpuTeams ??= {})[s] = team;
+        });
+        await this.save();
+        this.broadcast({ t: 'notice', msg: 'チームをおまかせで分けました' });
+        return this.pushLobby();
       }
       case 'host': {
         // ホストを譲る：ホストだけが、対戦していないときに、つながっているほかの人へ
@@ -823,8 +851,8 @@ export class Room extends DurableObject<Env> {
       const e = t.entrants.find((x) => x.slot === slot)!;
       const h = l.humans.find((x) => x.slot === slot);
       // 人：今のキャラで出る。抜けた・通信が切れた人は CPU が代わりに戦う（戻ってきたら本人に戻る）
-      if (!e.cpu && h) return { slot, name: h.name, charId: h.charId, costume: h.costume, cpu: !connected.has(slot), cpuLevel: Math.max(3, l.cpuLevel), team: i };
-      return { slot, name: e.name, charId: e.charId, cpu: true, cpuLevel: e.cpu ? e.cpuLevel : Math.max(3, l.cpuLevel), team: i };
+      if (!e.cpu && h) return { slot, name: h.name, ...pickChar(h.charId, h.costume), cpu: !connected.has(slot), cpuLevel: Math.max(3, l.cpuLevel), team: i };
+      return { slot, name: e.name, charId: pickChar(e.charId, undefined).charId, cpu: true, cpuLevel: e.cpu ? e.cpuLevel : Math.max(3, l.cpuLevel), team: i };
     });
     t.cur = nm;
     const seed = (Math.random() * 2 ** 31) | 0;
@@ -858,7 +886,7 @@ export class Room extends DurableObject<Env> {
     if (l.rules.teams && new Set(players.map((p) => (isTwoTeam(l.rules.mode) ? (p.team ?? 0) % 2 : p.team ?? 0))).size < 2) return false;
     const seed = (Math.random() * 2 ** 31) | 0;
     const setup: MatchSetup = {
-      players: players.map((p) => ({ slot: p.slot, name: p.name, charId: p.charId, cpu: p.cpu, cpuLevel: p.cpuLevel, costume: p.costume, team: p.team ?? 0 })),
+      players: players.map((p) => ({ slot: p.slot, name: p.name, ...pickChar(p.charId, p.costume), cpu: p.cpu, cpuLevel: p.cpuLevel, team: p.team ?? 0 })),
       // おまかせなら、試合ごとにランダムなステージ
       stageId: resolveStage(l.stageId, seed),
       rules: l.rules,

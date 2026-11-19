@@ -5210,3 +5210,13 @@ table.rec td:first-child {
   color: var(--muted);
   font-weight: 700;
 }
+/* キャラ選択の「おまかせ」 */
+.char-card.random .swatch {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #ff5a5a, #ffd23f, #4fd18b, #4f9dff, #c77dff);
+  color: #fff;
+  font-weight: 900;
+  font-size: 13px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}

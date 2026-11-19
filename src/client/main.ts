@@ -2,7 +2,7 @@
 
 import './styles.css';
 import { CpuController } from '../shared/ai';
-import { ballTeamOf, CHARACTERS, getCharacter, HIDDEN_CHARS, PREVIEW, PREVIEW_KEY, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
+import { ballTeamOf, CHARACTERS, RANDOM_CHAR, getCharacter, HIDDEN_CHARS, PREVIEW, PREVIEW_KEY, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
@@ -1030,12 +1030,18 @@ function bindSeg(root: HTMLElement, name: string, onChange: (v: string) => void)
   });
 }
 
-function charCards(selected: string): string {
+function charCards(selected: string, random = false): string {
   return `<div class="chars">${CHARACTERS.map(
     (c) => `<div class="char-card ${c.id === selected ? 'on' : ''}" data-char="${c.id}">
       <div class="swatch" style="background:${hex(c.color)}"></div>
       <div class="nm">${c.name}</div><div class="rl">${c.role}</div></div>`,
-  ).join('')}</div>`;
+  ).join('')}${
+    random
+      ? `<div class="char-card random ${selected === RANDOM_CHAR ? 'on' : ''}" data-char="${RANDOM_CHAR}">
+      <div class="swatch">？</div>
+      <div class="nm">おまかせ</div><div class="rl">試合ごとにランダム</div></div>`
+      : ''
+  }</div>`;
 }
 
 /** 全キャラ共通の溜め攻撃の説明（キャラ選択の長押しで出す） */
@@ -1149,22 +1155,39 @@ interface CharSelectOptions {
   nextLabel: string;
   onBack(): void;
   onNext(charId: string): void;
+  /** オンライン対戦：「おまかせ（試合ごとにランダム）」も選べる */
+  allowRandom?: boolean;
+}
+
+/** オンライン対戦で使うキャラ（おまかせなら RANDOM_CHAR） */
+function onlineChar(): string {
+  return settings.onlineRandom ? RANDOM_CHAR : settings.charId;
+}
+function onlineCostume(): string | undefined {
+  return settings.onlineRandom ? undefined : myCostume(settings.charId);
+}
+/** ロビーなどに出すキャラの名前（おまかせは「おまかせ」） */
+function charLabel(id: string): string {
+  return id === RANDOM_CHAR ? 'おまかせ' : getCharacter(id).name;
 }
 
 /** キャラ選択：左に選んでいるキャラ（3D・待機ポーズ）、右に一覧と説明 */
 function showCharSelect(o: CharSelectOptions): void {
-  let picked = CHARACTERS.some((c) => c.id === o.current) ? o.current : CHARACTERS[0].id;
+  let picked = CHARACTERS.some((c) => c.id === o.current) || (o.allowRandom && o.current === RANDOM_CHAR) ? o.current : CHARACTERS[0].id;
   const nameHtml = (id: string) => {
+    if (id === RANDOM_CHAR) return `<div class="cs-role">試合ごとにランダム</div><div class="cs-name">おまかせ</div>`;
     const c = getCharacter(id);
     return `<div class="cs-role">${c.role}</div><div class="cs-name">${c.name}</div>`;
   };
+  const detail = (id: string) => (id === RANDOM_CHAR ? '<p class="help">試合が始まるときに、キャラがランダムで決まります（衣装はいつもの服）。何が出るかはお楽しみ！</p>' : charDetail(id));
+  const cos = (id: string) => (id === RANDOM_CHAR ? '' : costumeChips(id));
   showScreen(
     `<div class="cs-drag" data-charsel></div>
      <div class="cs-nameplate">${nameHtml(picked)}</div>
      <h2>${o.title}</h2>
-     ${charCards(picked)}
-     <div class="costume-row">${costumeChips(picked)}</div>
-     <div class="char-detail">${charDetail(picked)}</div>
+     ${charCards(picked, !!o.allowRandom)}
+     <div class="costume-row">${cos(picked)}</div>
+     <div class="char-detail">${detail(picked)}</div>
      <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="next">${o.nextLabel}</button></div>`,
     'overlay charsel-screen',
     (root) => {
@@ -1172,9 +1195,14 @@ function showCharSelect(o: CharSelectOptions): void {
         el.addEventListener('click', () => {
           picked = el.dataset.char!;
           root.querySelectorAll('.char-card').forEach((x) => x.classList.toggle('on', x === el));
-          root.querySelector('.char-detail')!.innerHTML = charDetail(picked);
+          root.querySelector('.char-detail')!.innerHTML = detail(picked);
           root.querySelector('.cs-nameplate')!.innerHTML = nameHtml(picked);
-          root.querySelector('.costume-row')!.innerHTML = costumeChips(picked);
+          root.querySelector('.costume-row')!.innerHTML = cos(picked);
+          // おまかせのときは、左のキャラはそのまま（何が出るかは試合まで分からない）
+          if (picked === RANDOM_CHAR) {
+            sfx.click();
+            return;
+          }
           renderer.showPreview(picked, o.slot, myCostume(picked));
           sfx.jingle(picked);
         }),
@@ -1194,13 +1222,15 @@ function showCharSelect(o: CharSelectOptions): void {
       bindPreviewSpin(root);
       root.querySelector('#back')!.addEventListener('click', o.onBack);
       root.querySelector('#next')!.addEventListener('click', () => {
-        settings.charId = picked;
+        // おまかせは「オンラインで使う」印だけ付けて、ふだんのキャラ（CPU戦など）はそのまま
+        if (o.allowRandom) settings.onlineRandom = picked === RANDOM_CHAR;
+        if (picked !== RANDOM_CHAR) settings.charId = picked;
         saveSettings(settings);
         o.onNext(picked);
       });
     },
   );
-  renderer.showPreview(picked, o.slot, myCostume(picked));
+  renderer.showPreview(picked === RANDOM_CHAR ? settings.charId : picked, o.slot, myCostume(picked === RANDOM_CHAR ? settings.charId : picked));
 }
 
 /** そのキャラで着ている衣装（持っていない衣装は着られない） */
@@ -1698,7 +1728,7 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
       on('horde', () => showCharSelect({ title: '100人組手：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'はじめる', onBack: () => showMenu('solo'), onNext: () => startHorde() }));
       on('training', () => showCharSelect({ title: '練習モード：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'つぎへ', onBack: () => showMenu('solo'), onNext: () => showTrainingSetup() }));
       if (online) {
-        on('create', () => showCharSelect({ title: 'ルームを作る：キャラを選ぶ', slot: 0, current: settings.charId, nextLabel: 'ルームを作る', onBack: () => showMenu('multi'), onNext: () => createRoom(0) }));
+        on('create', () => showCharSelect({ title: 'ルームを作る：キャラを選ぶ', slot: 0, current: onlineChar(), nextLabel: 'ルームを作る', allowRandom: true, onBack: () => showMenu('multi'), onNext: () => createRoom(0) }));
         on('join', showJoin);
       } else {
         on('create', () => toast('オンライン対戦のサーバーが設定されていません（設定画面で指定できます）'));
@@ -2158,7 +2188,7 @@ function openGiveHost(list: { slot: number; name: string; charId: string }[]): v
       <h3>ホストを譲る</h3>
       <div class="modal-body">
         <p class="muted">ホストはルールやステージを決めて、対戦を始められます。譲る相手を選んでください。</p>
-        <div class="host-list">${list.map((p) => `<button type="button" class="btn" data-to="${p.slot}"><b>${esc(p.name)}</b><small>${getCharacter(p.charId).name}</small></button>`).join('')}</div>
+        <div class="host-list">${list.map((p) => `<button type="button" class="btn" data-to="${p.slot}"><b>${esc(p.name)}</b><small>${charLabel(p.charId)}</small></button>`).join('')}</div>
       </div>
       <div class="footer"><button class="btn" data-close>やめる</button></div>
     </div>`;
@@ -2298,7 +2328,7 @@ function pickButtons(players: { slot: number; name: string; charId: string }[], 
       const n = predictCount(p.slot);
       // 今のオッズ（票が少ないほど高い。締め切りまで変わる）
       const odds = predictOdds(votes, p.slot, cands);
-      return `<button type="button" class="pick-btn ${myPick === p.slot ? 'on' : ''}" data-pick="${p.slot}" ${open ? '' : 'disabled'} style="--pc:${hex(SLOT_COLORS[p.slot % SLOT_COLORS.length])}"><b>${esc(p.name)}</b><small>${getCharacter(p.charId).name}</small><span class="pick-odds">×${odds.toFixed(1)}</span>${n ? `<span class="pick-n">${n}票</span>` : ''}${showWho ? `<span class="pick-who">${n ? predicts.filter((x) => x.p === p.slot).map((x) => esc(x.n)).join('、') : '予想なし'}</span>` : ''}</button>`;
+      return `<button type="button" class="pick-btn ${myPick === p.slot ? 'on' : ''}" data-pick="${p.slot}" ${open ? '' : 'disabled'} style="--pc:${hex(SLOT_COLORS[p.slot % SLOT_COLORS.length])}"><b>${esc(p.name)}</b><small>${charLabel(p.charId)}</small><span class="pick-odds">×${odds.toFixed(1)}</span>${n ? `<span class="pick-n">${n}票</span>` : ''}${showWho ? `<span class="pick-who">${n ? predicts.filter((x) => x.p === p.slot).map((x) => esc(x.n)).join('、') : '予想なし'}</span>` : ''}</button>`;
     })
     .join('');
 }
@@ -2335,7 +2365,7 @@ function renderPredict(): void {
     predictEl.classList.remove('hidden');
     predictEl.classList.add('mini');
     const p = setup.players.find((x) => x.slot === myPick);
-    predictEl.innerHTML = `<div class="pr-mini">あなたの予想：<b>${esc(p?.name ?? '？')}</b>${p ? `（${getCharacter(p.charId).name}）` : ''}</div>`;
+    predictEl.innerHTML = `<div class="pr-mini">あなたの予想：<b>${esc(p?.name ?? '？')}</b>${p ? `（${charLabel(p.charId)}）` : ''}</div>`;
     return;
   }
   predictEl.classList.remove('show');
@@ -2348,7 +2378,7 @@ function renderPredict(): void {
   predictEl.classList.toggle('mini', !open);
   if (!open) {
     const p = setup.players.find((x) => x.slot === myPick);
-    predictEl.innerHTML = `<div class="pr-mini">あなたの予想：<b>${esc(p?.name ?? '？')}</b>${p ? `（${getCharacter(p.charId).name}）` : ''}</div>`;
+    predictEl.innerHTML = `<div class="pr-mini">あなたの予想：<b>${esc(p?.name ?? '？')}</b>${p ? `（${charLabel(p.charId)}）` : ''}</div>`;
     return;
   }
   predictEl.innerHTML = `<div class="pr-title">${predictMark(true)}勝つのはだれ？ 予想しよう<small>${PREDICT_NOTE}</small></div><div class="pr-btns">${pickButtons(setup.players, true)}</div>`;
@@ -2420,7 +2450,7 @@ function predictLines(results: ResultEntry[], setup: MatchSetup): string {
   const winners = new Set(results.filter((r) => r.rank === 1).map((r) => r.slot));
   const nameOf = (slot: number) => {
     const p = setup.players.find((x) => x.slot === slot);
-    return p ? `${esc(p.name)}・${getCharacter(p.charId).name}` : '？';
+    return p ? `${esc(p.name)}・${charLabel(p.charId)}` : '？';
   };
   const hits = pr.list.filter((x) => winners.has(x.p)).map((x) => esc(x.n));
   const lines: string[] = [];
@@ -2454,7 +2484,7 @@ function tourBracket(t: TourInfo): string {
     const e = name(slot);
     // シード（相手なし）は勝ちの色にしない
     const cls = m.w < 0 || bye ? '' : m.w === slot ? 'win' : 'lose';
-    return `<div class="tb-p ${cls} ${slot === net.slot ? 'me' : ''}"><span class="dot" style="background:${hex(SLOT_COLORS[slot % SLOT_COLORS.length])}"></span>${esc(e?.name ?? '？')}<small>${e ? getCharacter(e.charId).name : ''}</small>${r === t.rounds.length - 1 && m.w === slot ? championMark() : ''}</div>`;
+    return `<div class="tb-p ${cls} ${slot === net.slot ? 'me' : ''}"><span class="dot" style="background:${hex(SLOT_COLORS[slot % SLOT_COLORS.length])}"></span>${esc(e?.name ?? '？')}<small>${e ? charLabel(e.charId) : ''}</small>${r === t.rounds.length - 1 && m.w === slot ? championMark() : ''}</div>`;
   };
   return `<div class="tour-bracket">${t.rounds
     .map(
@@ -4071,7 +4101,7 @@ function createRoom(attempt: number): void {
   roomShared = false;
   const code = String(1000 + Math.floor(Math.random() * 9000));
   showScreen(`<h2>ルームを作成中…</h2>`, 'overlay');
-  net.connect(settings.serverUrl, code, true, settings.name || 'プレイヤー', settings.charId, myCostume(settings.charId));
+  net.connect(settings.serverUrl, code, true, settings.name || 'プレイヤー', onlineChar(), onlineCostume());
 }
 
 /** ルームに参加する（キャラを選んでからつなぐ） */
@@ -4080,13 +4110,14 @@ function joinRoom(code: string, back: () => void): void {
   showCharSelect({
     title: `ルーム ${code} に参加：キャラを選ぶ`,
     slot: 0,
-    current: settings.charId,
+    current: onlineChar(),
     nextLabel: '参加する',
+    allowRandom: true,
     onBack: back,
     onNext: () => {
       creating = false;
       showScreen(`<h2>接続中…</h2>`, 'overlay');
-      net.connect(settings.serverUrl, code, false, settings.name || 'プレイヤー', settings.charId, myCostume(settings.charId));
+      net.connect(settings.serverUrl, code, false, settings.name || 'プレイヤー', onlineChar(), onlineCostume());
     },
   });
 }
@@ -4162,7 +4193,7 @@ function showLobby(): void {
     const dot = l.rules.teams ? TEAM_COLORS[team % TEAM_COLORS.length] : SLOT_COLORS[i];
     const teamTag = l.rules.teams ? `<span class="team-tag" style="--tc:${hex(dot)}">${TEAM_NAMES[team % TEAM_NAMES.length]}${canTap ? ' ⇄' : ''}</span>` : '';
     return `<div class="pslot ${canTap ? 'team-tap' : ''}" data-slot="${p.slot}" data-tm="${team}"><span class="dot" style="background:${hex(dot)}"></span>
-      <div><div>${esc(p.name)}${tags} ${teamTag}${!p.cpu && p.ready ? '<span class="ready-tag">準備OK</span>' : ''}</div><div style="font-size:11px;color:var(--muted)">${c.name}</div></div></div>`;
+      <div><div>${esc(p.name)}${tags} ${teamTag}${!p.cpu && p.ready ? '<span class="ready-tag">準備OK</span>' : ''}</div><div style="font-size:11px;color:var(--muted)">${charLabel(p.charId)}</div></div></div>`;
   }).join('');
   const rules = { ...l.rules };
   const maxCpu = MAX_PLAYERS - humans;
@@ -4212,13 +4243,14 @@ function showLobby(): void {
          net.spectating
            ? '<div><b>観戦中</b>（見るだけ。対戦が始まると見られます）</div>'
            : `<span class="dot" style="background:${hex(SLOT_COLORS[net.slot % SLOT_COLORS.length])}"></span>
-       <div>あなたのキャラ：<b>${getCharacter(me?.charId ?? settings.charId).name}</b></div>
+       <div>あなたのキャラ：<b>${charLabel(me?.charId ?? onlineChar())}</b></div>
        <button class="btn small" id="change-char">キャラを変える</button>`
        }
        ${!net.spectating && !isHost && !tourLive ? `<button class="btn small ${meReady ? 'on-toggle' : 'primary'}" id="ready">${meReady ? '準備OK（取り消す）' : '準備OK'}</button>` : ''}
        <button class="btn small" id="invite">招待リンクを送る</button>
        ${isHost ? `<button class="btn small ${roomShared ? 'on-toggle' : ''}" id="share-friends">フレンドに公開：${roomShared ? 'する' : 'しない'}</button>` : ''}
        ${isHost && !l.inMatch && hostCandidates.length ? '<button class="btn small" id="give-host">ホストを譲る</button>' : ''}
+       ${isHost && !l.inMatch && !tourOn && l.rules.teams && l.players.length >= 2 ? '<button class="btn small" id="auto-team">チームをおまかせで分ける</button>' : ''}
        ${l.spectators ? `<span class="muted">観戦 ${l.spectators}人</span>` : ''}
      </div>
      ${net.spectating ? '' : stampBar()}
@@ -4236,6 +4268,10 @@ function showLobby(): void {
     (root) => {
       root.querySelector('#invite')!.addEventListener('click', () => void shareInvite(l.code));
       root.querySelector('#give-host')?.addEventListener('click', () => openGiveHost(hostCandidates));
+      root.querySelector('#auto-team')?.addEventListener('click', () => {
+        net.autoTeam();
+        sfx.click();
+      });
       root.querySelector('#ready')?.addEventListener('click', () => net.setReady(!meReady));
       root.querySelector('#tour-ok')?.addEventListener('click', () => {
         net.again(!myOk);
@@ -4259,11 +4295,12 @@ function showLobby(): void {
         showCharSelect({
           title: 'キャラを変える',
           slot: net.slot,
-          current: me?.charId ?? settings.charId,
+          current: me?.charId ?? onlineChar(),
           nextLabel: 'これにする',
+          allowRandom: true,
           onBack: showLobby,
           onNext: (id) => {
-            net.setChar(id, myCostume(id));
+            net.setChar(id, id === RANDOM_CHAR ? undefined : myCostume(id));
             showLobby();
           },
         }),

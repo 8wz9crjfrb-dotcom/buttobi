@@ -387,6 +387,11 @@ export class NetClient {
     this.send({ t: 'stamp', id });
   }
 
+  /** チームをおまかせで分ける（ホストだけ） */
+  autoTeam(): void {
+    this.send({ t: 'autoteam' });
+  }
+
   /** ホストの役目をほかの人に譲る */
   giveHost(slot: number): void {
     this.send({ t: 'host', slot });
