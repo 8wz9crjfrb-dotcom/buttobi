@@ -411,7 +411,7 @@ const SPECIALS: Record<string, Specials> = {
   },
   gacha: {
     // 10連ガチャ：毎回ランダム（大当たり〜大外れ）
-    nspecial: { startup: 14, active: 1, end: 20, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'gacha10', cd: 60 },
+    nspecial: { startup: 14, active: 1, end: 20, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'gacha10', cd: 45 },
     // 単発ガチャ：4回に1回ほど、超強力な一撃（確率は GACHA1_CRIT）
     sspecial: {
       startup: 9,
@@ -466,8 +466,8 @@ const SPECIALS: Record<string, Specials> = {
       shots: [{ at: 0, kind: 'bag', x: 0.8, y: 1.0, vx: 15, vy: 0, life: 150, r: 0.4, dmg: 6, base: 5, growth: 5, angle: 40, boomerang: 30 }],
     },
     // 自転車：乗ったまま走り回れる（ぶつかるとダメージ。攻撃・必殺技・ガードで降りる）
-    // 乗り始めに約0.5秒（配達員の動きの速さ 0.95倍をかけて30フレーム）。降りてから約3秒は乗れない
-    sspecial: { startup: 32, active: 1, end: 6, hitboxes: [], dmg: 6, base: 6, growth: 6.5, angle: 35, air: false, special: 'bike', cd: 180 },
+    // 乗り始めに約0.3秒（配達員の動きの速さ 0.95倍をかけて18フレーム）。降りてから約3秒は乗れない
+    sspecial: { startup: 19, active: 1, end: 6, hitboxes: [], dmg: 6, base: 6, growth: 6.5, angle: 35, air: false, special: 'bike', cd: 180 },
     // 置き配：拾うと回復する料理を置く（相手も拾える）
     dspecial: { startup: 12, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: false, special: 'food' },
     // 立ちこぎジャンプ：自転車ごと大ジャンプ
@@ -667,7 +667,7 @@ const THREEB: Specials[] = [
     uspecial: { startup: 4, active: 20, end: 8, hitboxes: [{ x: 0, y: 1.0, r: 0.95 }], dmg: 1.6, base: 4, growth: 2, angle: 80, air: true, special: 'recovery', riseV: 15.5, rehit: 5, helpless: true },
   },
   {
-    // バンドマン：爆音ソロ（ギターをかき鳴らし、音の衝撃を前へ飛ばす。Bを押し続けると溜まり、溜めるほど遠くまで飛ぶ）
+    // バンドマン：爆音ソロ（ギターをかき鳴らし、音の衝撃を前へ飛ばす。Bを押し続けると溜まり、溜めるほど遠くまで飛ぶかわりに威力が下がる）
     nspecial: {
       startup: 18,
       active: 1,
@@ -682,7 +682,7 @@ const THREEB: Specials[] = [
       landLag: 12,
       // 音の衝撃が消えてから約2.5秒は使えない（消えるまでは待ち時間のまま）
       cd: 150,
-      shots: [{ at: 0, kind: 'sound', x: 0.9, y: 1.0, vx: 12, vy: 0, life: 22, r: 0.6, dmg: 7, base: 6, growth: 10, angle: 45 }],
+      shots: [{ at: 0, kind: 'sound', x: 0.9, y: 1.0, vx: 12, vy: 0, life: 22, r: 0.6, dmg: 9.1, base: 6, growth: 10, angle: 45 }],
     },
     // ステージダイブ：前へ飛び込んで体当たり。当たると相手を踏み台に跳ねる
     sspecial: { startup: 8, active: 22, end: 14, hitboxes: [{ x: 0.5, y: 0.8, r: 0.75 }], dmg: 9, base: 6.5, growth: 9, angle: 40, air: true, special: 'dive', landLag: 14, cd: 60 },
@@ -715,6 +715,10 @@ export const THREEB_RULES = {
   cooldown: 60,
   /** 爆音ソロ：いちばん溜めたときの飛ぶ距離の倍率（溜めなしで約4.4m、最大で約10.6m） */
   soundRange: 2.4,
+  /** 爆音ソロ：いちばん溜めたときの威力の倍率（溜めなし10% → いちばん溜めて5%。バンドマンの攻撃力1.1倍をかけた値） */
+  soundFarDmg: 0.5,
+  /** 爆音ソロ：3Bからこの距離（m）より遠くでは、当たっても相手はのけぞらない */
+  soundFlinch: 5,
   /** ステージダイブで当てたあとに跳ね上がる速さ */
   bounce: 12,
 };
@@ -743,7 +747,7 @@ export const PAY = { cost: 8, duration: 360, dmg: 1.3, kb: 1.15 };
 export const ALARM = { at: 100, time: 720, dmg: 1.3 };
 /** 自転車：乗っていられる時間、速さ、ぶつかったときに同じ相手へ再び当たるまで */
 export const BIKE = {
-  duration: 240,
+  duration: 180,
   speed: 12.5,
   hitCooldown: 40,
   /** ぶつかる判定の大きさ */

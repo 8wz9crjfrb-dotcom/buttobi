@@ -78,6 +78,8 @@ export interface Projectile {
   hitstunMul: number;
   /** 当たっても相手はのけぞらない（ダメージだけ） */
   noFlinch?: boolean;
+  /** 飛んでからこのフレーム数を過ぎると、当たっても相手はのけぞらない（爆音ソロの遠くの音） */
+  flinchAge?: number;
   poison: number;
   confuse: number;
   homing: number;
@@ -2937,9 +2939,16 @@ export class Sim {
     // 配達バッグは1つまで（戻ってくるまで投げられない）
     if (spec.boomerang && this.projectiles.some((p) => p.owner === f.slot && p.boomerang)) return;
     const pm = { ...this.powerMul(f) };
-    // 爆音ソロ（3B・バンドマン）：Bを押し続けて溜めた分だけ、音が遠くまで飛ぶ（威力は同じ）
+    // 爆音ソロ（3B・バンドマン）：Bを押し続けて溜めた分だけ、音が遠くまで飛ぶ。そのかわり威力は下がり、
+    // 一定の距離より遠くでは当たっても相手はのけぞらない
     let life = spec.life;
-    if (f.move && this.moveDef(f).special === 'curl' && spec.kind === 'sound') life = Math.round(spec.life * (1 + (f.charge / TRAINER.curlMax) * (THREEB_RULES.soundRange - 1)));
+    let flinchAge = 0;
+    if (f.move && this.moveDef(f).special === 'curl' && spec.kind === 'sound') {
+      const c = f.charge / TRAINER.curlMax;
+      life = Math.round(spec.life * (1 + c * (THREEB_RULES.soundRange - 1)));
+      pm.dmg *= 1 - c * (1 - THREEB_RULES.soundFarDmg);
+      flinchAge = Math.max(1, Math.round(((THREEB_RULES.soundFlinch - spec.x * s) / spec.vx) * 60));
+    }
     this.projectiles.push({
       owner: f.slot,
       kind: spec.kind,
@@ -2956,6 +2965,7 @@ export class Sim {
       r: spec.r,
       hitstunMul: spec.hitstunMul ?? 1,
       noFlinch: spec.noFlinch,
+      flinchAge,
       poison: spec.poison ?? 0,
       confuse: spec.confuse ?? 0,
       homing: spec.homing ?? 0,
@@ -3933,11 +3943,12 @@ export class Sim {
           } else {
             const owner = this.fighter(p.owner);
             const before = v.damage;
-            this.knock(v, dir, p.dmg, p.base, p.growth, p.angle, owner ? this.powerMul(owner).kb : 1, p.owner, p.noFlinch);
+            const noFlinch = !!p.noFlinch || (!!p.flinchAge && p.age >= p.flinchAge);
+            this.knock(v, dir, p.dmg, p.base, p.growth, p.angle, owner ? this.powerMul(owner).kb : 1, p.owner, noFlinch);
             this.lifesteal(owner, v.damage - before);
-            if (!p.noFlinch) v.hitstun = Math.round(v.hitstun * p.hitstunMul);
+            if (!noFlinch) v.hitstun = Math.round(v.hitstun * p.hitstunMul);
             // 飛び道具のひるみは半分（のけぞらない攻撃は、いまのひるみをそのままにする）
-            if (v.state === 'hitstun' && !p.noFlinch) v.hitstun = Math.max(1, Math.round(v.hitstun * SHOT_HITSTUN));
+            if (v.state === 'hitstun' && !noFlinch) v.hitstun = Math.max(1, Math.round(v.hitstun * SHOT_HITSTUN));
             if (p.confuse > 0) v.confused = Math.max(v.confused, p.confuse);
             // 赤い糸：つながる。鬼電：着信中の印（すでに印があれば付け直さない）
             if (p.leash) {
@@ -3954,7 +3965,7 @@ export class Sim {
               v.poison = Math.max(v.poison, p.poison);
               v.poisonFrom = p.owner;
             }
-            if (!p.noFlinch) v.hitlag = 3;
+            if (!noFlinch) v.hitlag = 3;
             this.events.push({ k: 'hit', x: p.x, y: p.y, p: p.dmg, s: v.slot, a: p.owner });
           }
           // ブーメランとステージギミックは当たっても消えずに進む

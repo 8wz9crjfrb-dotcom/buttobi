@@ -146,7 +146,25 @@ const place = (sim: Sim, dx: number) => {
   const hold = make(1);
   place(hold, 8.0);
   run(hold, 150, (i) => (i < 75 ? { mx: 0, my: 0, buttons: BTN_B } : N));
-  check('爆音ソロ：いちばん溜めると、8m先の相手にも届く（威力は溜めなしと同じ）', hold.fighters[1].damage > 0 && Math.abs(hold.fighters[1].damage - tap.fighters[1].damage) < 0.01, `溜め ${hold.fighters[1].damage.toFixed(1)}% / すぐ ${tap.fighters[1].damage.toFixed(1)}%`);
+  check('爆音ソロ：いちばん溜めると8m先の相手にも届くが、威力は半分', hold.fighters[1].damage > 0 && Math.abs(hold.fighters[1].damage / tap.fighters[1].damage - 0.5) < 0.02, `溜め ${hold.fighters[1].damage.toFixed(1)}% / すぐ ${tap.fighters[1].damage.toFixed(1)}%`);
+  check('爆音ソロ：溜めなしの近くの音は10%前後', tap.fighters[1].damage >= 9.5 && tap.fighters[1].damage <= 11, `${tap.fighters[1].damage.toFixed(1)}%`);
+  {
+    // 5mより遠くで当たると、相手はのけぞらない。近くならのけぞる
+    const flinch = (dist: number) => {
+      const s = make(1);
+      place(s, dist);
+      let st = '';
+      for (let i = 0; i < 150 && s.fighters[1].damage === 0; i++) {
+        s.step(new Map([[0, i < 75 ? { mx: 0, my: 0, buttons: BTN_B } : N]]));
+        st = s.fighters[1].state;
+      }
+      return { hit: s.fighters[1].damage > 0, stun: st === 'hitstun' };
+    };
+    const near = flinch(3.5);
+    const far = flinch(8);
+    check('爆音ソロ：近く（3.5m）で当たると相手はのけぞる', near.hit && near.stun);
+    check('爆音ソロ：遠く（8m）で当たると相手はのけぞらない', far.hit && !far.stun);
+  }
   const back = make(1);
   place(back, -1.5);
   run(back, 60, at(0, { mx: 0, my: 0, buttons: BTN_B }));

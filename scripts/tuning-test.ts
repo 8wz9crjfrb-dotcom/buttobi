@@ -26,7 +26,7 @@ function run(sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   const h = sim.fighters[1];
   c.x = -6;
   h.x = 6;
-  run(sim, 36, (i) => (i === 0 ? { mx: 1, my: 0, buttons: BTN_B } : { mx: 1, my: 0, buttons: 0 }));
+  run(sim, 24, (i) => (i === 0 ? { mx: 1, my: 0, buttons: BTN_B } : { mx: 1, my: 0, buttons: 0 }));
   check('横Bで自転車に乗る', c.bike > 0 && c.bikeHp === BIKE.hp, `耐久${c.bikeHp}`);
   // ハッカーの弾（1発2%ほど）を受けても降りない
   h.x = c.x + 5;
@@ -44,7 +44,7 @@ function run(sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   const c2 = sim2.fighters[0];
   c2.x = -6;
   sim2.fighters[1].x = 6;
-  run(sim2, 36, (i) => (i === 0 ? { mx: 1, my: 0, buttons: BTN_B } : { mx: 1, my: 0, buttons: 0 }));
+  run(sim2, 24, (i) => (i === 0 ? { mx: 1, my: 0, buttons: BTN_B } : { mx: 1, my: 0, buttons: 0 }));
   c2.bikeHp = 1;
   // 弱攻撃を当てる
   const g = sim2.fighters[1];

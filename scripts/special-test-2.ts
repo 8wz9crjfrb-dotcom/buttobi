@@ -177,15 +177,15 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
     st = sim2.fighters[1].state;
   }
   check('10連ガチャのN：石が当たっても相手はのけぞらない', sim2.fighters[1].damage > 0 && st !== 'hitstun', `${sim2.fighters[1].damage.toFixed(1)}% ${st}`);
-  check('10連ガチャ：使ったあと約1秒は使えない', sim2.fighters[0].cdN > 0, `残り${sim2.fighters[0].cdN}`);
+  check('10連ガチャ：使ったあと約0.75秒は使えない', sim2.fighters[0].cdN > 0 && sim2.fighters[0].cdN <= 45, `残り${sim2.fighters[0].cdN}`);
 }
 // ---- 配達員
 {
   const sim = make('courier', 'guard');
   sim.fighters[0].x = -6; sim.fighters[0].facing = 1; sim.fighters[1].x = 0; sim.fighters[1].facing = -1;
-  run(sim, 20, at(0, B(1, 0)));
-  check('自転車：乗り始めに約0.5秒かかる（0.33秒ではまだ乗っていない）', sim.fighters[0].bike === 0);
-  run(sim, 14);
+  run(sim, 12, at(0, B(1, 0)));
+  check('自転車：乗り始めに約0.3秒かかる（0.2秒ではまだ乗っていない）', sim.fighters[0].bike === 0);
+  run(sim, 10);
   check('自転車に乗れる', sim.fighters[0].bike > 0);
   let hit = false;
   for (let i = 0; i < 60 && !hit; i++) { sim.step(new Map()); hit = sim.fighters[1].damage > 0; }
