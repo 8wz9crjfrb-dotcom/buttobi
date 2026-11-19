@@ -36,7 +36,7 @@ import {
 import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
 import { applyTouchLayout, currentButtonPositions } from './touchLayout';
-import { checkTitles, RENAMED_TITLES, gachaBadge, markGachaSeen, markRecordsSeen, recordsBadge, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
+import { checkTitles, RENAMED_TITLES, gachaBadge, markGachaSeen, markRecordsSeen, recordsBadge, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, TITLE_GROUPS, type MatchStats } from './progress';
 import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, UR_PITY_LIMIT, UR_RATE, urAvailable, type PullResult } from './wallet';
 
 /** UR のカード・衣装ボタンの上に舞うキラキラの粒（中身は styles.css の .ur-sp） */
@@ -2983,6 +2983,12 @@ function showTransferIn(root: HTMLElement): void {
 
 // ---------------------------------------------------------------------------
 // 戦績・ミッション・称号
+/** 称号のカード（まだ手に入れていない称号は名前を隠す） */
+function titleCard(t: (typeof TITLES)[number]): string {
+  const have = progress.titles.includes(t.id);
+  return `<div class="title-card ${have ? 'have' : ''}"><b>${have ? esc(t.name) : '？？？'}</b><div>${esc(t.cond)}</div><div class="muted"><span class="coin-icon"></span>${t.coins}</div></div>`;
+}
+
 function showRecords(tab: 'missions' | 'records' | 'titles'): void {
   refreshMissions(progress);
   // 赤い点：戦績・ミッション画面を開いたので消す
@@ -3011,10 +3017,22 @@ function showRecords(tab: 'missions' | 'records' | 'titles'): void {
       }).join('')}</table>`;
   } else {
     body = `<div class="muted">手に入れた称号 ${progress.titles.length} / ${TITLES.length}（手に入れるとコインがもらえます）</div>
-      <div class="titles">${TITLES.map((t) => {
-        const have = progress.titles.includes(t.id);
-        return `<div class="title-card ${have ? 'have' : ''}"><b>${have ? esc(t.name) : '？？？'}</b><div>${esc(t.cond)}</div><div class="muted"><span class="coin-icon"></span>${t.coins}</div></div>`;
-      }).join('')}</div>`;
+      ${TITLE_GROUPS.map((g) => {
+        // 種類ごとにまとめる（どの種類にも当てはまらない称号は、最後の種類の後ろに出す）
+        // 同じ種類の中は、条件の種類（勝利・撃墜など）ごとに、やさしい順（もらえるコインが少ない順）に並べる
+        const kind = (id: string) => id.replace(/\d+$|All$/, '');
+        const all = TITLES.filter((t) => g.match(t.id));
+        const kinds = [...new Set(all.map((t) => kind(t.id)))];
+        const list = g.name === 'ルール別' || g.name === 'キャラマスター' ? all : [...all].sort((a, b) => kinds.indexOf(kind(a.id)) - kinds.indexOf(kind(b.id)) || a.coins - b.coins);
+        if (!list.length) return '';
+        const got = list.filter((t) => progress.titles.includes(t.id)).length;
+        return `<div class="title-group"><span>${g.name}</span><small>${got} / ${list.length}</small></div>
+      <div class="titles">${list.map(titleCard).join('')}</div>`;
+      }).join('')}
+      ${(() => {
+        const rest = TITLES.filter((t) => !TITLE_GROUPS.some((g) => g.match(t.id)));
+        return rest.length ? `<div class="title-group"><span>そのほか</span></div><div class="titles">${rest.map(titleCard).join('')}</div>` : '';
+      })()}`;
   }
   showScreen(
     `<div class="row" style="justify-content:space-between"><h2>戦績・ミッション</h2>${coinBadge()}</div>

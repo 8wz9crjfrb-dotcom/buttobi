@@ -5195,3 +5195,18 @@ table.rec td:first-child {
   flex: 0 0 auto;
   white-space: nowrap;
 }
+
+/* 称号の画面：種類ごとの見出し */
+.title-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 12px 0 2px;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--accent);
+}
+.title-group small {
+  color: var(--muted);
+  font-weight: 700;
+}

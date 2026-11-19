@@ -120,6 +120,17 @@ export interface TitleDef {
 /** 名前を変えた称号（前の名前 → 今の名前）。プロフィールに前の名前を設定していた人も、そのまま表示できるように */
 export const RENAMED_TITLES: Record<string, string> = { ぶっとびの王: 'トバセの王', ぶっとび中毒: 'トバセ中毒' };
 
+/** 称号の種類（戦績・ミッションの称号の画面で、この順にまとめて並べる） */
+export const TITLE_GROUPS: { name: string; match: (id: string) => boolean }[] = [
+  { name: '勝利・撃墜', match: (id) => /^(win|ko|match)\d/.test(id) },
+  { name: 'わざ・プレイ', match: (id) => /^(throw|taunt|item|special)\d/.test(id) },
+  { name: 'ルール別', match: (id) => id.startsWith('mode-') },
+  { name: '100人組手', match: (id) => id.startsWith('horde') },
+  { name: 'トーナメント・予想', match: (id) => /^(tour|pred)\d/.test(id) },
+  { name: '衣装・ログイン', match: (id) => /^(costume|login)/.test(id) },
+  { name: 'キャラマスター', match: (id) => id.startsWith('master-') },
+];
+
 export const TITLES: TitleDef[] = [
   { id: 'win1', name: 'はじめての勝利', cond: '1回勝つ', coins: 50, check: (p) => p.totals.wins >= 1 },
   { id: 'win10', name: '駆け出しファイター', cond: '通算10勝', coins: 100, check: (p) => p.totals.wins >= 10 },
