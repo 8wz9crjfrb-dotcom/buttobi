@@ -13,6 +13,8 @@ export interface Wallet {
   lastLogin: string;
   /** 連続ログイン日数（1〜7 をくり返す） */
   streak: number;
+  /** 連続ログイン日数（くり返さずに数える。称号用） */
+  run?: number;
   /** 受け取り済みの通算勝利ボーナスの勝利数 */
   milestone: number;
   /** 持っている衣装の id */
@@ -104,6 +106,7 @@ export function loadWallet(): Wallet {
       wins: { cpu: num(w.wins?.cpu), online: num(w.wins?.online) },
       lastLogin: typeof w.lastLogin === 'string' ? w.lastLogin : '',
       streak: Math.min(7, num(w.streak)),
+      run: num(w.run),
       milestone: num(w.milestone),
       owned: Array.isArray(w.owned) ? w.owned.filter((id): id is string => typeof id === 'string' && GACHA_COSTUMES.some((c) => c.id === id)) : [],
       // 天井が50回から30回に変わったので、それより多く数えていた分は30回目の手前でそろえる
@@ -137,6 +140,7 @@ export function claimLogin(w: Wallet, now = new Date()): { day: number; amount: 
   y.setDate(y.getDate() - 1);
   const continued = w.lastLogin === dayKey(y);
   w.streak = continued ? (w.streak % 7) + 1 : 1;
+  w.run = continued ? (w.run ?? w.streak - 1) + 1 : 1;
   w.lastLogin = today;
   const amount = LOGIN_REWARDS[w.streak - 1];
   w.coins += amount;

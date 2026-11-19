@@ -2652,6 +2652,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
       specials: tally.specials,
       smashes: tally.smashes,
       items: tally.items,
+      mode: setup.rules.horde ? undefined : setup.rules.mode,
     };
     const got = recordMatch(progress, wallet, stats);
     saveProgress(progress);

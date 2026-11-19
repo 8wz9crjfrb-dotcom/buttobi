@@ -44,6 +44,8 @@ export interface Progress {
   /** トーナメントの成績（優勝・3位の回数） */
   /** トーナメント：優勝・3位・準優勝の回数（準優勝はあとから足したので、ないこともある） */
   tour?: { wins: number; third: number; second?: number };
+  /** ルール（モード）ごとの勝ち数（称号用） */
+  modeWins?: Record<string, number>;
   /** 勝敗予想の成績（予想した回数・当たった回数・予想でもらったコイン） */
   pred?: { n: number; hit: number; coins: number };
   /** メニューの赤い点：最後にその画面を開いたときの状態（開くと赤い点が消える） */
@@ -101,6 +103,8 @@ export interface MatchStats {
   specials: number;
   smashes: number;
   items: number;
+  /** ルール（モード）。100人組手は入れない */
+  mode?: string;
 }
 
 // ---------------------------------------------------------------- 称号
@@ -131,6 +135,30 @@ export const TITLES: TitleDef[] = [
   { id: 'pred10', name: '予想名人', cond: '勝敗予想を10回当てる', coins: 100, check: (p) => (p.pred?.hit ?? 0) >= 10 },
   { id: 'pred300', name: '予想王', cond: '勝敗予想で合計300コインもらう', coins: 200, check: (p) => (p.pred?.coins ?? 0) >= 300 },
   { id: 'login7', name: '皆勤賞', cond: '7日連続でログイン', coins: 100, check: (_p, w) => w.streak >= 7 },
+  // 積み重ね
+  { id: 'win300', name: '伝説のファイター', cond: '通算300勝', coins: 800, check: (p) => p.totals.wins >= 300 },
+  { id: 'ko200', name: '撃墜マシーン', cond: '通算200撃墜', coins: 300, check: (p) => p.totals.kos >= 200 },
+  { id: 'match1000', name: 'ぶっとび中毒', cond: '1000試合する', coins: 500, check: (p) => p.totals.matches >= 1000 },
+  { id: 'special500', name: '必殺技マニア', cond: '必殺技を500回使う', coins: 150, check: (p) => p.totals.specials >= 500 },
+  { id: 'costume24', name: '着せ替え上手', cond: '衣装を24着集める', coins: 300, check: (_p, w) => w.owned.length >= 24 },
+  { id: 'login30', name: '常連さん', cond: '30日連続でログイン', coins: 300, check: (_p, w) => (w.run ?? 0) >= 30 },
+  // ルール（モード）別
+  ...(
+    [
+      ['ball', 'ゴールハンター', '玉入れ'],
+      ['crown', '王様', '王冠うばい'],
+      ['vault', '金庫番', '金庫まもり'],
+      ['bounty', '賞金稼ぎ', '賞金首'],
+      ['coins', '大富豪', 'コイン集め'],
+      ['area', '陣取り名人', 'エリアバトル'],
+    ] as const
+  ).map(([mode, name, label]) => ({
+    id: `mode-${mode}`,
+    name,
+    cond: `${label}で10勝`,
+    coins: 150,
+    check: (p: Progress) => (p.modeWins?.[mode] ?? 0) >= 10,
+  })),
   ...CHARACTERS.map((c) => ({
     id: `master-${c.id}`,
     name: `${c.name}マスター`,
@@ -252,6 +280,7 @@ export function recordMatch(p: Progress, w: Wallet, s: MatchStats, now = new Dat
   const r = (p.records[s.charId] ??= { matches: 0, wins: 0, kos: 0, falls: 0, dealt: 0 });
   r.matches++;
   if (s.won) r.wins++;
+  if (s.won && s.mode) (p.modeWins ??= {})[s.mode] = (p.modeWins[s.mode] ?? 0) + 1;
   r.kos += s.kos;
   r.falls += s.falls;
   r.dealt += Math.round(s.dealt);
