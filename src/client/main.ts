@@ -7,7 +7,7 @@ import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds,
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
-import { RANDOM_STAGE, resolveStage, STAGES, getStage } from '../shared/stages';
+import { RANDOM_STAGE, resolveStage, STAGES, getStage, stageFor } from '../shared/stages';
 import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
@@ -314,7 +314,7 @@ function startSession(s: Session): void {
     hideDrop();
   }
   lastView = null;
-  renderer.setMatch(s.setup, getStage(s.setup.stageId));
+  renderer.setMatch(s.setup, stageFor(s.setup.stageId, s.setup.players.length, !!s.setup.rules.horde));
   input.reset();
   input.takePressed();
   music.play(s.kind === 'demo' ? 'menu' : (s.setup.stageId as TrackId));
@@ -3670,7 +3670,7 @@ function startTraining(): void {
 
 /** 2人を最初の位置に戻す（ダメージ%はそのまま） */
 function resetTrainingPositions(s: LocalSession): void {
-  const st = getStage(s.setup.stageId);
+  const st = s.sim.stage;
   s.sim.fighters.forEach((f, i) => {
     const sp = st.spawns[i % st.spawns.length];
     f.x = sp.x;

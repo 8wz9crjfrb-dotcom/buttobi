@@ -38,6 +38,8 @@ export interface StageDef {
   blast: { left: number; right: number; top: number; bottom: number };
   spawns: { x: number; y: number }[];
   respawnY: number;
+  /** 大人数（WIDE_PLAYERS 人以上）のときに使う、広い形（台・足場・場外の線・出てくる場所） */
+  wide?: Pick<StageDef, 'main' | 'platforms' | 'blast' | 'spawns' | 'respawnY'>;
   theme: StageTheme;
   /** 関係するキャラ（デフォルトのステージは無し） */
   charId?: string;
@@ -331,6 +333,73 @@ export function resolveStage(id: string, seed: number): string {
 export function getStage(id: string): StageDef {
   return ALL_STAGES.find((s) => s.id === id) ?? ALL_STAGES[0];
 }
+
+/** この人数（CPUも含む）以上なら、狭いステージは広い形で戦う */
+export const WIDE_PLAYERS = 4;
+/** 試合で使うステージの形：人数が多いときは広い形（あれば）。100人組手はいつもふつうの形 */
+export function stageFor(id: string, players: number, horde = false): StageDef {
+  const s = getStage(id);
+  return s.wide && players >= WIDE_PLAYERS && !horde ? { ...s, ...s.wide } : s;
+}
+
+// ---- 狭いステージの、大人数用の広い形
+/** そらの台地・データセンター屋上：台を 18m → 25m に広げ、左右にすり抜け床を足す */
+const WIDE_PLAIN: StageDef['wide'] = {
+  main: { x1: -12.5, x2: 12.5, top: 0, bottom: -3 },
+  platforms: [
+    { x1: -9, x2: -5, y: 3.4 },
+    { x1: 5, x2: 9, y: 3.4 },
+  ],
+  blast: { left: -25, right: 25, top: 18, bottom: -11 },
+  spawns: [
+    { x: -9, y: 0 },
+    { x: 9, y: 0 },
+    { x: -3, y: 0 },
+    { x: 3, y: 0 },
+    { x: -6, y: 0 },
+    { x: 6, y: 0 },
+  ],
+  respawnY: 9,
+};
+for (const id of ['plain', 'rooftop']) getStage(id).wide = WIDE_PLAIN;
+/** 電脳空間：台を 16m → 23m に。動く足場の動く幅も広げる */
+getStage('cyber').wide = {
+  main: { x1: -11.5, x2: 11.5, top: 0, bottom: -4 },
+  platforms: [
+    { x1: -2.5, x2: 2.5, y: 3.6, moveAmp: 7.5, movePeriod: 540 },
+    { x1: -2, x2: 2, y: 7.0, moveAmp: -4.5, movePeriod: 420 },
+  ],
+  blast: { left: -25, right: 25, top: 18, bottom: -11 },
+  spawns: [
+    { x: -8, y: 0 },
+    { x: 8, y: 0 },
+    { x: -3, y: 0 },
+    { x: 3, y: 0 },
+    { x: -10, y: 0 },
+    { x: 10, y: 0 },
+  ],
+  respawnY: 10,
+};
+/** スマホのタイムライン：台を 13m → 19m に。横切る床と、左右の浮島も外へ */
+getStage('timeline').wide = {
+  main: { x1: -9.5, x2: 9.5, top: 0, bottom: -4 },
+  platforms: [
+    { x1: -2, x2: 2, y: 3.4, moveAmp: 10.5, movePeriod: 660 },
+    { x1: -1.6, x2: 1.6, y: 7.2, moveAmp: -4.5, moveAmpY: 1.5, movePhaseY: Math.PI / 2, movePeriod: 480 },
+    { x1: -15, x2: -12, y: 0.5, moveAmpY: 2.5, movePeriod: 360 },
+    { x1: 12, x2: 15, y: 0.5, moveAmpY: -2.5, movePeriod: 360 },
+  ],
+  blast: { left: -26, right: 26, top: 19, bottom: -12 },
+  spawns: [
+    { x: -6.5, y: 0 },
+    { x: 6.5, y: 0 },
+    { x: -2, y: 0 },
+    { x: 2, y: 0 },
+    { x: -8.5, y: 0 },
+    { x: 8.5, y: 0 },
+  ],
+  respawnY: 10,
+};
 
 /** 動く足場の、元の位置からのずれ */
 function platformOffset(p: Platform, frame: number): [number, number] {

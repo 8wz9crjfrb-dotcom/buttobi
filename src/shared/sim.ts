@@ -4,7 +4,7 @@
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
 import { ALARM, RECOMMEND, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
-import { getStage, platformAt, type StageDef } from './stages';
+import { platformAt, stageFor, type StageDef } from './stages';
 import {
   BTN_A,
   BTN_B,
@@ -567,7 +567,8 @@ export class Sim {
   constructor(setup: MatchSetup, onlySlot?: number) {
     this.solo = onlySlot !== undefined;
     this.setup = setup;
-    this.stage = getStage(setup.stageId);
+    // 人数が多いときは、狭いステージは広い形で戦う
+    this.stage = stageFor(setup.stageId, setup.players.length, !!setup.rules.horde);
     this.rng = new Rng(setup.seed ^ 0x5bd1e995);
     setup.players.forEach((p, i) => {
       if (onlySlot !== undefined && p.slot !== onlySlot) return;

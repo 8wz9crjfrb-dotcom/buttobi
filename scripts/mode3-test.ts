@@ -100,5 +100,27 @@ for (const [mode, n] of [['bounty', 3], ['bounty', 5], ['coins', 3], ['coins', 5
   check(`CPUだけで${mode === 'bounty' ? '賞金首' : 'コイン集め'}（${n}人）が決着する`, sim.finished, mode === 'bounty' ? r.map((x) => x.bounty).join(',') : r.map((x) => x.coins).join(','));
 }
 
+// ---- 大人数のときは、狭いステージを広い形で戦う
+{
+  const widthOf = (stageId: string, n: number, horde = false) => {
+    const players = Array.from({ length: n }, (_, i) => ({ slot: i, name: 'p' + i, charId: 'guard', cpu: true, cpuLevel: 3 }));
+    const sim = new Sim({ players, stageId, rules: { mode: 'stock', stocks: 3, timeLimit: 0, ...(horde ? { horde: 100 } : {}) }, seed: 1 });
+    return sim.stage.main.x2 - sim.stage.main.x1;
+  };
+  for (const [id, narrow] of [['timeline', 13], ['cyber', 16], ['plain', 18], ['rooftop', 18]] as const) {
+    check(`${id}：3人まではふつうの広さ、4人以上は広い形`, widthOf(id, 2) === narrow && widthOf(id, 3) === narrow && widthOf(id, 4) > narrow + 4 && widthOf(id, 6) === widthOf(id, 4), `2人${widthOf(id, 2)}m 4人${widthOf(id, 4)}m`);
+  }
+  check('広いステージ（ガチャ会場）は人数で変わらない', widthOf('gacha', 2) === widthOf('gacha', 6));
+  check('100人組手はいつもふつうの広さ', widthOf('plain', 6, true) === 18);
+  // 広い形でもCPUだけで決着する（落ちて戻れない場所がない）
+  for (const id of ['timeline', 'cyber', 'plain']) {
+    const players = Array.from({ length: 4 }, (_, i) => ({ slot: i, name: 'p' + i, charId: ['guard', 'thief', 'courier', 'menhera'][i], cpu: true, cpuLevel: 6 }));
+    const sim = new Sim({ players, stageId: id, rules: { mode: 'stock', stocks: 2, timeLimit: 300 }, seed: 7 });
+    const ai = new CpuController(7);
+    while (!sim.finished && sim.frame < 330 * 60) sim.step(new Map(sim.fighters.map((f) => [f.slot, ai.think(sim, f, 6)])));
+    check(`${id}（広い形・4人）：CPUだけで最後まで進む`, sim.finished, `${Math.round(sim.frame / 60)}秒`);
+  }
+}
+
 console.log(fail ? `\n${fail} 件 NG` : '\nすべて OK');
 process.exit(fail ? 1 : 0);
