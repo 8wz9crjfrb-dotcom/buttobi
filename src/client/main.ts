@@ -1337,18 +1337,32 @@ function ruleText(r: MatchRules): string {
   return r.teams && !isTwoTeam(r.mode) ? `${base}・チーム戦（味方への攻撃${r.friendlyFire ? 'あり' : 'なし'}）` : base;
 }
 
+/** モードの説明（どんな遊びか）と、おすすめの人数。ルール画面でモードの下に出す */
+const MODE_INFO: Record<MatchRules['mode'], { name: string; desc: string; players: string }> = {
+  stock: { name: 'ストック', desc: '残機がなくなるまで戦い、最後まで残った人（チーム）の勝ち。いちばん基本のルール', players: '2〜4人' },
+  time: { name: 'タイム', desc: '時間内に何度でも復活。撃墜した数から落ちた数を引いた点が多い人の勝ち（同点なら%が低いほう）', players: '2〜4人' },
+  stamina: { name: '体力制', desc: '%のかわりにHPで戦う。HPが0になるとその場で撃墜。ふっとびは小さめで、削り合いになる', players: '2〜4人' },
+  area: { name: 'エリアバトル', desc: 'エリアに自分（チーム）だけが立っている間ゲージがたまる。先に満タンにするか、時間切れで多い人の勝ち', players: '3〜4人' },
+  ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを攻撃でふっとばして相手のかごに入れる。斜め上＋攻撃で山なり、斜め下＋攻撃で低く速く打てる。チームはタップで選ぶ', players: '2人・4人' },
+  crown: { name: '王冠うばい', desc: '最初に相手を倒した人が王冠を手に入れ、持っている間だけ時間がたまる。持っている人に攻撃を当てると奪える。決めた時間だけ持つか、時間切れで一番長く持っていた人の勝ち', players: '3〜4人' },
+  vault: { name: '金庫まもり', desc: '赤・青の2チームで自分の金庫を守り、相手の金庫を攻撃で壊す（飛び道具も当たる）。先に壊すか、時間切れで多く壊したチームの勝ち。チームはタップで選ぶ', players: '2人・4人' },
+  bounty: { name: '賞金首', desc: '撃墜で1点、自分で落ちると1点減る。点が一番多い人（2点以上）は賞金首になり、倒すと3点。時間切れで点が一番多い人の勝ち', players: '3人以上（3人でも楽しめる）' },
+  coins: { name: 'コイン集め', desc: '降ってくるコインを拾う。攻撃を受けるとコインを落とし、撃墜されると半分ばらまく。時間切れで一番多く持っている人の勝ち', players: '3人以上（3人でも楽しめる）' },
+};
+function modeInfoHtml(mode: MatchRules['mode']): string {
+  const m = MODE_INFO[mode];
+  return `<b>${m.name}</b><span class="mi-players">おすすめ ${m.players}</span><span class="mi-desc">${m.desc}</span>`;
+}
+
 function ruleControls(rules: MatchRules): string {
   return `
     <div class="opt opt-wide">モード ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ'], ['crown', '王冠'], ['vault', '金庫'], ['bounty', '賞金首'], ['coins', 'コイン']], rules.mode)}</div>
+    <div class="opt opt-wide mode-info" data-mode-info>${modeInfoHtml(rules.mode)}</div>
     <div class="opt" data-show="crown">勝ちになる時間 ${seg('cgoal', [[20, '20秒'], [30, '30秒'], [45, '45秒']], rules.crownGoal ?? 30)}</div>
     <div class="opt" data-show="crown">時間 ${seg('ctime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
-    <div class="opt opt-wide" data-show="crown"><span class="muted">最初に相手を倒した人が王冠を手に入れます。王冠を持っている間だけ時間がたまり、持っている人に攻撃を当てると奪えます。決めた時間だけ持つか、時間切れのときに一番長く持っていた人（チーム）の勝ち。チーム戦でも王冠は1つで、仲間が持っている人を守ります</span></div>
     <div class="opt" data-show="bounty coins">時間 ${seg('stime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
-    <div class="opt opt-wide" data-show="bounty"><span class="muted">相手を撃墜すると1点、自分で落ちると1点減ります。点が一番多い人（2点以上）は「賞金首」になり、倒すと3点もらえます。時間切れのときに点が一番多い人（チーム）の勝ち。何人でも遊べます</span></div>
-    <div class="opt opt-wide" data-show="coins"><span class="muted">ステージにコインが降ってきます（大きいコインは5枚分）。攻撃を受けるとコインを落とし、撃墜されると持っているコインの半分をばらまきます。時間切れのときに一番多く持っている人（チーム）の勝ち。何人でも遊べます</span></div>
     <div class="opt" data-show="vault">金庫の耐久 ${seg('vhp', [[250, '少ない'], [400, '普通'], [600, '多い']], rules.vaultHp ?? 400)}</div>
     <div class="opt" data-show="vault">時間 ${seg('vtime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
-    <div class="opt opt-wide" data-show="vault"><span class="muted">赤・青の2チームで、自分のチームの金庫を守り、相手の金庫を攻撃で壊します（飛び道具も当たります）。先に壊すか、時間切れのときに多く壊していたチームの勝ち。チームはタップで選べます</span></div>
     <div class="opt" data-show="ball">先取点 ${seg('goals', [[3, '3点'], [5, '5点'], [7, '7点']], rules.goals ?? 5)}</div>
     <div class="opt" data-show="ball">時間 ${seg('btime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="ball">相手への攻撃 ${seg('pvp', [['on', '当たる'], ['off', '当たらない']], rules.pvp === false ? 'off' : 'on')}</div>
@@ -1358,7 +1372,6 @@ function ruleControls(rules: MatchRules): string {
     <div class="opt" data-show="stamina">HP ${seg('hp', [[100, '100'], [150, '150'], [200, '200'], [300, '300']], rules.hp ?? DEFAULT_HP)}</div>
     <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>
     <div class="opt" data-hide="ball">チーム戦 ${seg('teams', [['on', 'あり'], ['off', 'なし']], rules.teams ? 'on' : 'off')}</div>
-    <div class="opt opt-wide" data-show="ball"><span class="muted">玉入れは赤・青の2チーム。チームはタップで選べます。スティック斜め上＋攻撃で山なり、斜め下＋攻撃で低く速く打てます</span></div>
     <div class="opt" data-team data-ff>味方への攻撃 ${seg('ff', [['off', '当たらない'], ['on', '当たる']], rules.friendlyFire ? 'on' : 'off')}</div>
     <div class="opt">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
     <div class="opt" data-items>アイテムの頻度 ${seg('irate', [['low', '少ない'], ['mid', '普通'], ['high', '多い']], rules.itemRate ?? 'mid')}</div>
@@ -1371,6 +1384,7 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
   if (isTwoTeam(rules.mode)) rules.teams = true;
   let prevMode = rules.mode;
   const sync = () => {
+    root.querySelectorAll<HTMLElement>('[data-mode-info]').forEach((el) => (el.innerHTML = modeInfoHtml(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-show]').forEach((el) => el.classList.toggle('hidden', !el.dataset.show!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-hide]').forEach((el) => el.classList.toggle('hidden', el.dataset.hide!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.classList.toggle('hidden', !rules.teams));

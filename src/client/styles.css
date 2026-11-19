@@ -5115,3 +5115,26 @@ table.rec td:first-child {
   font-weight: 900;
   vertical-align: middle;
 }
+
+/* ルール画面：選んだモードの説明とおすすめ人数 */
+.mode-info {
+  display: block !important;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted, #b9bdd6);
+  margin-top: -4px;
+}
+.mode-info b {
+  color: #fff;
+  margin-right: 8px;
+}
+.mode-info .mi-players {
+  display: inline-block;
+  padding: 1px 8px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: rgba(255, 210, 63, 0.18);
+  color: var(--accent, #ffd23f);
+  font-weight: 700;
+  font-size: 11px;
+}
