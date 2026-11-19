@@ -202,7 +202,7 @@ export const ALL_CHARACTERS: CharacterDef[] = [
     fallMax: 15,
     weight: 1.04,
     dmgMul: 1.06,
-    kbMul: 1.0,
+    kbMul: 1.05,
     frameMul: 0.95,
     scale: 1.0,
     specialNames: { n: '配達バッグ投げ', s: '自転車', d: '置き配', u: '立ちこぎジャンプ' },
