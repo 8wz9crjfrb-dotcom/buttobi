@@ -42,7 +42,8 @@ export interface Progress {
   /** 100人組手の自己ベスト（倒した数と、そのときの時間） */
   hordeBest?: { kos: number; frames: number; charId: string };
   /** トーナメントの成績（優勝・3位の回数） */
-  tour?: { wins: number; third: number };
+  /** トーナメント：優勝・3位・準優勝の回数（準優勝はあとから足したので、ないこともある） */
+  tour?: { wins: number; third: number; second?: number };
   /** 勝敗予想の成績（予想した回数・当たった回数・予想でもらったコイン） */
   pred?: { n: number; hit: number; coins: number };
   /** メニューの赤い点：最後にその画面を開いたときの状態（開くと赤い点が消える） */

@@ -638,6 +638,7 @@ function myProfile(): Profile {
     pc: progress.pred?.coins ?? 0,
     tw: progress.tour?.wins ?? 0,
     t3: progress.tour?.third ?? 0,
+    t2: progress.tour?.second ?? 0,
     tc: progress.titles.length,
   };
 }
@@ -679,7 +680,7 @@ function profileCard(name: string, code: string, p: Profile | undefined, togethe
   const rate = p.pn ? `${Math.round(((p.ph ?? 0) / p.pn) * 100)}%` : '—';
   const stats = [
     group('対戦', v(String(p.wins), lbl('通算勝利', '勝利')), v(`${p.horde}人`, lbl('100人組手', '組手'))),
-    group(lbl('トーナメント', '大会'), v(`${p.tw ?? 0}回`, '優勝'), v(`${p.t3 ?? 0}回`, '3位')),
+    group(lbl('トーナメント', '大会'), v(`${p.tw ?? 0}回`, '優勝'), v(`${p.t2 ?? 0}回`, '準優勝')),
     group(lbl('勝敗予想', '予想'), v(rate, '的中率', p.pn ? `${p.ph ?? 0}/${p.pn}` : ''), v((p.pc ?? 0).toLocaleString(), lbl('獲得コイン', 'コイン'))),
     group(lbl('コレクション', '収集'), v(String(p.costumes), '衣装'), v(String(p.tc ?? 0), '称号')),
   ].join('');
@@ -2513,6 +2514,16 @@ function onTourLobby(l: LobbyInfo): void {
     social.setProfile(myProfile());
     toast(`トーナメント優勝！ +${TOUR_PRIZE} コイン`, 4000);
   }
+  // 決勝で負けたら、準優勝の回数を記録する（トーナメントごとに1回）
+  const fin = t && t.champion >= 0 ? t.rounds[t.rounds.length - 1]?.[0] : undefined;
+  const runnerUp = fin ? (fin.a === t!.champion ? fin.b : fin.a) : -1;
+  if (t && runnerUp >= 0 && runnerUp === net.slot && tourSecondPaid !== t.id) {
+    tourSecondPaid = t.id;
+    (progress.tour ??= { wins: 0, third: 0 }).second = (progress.tour.second ?? 0) + 1;
+    saveProgress(progress);
+    social.setProfile(myProfile());
+    toast('トーナメント準優勝！', 3000);
+  }
   // 3位決定戦に勝ったら、3位の回数を記録する（トーナメントごとに1回）
   if (t && t.third && t.third.w >= 0 && t.third.w === net.slot && tourThirdPaid !== t.id) {
     tourThirdPaid = t.id;
@@ -2526,6 +2537,7 @@ function onTourLobby(l: LobbyInfo): void {
 
 /** 3位を記録したトーナメント */
 let tourThirdPaid = -1;
+let tourSecondPaid = -1;
 
 /** 結果画面・ロビーのトーナメント表示を最新にする */
 function updateTourInfo(): void {

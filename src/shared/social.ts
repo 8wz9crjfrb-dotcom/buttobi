@@ -55,6 +55,8 @@ export interface Profile {
   /** トーナメントの優勝・3位の回数 */
   tw?: number;
   t3?: number;
+  /** トーナメントの準優勝の回数 */
+  t2?: number;
   /** 持っている称号の数 */
   tc?: number;
 }
@@ -80,6 +82,7 @@ export function sanitizeProfile(raw: unknown, charIds: string[]): Profile | null
     pc: int(r.pc, 99999999),
     tw: int(r.tw, 99999),
     t3: int(r.t3, 99999),
+    t2: int(r.t2, 99999),
     tc: int(r.tc, 9999),
   };
 }
