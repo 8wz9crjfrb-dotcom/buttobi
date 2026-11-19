@@ -117,11 +117,14 @@ export interface TitleDef {
   check(p: Progress, w: Wallet): boolean;
 }
 
+/** 名前を変えた称号（前の名前 → 今の名前）。プロフィールに前の名前を設定していた人も、そのまま表示できるように */
+export const RENAMED_TITLES: Record<string, string> = { ぶっとびの王: 'トバセの王', ぶっとび中毒: 'トバセ中毒' };
+
 export const TITLES: TitleDef[] = [
   { id: 'win1', name: 'はじめての勝利', cond: '1回勝つ', coins: 50, check: (p) => p.totals.wins >= 1 },
   { id: 'win10', name: '駆け出しファイター', cond: '通算10勝', coins: 100, check: (p) => p.totals.wins >= 10 },
   { id: 'win50', name: '歴戦の勇者', cond: '通算50勝', coins: 200, check: (p) => p.totals.wins >= 50 },
-  { id: 'win100', name: 'ぶっとびの王', cond: '通算100勝', coins: 500, check: (p) => p.totals.wins >= 100 },
+  { id: 'win100', name: 'トバセの王', cond: '通算100勝', coins: 500, check: (p) => p.totals.wins >= 100 },
   { id: 'ko50', name: '撃墜王', cond: '通算50撃墜', coins: 150, check: (p) => p.totals.kos >= 50 },
   { id: 'throw30', name: '投げ名人', cond: '投げを30回決める', coins: 100, check: (p) => p.totals.throws >= 30 },
   { id: 'taunt20', name: '目立ちたがり', cond: 'アピールを20回する', coins: 50, check: (p) => p.totals.taunts >= 20 },
@@ -138,7 +141,7 @@ export const TITLES: TitleDef[] = [
   // 積み重ね
   { id: 'win300', name: '伝説のファイター', cond: '通算300勝', coins: 800, check: (p) => p.totals.wins >= 300 },
   { id: 'ko200', name: '撃墜マシーン', cond: '通算200撃墜', coins: 300, check: (p) => p.totals.kos >= 200 },
-  { id: 'match1000', name: 'ぶっとび中毒', cond: '1000試合する', coins: 500, check: (p) => p.totals.matches >= 1000 },
+  { id: 'match1000', name: 'トバセ中毒', cond: '1000試合する', coins: 500, check: (p) => p.totals.matches >= 1000 },
   { id: 'special500', name: '必殺技マニア', cond: '必殺技を500回使う', coins: 150, check: (p) => p.totals.specials >= 500 },
   { id: 'costume24', name: '着せ替え上手', cond: '衣装を24着集める', coins: 300, check: (_p, w) => w.owned.length >= 24 },
   { id: 'login30', name: '常連さん', cond: '30日連続でログイン', coins: 300, check: (_p, w) => (w.run ?? 0) >= 30 },

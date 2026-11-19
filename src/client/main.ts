@@ -36,7 +36,7 @@ import {
 import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
 import { applyTouchLayout, currentButtonPositions } from './touchLayout';
-import { checkTitles, gachaBadge, markGachaSeen, markRecordsSeen, recordsBadge, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
+import { checkTitles, RENAMED_TITLES, gachaBadge, markGachaSeen, markRecordsSeen, recordsBadge, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, type MatchStats } from './progress';
 import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, UR_PITY_LIMIT, UR_RATE, urAvailable, type PullResult } from './wallet';
 
 /** UR のカード・衣装ボタンの上に舞うキラキラの粒（中身は styles.css の .ur-sp） */
@@ -623,7 +623,8 @@ function myProfile(): Profile {
   // 持っていない衣装（引き継ぎ前など）は、ふつうの衣装にする
   if (!c || (c.rarity >= 4 && !ownsCostume(c.id, c.charId))) costume = getCostume(undefined, charId).id;
   const titleNames = progress.titles.map((id) => TITLES.find((t) => t.id === id)?.name ?? '').filter(Boolean);
-  const title = p?.title && titleNames.includes(p.title) ? p.title : '';
+  const setTitle = p?.title ? RENAMED_TITLES[p.title] ?? p.title : '';
+  const title = setTitle && titleNames.includes(setTitle) ? setTitle : '';
   return {
     charId,
     costume,
