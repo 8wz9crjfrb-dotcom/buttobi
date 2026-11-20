@@ -3152,19 +3152,8 @@ function showGacha(): void {
       root.querySelector('#back')!.addEventListener('click', () => showMenu());
       root.querySelector('#list')!.addEventListener('click', () => showCollection(settings.charId));
       root.querySelector('#lineup')!.addEventListener('click', showLineup);
-      const pull = (n: 1 | 10) => {
-        const res = pullGacha(wallet, n);
-        if (!res) return toast('コインが足りません');
-        const titles = checkTitles(progress, wallet);
-        if (titles.length) {
-          saveProgress(progress);
-          setTimeout(() => toast(titles.map((t) => `称号「${t.name}」を手に入れた！ +${t.coins}`).join(' / '), 4000), 2500);
-        }
-        saveWallet(wallet);
-        playGachaOpening(res);
-      };
-      root.querySelector('#one')!.addEventListener('click', () => pull(1));
-      root.querySelector('#ten')!.addEventListener('click', () => pull(10));
+      root.querySelector('#one')!.addEventListener('click', () => pullAndOpen(1));
+      root.querySelector('#ten')!.addEventListener('click', () => pullAndOpen(10));
     },
   );
 }
@@ -3311,7 +3300,23 @@ function burstParticles(stage: HTMLElement, n: number, gold: boolean): void {
 }
 
 /** ガチャの結果：左に衣装を着たキャラ（3D）、右に結果の一覧 */
+/** ガチャを引いて、開ける演出へ（コインが足りなければ知らせるだけ） */
+function pullAndOpen(n: 1 | 10): void {
+  const res = pullGacha(wallet, n);
+  if (!res) return void toast('コインが足りません');
+  const titles = checkTitles(progress, wallet);
+  if (titles.length) {
+    saveProgress(progress);
+    setTimeout(() => toast(titles.map((t) => `称号「${t.name}」を手に入れた！ +${t.coins}`).join(' / '), 4000), 2500);
+  }
+  saveWallet(wallet);
+  playGachaOpening(res);
+}
+
 function showGachaResult(res: PullResult[], index: number): void {
+  // 「もう一度」は、同じガチャ（1回／10回）をそのまま引く
+  const again: 1 | 10 = res.length > 1 ? 10 : 1;
+  const againCost = again === 10 ? GACHA_COST.ten : GACHA_COST.one;
   const r = res[index];
   const c = COSTUMES.find((x) => x.id === r.id)!;
   const ch = getCharacter(c.charId);
@@ -3331,14 +3336,14 @@ function showGachaResult(res: PullResult[], index: number): void {
        <button class="btn" id="back">もどる</button>
        <div class="row" style="gap:8px">
          ${!r.dup ? '<button class="btn" id="wear">すぐ着る</button>' : ''}
-         <button class="btn primary" id="again">もう一度</button>
+         <button class="btn primary" id="again" ${wallet.coins < againCost ? 'disabled' : ''}>もう一度${again === 10 ? '10回' : '1回'} <small>${againCost}</small></button>
        </div>
      </div>`,
     'overlay charsel-screen',
     (root) => {
       root.querySelectorAll<HTMLElement>('.gcard').forEach((el) => el.addEventListener('click', () => showGachaResult(res, Number(el.dataset.i))));
       root.querySelector('#back')!.addEventListener('click', showGacha);
-      root.querySelector('#again')!.addEventListener('click', showGacha);
+      root.querySelector('#again')!.addEventListener('click', () => pullAndOpen(again));
       root.querySelector('#wear')?.addEventListener('click', () => {
         settings.costumes[c.charId] = c.id;
         settings.charId = c.charId;
