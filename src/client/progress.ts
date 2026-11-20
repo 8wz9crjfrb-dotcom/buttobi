@@ -119,6 +119,11 @@ export interface TitleDef {
 
 /** 名前を変えた称号（前の名前 → 今の名前）。プロフィールに前の名前を設定していた人も、そのまま表示できるように */
 export const RENAMED_TITLES: Record<string, string> = { ぶっとびの王: 'トバセの王', ぶっとび中毒: 'トバセ中毒' };
+/**
+ * 名前を別の称号へ移した称号：前は id=from の称号の名前だった name が、今は id=to の称号の名前になった。
+ * to をまだ持っていない人がその名前を表示していたら、from の今の名前に入れ替える（50撃墜の「撃墜王」→「撃墜スナイパー」）
+ */
+export const MOVED_TITLES: { name: string; from: string; to: string }[] = [{ name: '撃墜王', from: 'ko50', to: 'ko1000' }];
 
 /** 称号の種類（戦績・ミッションの称号の画面で、この順にまとめて並べる） */
 export const TITLE_GROUPS: { name: string; match: (id: string) => boolean }[] = [
@@ -136,14 +141,18 @@ export const TITLES: TitleDef[] = [
   { id: 'win10', name: '駆け出しファイター', cond: '通算10勝', coins: 100, check: (p) => p.totals.wins >= 10 },
   { id: 'win50', name: '歴戦の勇者', cond: '通算50勝', coins: 200, check: (p) => p.totals.wins >= 50 },
   { id: 'win100', name: 'トバセの王', cond: '通算100勝', coins: 500, check: (p) => p.totals.wins >= 100 },
-  { id: 'ko50', name: '撃墜王', cond: '通算50撃墜', coins: 150, check: (p) => p.totals.kos >= 50 },
+  { id: 'ko50', name: '撃墜スナイパー', cond: '通算50撃墜', coins: 150, check: (p) => p.totals.kos >= 50 },
   { id: 'throw30', name: '投げ名人', cond: '投げを30回決める', coins: 100, check: (p) => p.totals.throws >= 30 },
   { id: 'taunt20', name: '目立ちたがり', cond: 'アピールを20回する', coins: 50, check: (p) => p.totals.taunts >= 20 },
   { id: 'item30', name: 'アイテムハンター', cond: 'アイテムを30回拾う', coins: 100, check: (p) => p.totals.items >= 30 },
   { id: 'costume12', name: 'おしゃれさん', cond: '衣装を12着集める', coins: 150, check: (_p, w) => w.owned.length >= 12 },
   { id: 'costumeAll', name: 'コンプリート', cond: '衣装を全部集める', coins: 500, check: (_p, w) => GACHA_COSTUMES.every((c) => w.owned.includes(c.id)) },
-  { id: 'horde30', name: '組手の達人', cond: '100人組手で30人倒す', coins: 100, check: (p) => (p.hordeBest?.kos ?? 0) >= 30 },
-  { id: 'horde100', name: '百人斬り', cond: '100人組手をクリアする', coins: 300, check: (p) => (p.hordeBest?.kos ?? 0) >= 100 },
+  { id: 'horde10', name: '組手入門', cond: '100人組手で10人倒す', coins: 100, check: (p) => (p.hordeBest?.kos ?? 0) >= 10 },
+  { id: 'horde30', name: '組手の達人', cond: '100人組手で30人倒す', coins: 200, check: (p) => (p.hordeBest?.kos ?? 0) >= 30 },
+  { id: 'horde50', name: '折り返し地点', cond: '100人組手で50人倒す', coins: 300, check: (p) => (p.hordeBest?.kos ?? 0) >= 50 },
+  { id: 'horde70', name: '組手の猛者', cond: '100人組手で70人倒す', coins: 500, check: (p) => (p.hordeBest?.kos ?? 0) >= 70 },
+  { id: 'horde90', name: 'あと一歩', cond: '100人組手で90人倒す', coins: 700, check: (p) => (p.hordeBest?.kos ?? 0) >= 90 },
+  { id: 'horde100', name: '百人斬り', cond: '100人組手をクリアする', coins: 1000, check: (p) => (p.hordeBest?.kos ?? 0) >= 100 },
   { id: 'tour1', name: '初優勝', cond: 'トーナメントで1回優勝する', coins: 100, check: (p) => (p.tour?.wins ?? 0) >= 1 },
   { id: 'tour3', name: 'トーナメント王者', cond: 'トーナメントで3回優勝する', coins: 300, check: (p) => (p.tour?.wins ?? 0) >= 3 },
   { id: 'pred10', name: '予想名人', cond: '勝敗予想を10回当てる', coins: 100, check: (p) => (p.pred?.hit ?? 0) >= 10 },
@@ -152,6 +161,10 @@ export const TITLES: TitleDef[] = [
   // 積み重ね
   { id: 'win300', name: '伝説のファイター', cond: '通算300勝', coins: 800, check: (p) => p.totals.wins >= 300 },
   { id: 'ko200', name: '撃墜マシーン', cond: '通算200撃墜', coins: 300, check: (p) => p.totals.kos >= 200 },
+  { id: 'ko500', name: '撃墜レジェンド', cond: '通算500撃墜', coins: 400, check: (p) => p.totals.kos >= 500 },
+  { id: 'ko1000', name: '撃墜王', cond: '通算1000撃墜', coins: 700, check: (p) => p.totals.kos >= 1000 },
+  { id: 'match100', name: '場慣れファイター', cond: '100試合する', coins: 100, check: (p) => p.totals.matches >= 100 },
+  { id: 'match500', name: 'トバセ好き', cond: '500試合する', coins: 250, check: (p) => p.totals.matches >= 500 },
   { id: 'match1000', name: 'トバセ中毒', cond: '1000試合する', coins: 500, check: (p) => p.totals.matches >= 1000 },
   { id: 'special500', name: '必殺技マニア', cond: '必殺技を500回使う', coins: 150, check: (p) => p.totals.specials >= 500 },
   { id: 'special1000', name: '必殺技の達人', cond: '必殺技を1000回使う', coins: 300, check: (p) => p.totals.specials >= 1000 },
@@ -162,27 +175,43 @@ export const TITLES: TitleDef[] = [
   // ルール（モード）別
   ...(
     [
-      ['ball', 'ゴールハンター', '玉入れ'],
-      ['crown', '王様', '王冠うばい'],
-      ['vault', '金庫番', '金庫まもり'],
-      ['bounty', '賞金稼ぎ', '賞金首'],
-      ['coins', '大富豪', 'コイン集め'],
-      ['area', '陣取り名人', 'エリアバトル'],
+      ['ball', '玉入れ', 'ゴールハンター', 'ストライカー', '玉入れの神'],
+      ['crown', '王冠うばい', '王様', '大王', '皇帝'],
+      ['vault', '金庫まもり', '金庫番', '鉄壁の金庫番', '伝説の金庫番'],
+      ['bounty', '賞金首', '賞金稼ぎ', '凄腕ハンター', '伝説の賞金稼ぎ'],
+      ['coins', 'コイン集め', '大富豪', '億万長者', '石油王'],
+      ['area', 'エリアバトル', '陣取り名人', '領主', '天下統一'],
     ] as const
-  ).map(([mode, name, label]) => ({
-    id: `mode-${mode}`,
-    name,
-    cond: `${label}で10勝`,
-    coins: 150,
-    check: (p: Progress) => (p.modeWins?.[mode] ?? 0) >= 10,
-  })),
-  ...CHARACTERS.map((c) => ({
-    id: `master-${c.id}`,
-    name: `${c.name}マスター`,
-    cond: `${c.name}で10勝`,
-    coins: 100,
-    check: (p: Progress) => (p.records[c.id]?.wins ?? 0) >= 10,
-  })),
+  ).flatMap(([mode, label, n10, n50, n100]) =>
+    (
+      [
+        [10, n10, 150, ''],
+        [50, n50, 300, '-50'],
+        [100, n100, 600, '-100'],
+      ] as const
+    ).map(([wins, name, coins, suffix]) => ({
+      id: `mode-${mode}${suffix}`,
+      name,
+      cond: `${label}で${wins}勝`,
+      coins,
+      check: (p: Progress) => (p.modeWins?.[mode] ?? 0) >= wins,
+    })),
+  ),
+  ...CHARACTERS.flatMap((c) =>
+    (
+      [
+        [10, `${c.name}マスター`, 100, ''],
+        [50, `${c.name}の達人`, 300, '-50'],
+        [100, `${c.name}の伝説`, 600, '-100'],
+      ] as const
+    ).map(([wins, name, coins, suffix]) => ({
+      id: `master-${c.id}${suffix}`,
+      name,
+      cond: `${c.name}で${wins}勝`,
+      coins,
+      check: (p: Progress) => (p.records[c.id]?.wins ?? 0) >= wins,
+    })),
+  ),
 ];
 
 // ---------------------------------------------------------------- デイリーミッション

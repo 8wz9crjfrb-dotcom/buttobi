@@ -350,7 +350,8 @@ const WIDE_PLAIN: StageDef['wide'] = {
     { x1: -9, x2: -5, y: 3.4 },
     { x1: 5, x2: 9, y: 3.4 },
   ],
-  blast: { left: -25, right: 25, top: 18, bottom: -11 },
+  // 場外の線は少し内側に（広いと撃墜されにくくなるため）
+  blast: { left: -22, right: 22, top: 17, bottom: -11 },
   spawns: [
     { x: -9, y: 0 },
     { x: 9, y: 0 },
@@ -369,7 +370,7 @@ getStage('cyber').wide = {
     { x1: -2.5, x2: 2.5, y: 3.6, moveAmp: 7.5, movePeriod: 540 },
     { x1: -2, x2: 2, y: 7.0, moveAmp: -4.5, movePeriod: 420 },
   ],
-  blast: { left: -25, right: 25, top: 18, bottom: -11 },
+  blast: { left: -22, right: 22, top: 17, bottom: -11 },
   spawns: [
     { x: -8, y: 0 },
     { x: 8, y: 0 },
@@ -389,7 +390,7 @@ getStage('timeline').wide = {
     { x1: -15, x2: -12, y: 0.5, moveAmpY: 2.5, movePeriod: 360 },
     { x1: 12, x2: 15, y: 0.5, moveAmpY: -2.5, movePeriod: 360 },
   ],
-  blast: { left: -26, right: 26, top: 19, bottom: -12 },
+  blast: { left: -22, right: 22, top: 17, bottom: -12 },
   spawns: [
     { x: -6.5, y: 0 },
     { x: 6.5, y: 0 },

@@ -4,7 +4,10 @@
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
 import { ALARM, RECOMMEND, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
-import { platformAt, stageFor, type StageDef } from './stages';
+import { platformAt, stageFor, WIDE_PLAYERS, type StageDef } from './stages';
+
+/** 大人数（WIDE_PLAYERS 人以上）の試合のふっとびの倍率 */
+const CROWD_KB = 1.1;
 import {
   BTN_A,
   BTN_B,
@@ -3700,7 +3703,9 @@ export class Sim {
     const kbDamage = rules.mode === 'stamina' ? Math.min(v.damage, STAMINA_KB_CAP) : v.damage;
     // 重い愛のハートで重いと、ふっとびにくい
     const weight = v.def.weight * (v.heavyT > 0 ? MENHERA.heavy.weight : 1);
-    const speed = ((base + (growth * KB_GROWTH_SCALE * kbDamage) / 100) * kbMul) / weight;
+    // 大人数（4人以上）の試合は、少しふっとびやすい（撃墜まで長引かないように。100人組手は除く）
+    const crowd = this.fighters.length >= WIDE_PLAYERS && !rules.horde ? CROWD_KB : 1;
+    const speed = ((base + (growth * KB_GROWTH_SCALE * kbDamage) / 100) * kbMul * crowd) / weight;
     // 自転車（配達員）：耐久が残っていれば、弱い攻撃では降りずに少し減速するだけ（ダメージは受ける）
     if (v.bike > 0 && v.bikeHp > 0 && speed < BIKE.armorLimit && v.state !== 'grabbed') {
       v.bikeHp -= dmg;
