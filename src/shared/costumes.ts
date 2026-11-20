@@ -332,7 +332,7 @@ ALL_COSTUMES.push({ id: 'courier-ur', charId: 'courier', name: '時空配達人'
   extras: ['suitLines', 'clockRing', 'gearOrbit'], extraColor: 0xffd23f, fx: { particle: 'gear', color: 0xffd23f, hit: 0xffb81f, hitText: '注文前にお届け' } });
 ALL_COSTUMES.push({ id: 'trainer-ur', charId: 'trainer', name: 'プロテインの王', rarity: 6, colors: c(0xf6f4ee, 0xd9b44a, 0xffd23f, 0x2a1e16, 0xc98a5e, 0xf6f4ee, 0xd9b44a),
   extras: ['goldStripes', 'powderCrown', 'shakerOrbit'], extraColor: 0xd9b44a, fx: { particle: 'sparkle', color: 0xffe9a8, hit: 0xe0a020, hitText: 'プロテインは裏切らない' } });
-// メンヘラ（まだ公開していない）
+// メンヘラ
 ALL_COSTUMES.push(
   { id: 'menhera-ryosan', charId: 'menhera', name: '量産型', rarity: 4, colors: c(0xfaf2f6, 0xffb8d2, 0xff8fb8, 0x9a6a5a, 0xffe4d8, 0xfaf2f6, 0xffb8d2), extras: ['bow', 'heartPins'], extraColor: 0xffb8d2 },
   { id: 'menhera-oshi', charId: 'menhera', name: '推し活', rarity: 4, colors: c(0x1e1a24, 0x7ad8ff, 0x2fc8ff, 0x7ad8ff, 0xffe4d8, 0x1e1a24, 0x7ad8ff), extras: ['happi', 'uchiwa'], extraColor: 0x2fc8ff },
@@ -345,6 +345,13 @@ ALL_COSTUMES.push(
     extras: ['heartWings', 'heartCrown', 'letterOrbit'], extraColor: 0xff4f9a, fx: { particle: 'heart', color: 0xff7ab8, hit: 0xff4f9a, hitText: 'ずっと一緒だよ' },
   },
 );
+
+// キャラごとに、レア度の順（いつもの服 → SR → SSR → UR）に並べ直す（あとから足した UR が SSR より前に来ないように）
+{
+  const charOrder = [...new Set(ALL_COSTUMES.map((x) => x.charId))];
+  const sorted = ALL_COSTUMES.map((x, i) => ({ x, i })).sort((a, b) => charOrder.indexOf(a.x.charId) - charOrder.indexOf(b.x.charId) || a.x.rarity - b.x.rarity || a.i - b.i);
+  ALL_COSTUMES.splice(0, ALL_COSTUMES.length, ...sorted.map((s) => s.x));
+}
 
 /** まだ公開していないキャラの衣装は、ふだんは出さない（ガチャ・衣装の数・着せ替え） */
 export const COSTUMES: Costume[] = PREVIEW ? ALL_COSTUMES : ALL_COSTUMES.filter((x) => !HIDDEN_CHARS.includes(x.charId));
