@@ -843,6 +843,36 @@ function showFriends(): void {
 }
 
 /** プロフィールの編集（左に名刺カードの見本、右で選ぶ） */
+/** 見せる称号を選ぶ（持っている称号だけを、戦績の称号の画面と同じ種類ごとに並べる） */
+function openTitlePicker(current: string, onPick: (title: string) => void): void {
+  const owned = TITLES.filter((t) => progress.titles.includes(t.id));
+  const chip = (name: string, label: string) => `<button type="button" class="pe-chip ${name === current ? 'on' : ''}" data-pt="${esc(name)}">${label}</button>`;
+  const groups = TITLE_GROUPS.map((g) => {
+    const list = owned.filter((t) => g.match(t.id));
+    return list.length ? `<div class="title-group"><span>${g.name}</span><small>${list.length}</small></div><div class="pe-chips">${list.map((t) => chip(t.name, esc(t.name))).join('')}</div>` : '';
+  }).join('');
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.innerHTML = `<div class="modal-box">
+      <h3>見せる称号を選ぶ</h3>
+      <div class="modal-body">
+        <div class="pe-chips">${chip('', 'なし')}</div>
+        ${groups || '<p class="muted">まだ称号を持っていません。戦績・ミッションの「称号」で、手に入れる条件を見られます。</p>'}
+      </div>
+      <div class="footer"><button class="btn" data-close>閉じる</button></div>
+    </div>`;
+  el.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    if (t === el || t.closest('[data-close]')) return el.remove();
+    const b = t.closest<HTMLElement>('[data-pt]');
+    if (!b) return;
+    sfx.click();
+    el.remove();
+    onPick(b.dataset.pt ?? '');
+  });
+  screensEl.appendChild(el);
+}
+
 function showProfileEdit(): void {
   const cur = myProfile();
   const draft = { charId: cur.charId, costume: cur.costume, title: cur.title, comment: cur.comment, color: cur.color };
@@ -862,7 +892,7 @@ function showProfileEdit(): void {
            <div class="opt-label">衣装（持っている衣装から）</div>
            <div class="pe-chips">${owned.map((c) => chip('cos', c.id, `${rarityName(c.rarity) ? `<b>${rarityName(c.rarity)}</b> ` : ''}${esc(c.name)}`, c.id === draft.costume, `r${c.rarity}`)).join('')}</div>
            <div class="opt-label">見せる称号</div>
-           <div class="pe-chips">${chip('title', '', 'なし', !draft.title)}${titleNames.map((t) => chip('title', esc(t), esc(t), t === draft.title)).join('')}</div>
+           <div class="pe-title-row"><span class="pe-cur-title">${draft.title ? `${rewardMark()}${esc(draft.title)}` : 'なし'}</span><button type="button" class="btn small" id="pick-title">称号を選ぶ <small>（${titleNames.length}個から）</small></button></div>
            <div class="opt-label">ひとこと</div>
            <div class="pe-chips">${PROFILE_COMMENTS.map((t, i) => chip('cm', i, esc(t), i === draft.comment)).join('')}</div>
            <div class="opt-label">カードの色</div>
@@ -890,7 +920,14 @@ function showProfileEdit(): void {
           draft.costume = myCostume(draft.charId) ?? getCostume(undefined, draft.charId).id;
         });
         on('[data-cos]', (b) => (draft.costume = b.dataset.cos!));
-        on('[data-title]', (b) => (draft.title = b.dataset.title ?? ''));
+        root.querySelector('#pick-title')!.addEventListener('click', () => {
+          scroll = opts.scrollTop;
+          sfx.click();
+          openTitlePicker(draft.title, (t) => {
+            draft.title = t;
+            draw();
+          });
+        });
         on('[data-cm]', (b) => (draft.comment = Number(b.dataset.cm)));
         on('[data-color]', (b) => (draft.color = Number(b.dataset.color)));
         root.querySelector('#back')!.addEventListener('click', () => showFriends());
