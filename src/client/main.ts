@@ -41,7 +41,7 @@ import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIM
 
 /** UR のカード・衣装ボタンの上に舞うキラキラの粒（中身は styles.css の .ur-sp） */
 const URSP = '<i class="ur-sp" aria-hidden="true"></i>';
-import { COSTUMES, getCostume, rarityName } from '../shared/costumes';
+import { COSTUMES, GACHA_COSTUMES, getCostume, rarityName } from '../shared/costumes';
 
 registerServiceWorker();
 preventZoomGestures();
@@ -685,7 +685,8 @@ function profileCard(name: string, code: string, p: Profile | undefined, togethe
     group('対戦', v(String(p.wins), lbl('通算勝利', '勝利')), v(`${p.horde}人`, lbl('100人組手', '組手'))),
     group(lbl('トーナメント', '大会'), v(`${p.tw ?? 0}回`, '優勝'), v(`${p.t2 ?? 0}回`, '準優勝')),
     group(lbl('勝敗予想', '予想'), v(rate, '的中率', p.pn ? `${p.ph ?? 0}/${p.pn}` : ''), v((p.pc ?? 0).toLocaleString(), lbl('獲得コイン', 'コイン'))),
-    group(lbl('コレクション', '収集'), v(String(p.costumes), '衣装'), v(String(p.tc ?? 0), '称号')),
+    // 衣装（ガチャで集める衣装）と称号は、持っている数 / 全部の数
+    group(lbl('コレクション', '収集'), v(`${p.costumes}<span class="pc-of">/${GACHA_COSTUMES.length}</span>`, '衣装'), v(`${p.tc ?? 0}<span class="pc-of">/${TITLES.length}</span>`, '称号')),
   ].join('');
   return `<div class="pcard ${cos.rarity >= 6 ? 'ur' : ''}" style="--c1:${c1};--c2:${c2}">
     <div class="pc-pic" data-char="${p.charId}" data-cos="${esc(p.costume)}"><img alt="" src="${renderer.fullBody(p.charId, p.costume)}"/></div>
