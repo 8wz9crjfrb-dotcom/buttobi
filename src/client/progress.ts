@@ -154,6 +154,9 @@ export const TITLES: TitleDef[] = [
   { id: 'ko200', name: '撃墜マシーン', cond: '通算200撃墜', coins: 300, check: (p) => p.totals.kos >= 200 },
   { id: 'match1000', name: 'トバセ中毒', cond: '1000試合する', coins: 500, check: (p) => p.totals.matches >= 1000 },
   { id: 'special500', name: '必殺技マニア', cond: '必殺技を500回使う', coins: 150, check: (p) => p.totals.specials >= 500 },
+  { id: 'special1000', name: '必殺技の達人', cond: '必殺技を1000回使う', coins: 300, check: (p) => p.totals.specials >= 1000 },
+  { id: 'special5000', name: '必殺技の鬼', cond: '必殺技を5000回使う', coins: 800, check: (p) => p.totals.specials >= 5000 },
+  { id: 'special10000', name: '必殺技の神', cond: '必殺技を10000回使う', coins: 1500, check: (p) => p.totals.specials >= 10000 },
   { id: 'costume24', name: '着せ替え上手', cond: '衣装を24着集める', coins: 300, check: (_p, w) => w.owned.length >= 24 },
   { id: 'login30', name: '常連さん', cond: '30日連続でログイン', coins: 300, check: (_p, w) => (w.run ?? 0) >= 30 },
   // ルール（モード）別
