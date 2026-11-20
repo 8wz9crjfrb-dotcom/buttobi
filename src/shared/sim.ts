@@ -3484,8 +3484,9 @@ export class Sim {
     if (md.special === 'scroll' && a.chain >= 2) md = { ...md, dmg: md.dmg * SCROLL_FINISH.dmg, base: SCROLL_FINISH.base, growth: SCROLL_FINISH.growth, angle: SCROLL_FINISH.angle };
     // 学習（AIエンジニア）の構え中に直接殴られたら、ダメージを受けずに相手をはじき返す（つかみは防げない）
     if (md.special !== 'grab' && this.tryDeflect(v, a)) return;
-    if (md.special === 'grab' || (md.special === 'tackle' && a.grounded && v.grounded)) {
-      // つかみ・タックル：ガードしていてもつかめる。すでに誰かにつかまれている人はつかめない
+    // タックル・マッスルジャンプ（トレーナー）は技なので、ガードしている相手はつかめない（ふつうの攻撃としてガードに当たる）
+    if (md.special === 'grab' || (md.special === 'tackle' && a.grounded && v.grounded && v.state !== 'shield')) {
+      // つかみ：ガードしていてもつかめる。すでに誰かにつかまれている人はつかめない
       if (v.grabbedBy >= 0) return;
       if (md.special === 'tackle' && this.tryCounter(v, a, md.dmg)) return;
       this.startGrab(a, v);
@@ -3496,7 +3497,7 @@ export class Sim {
       }
       return;
     }
-    if (md.special === 'slam' && a.slamming === 0 && a.grabbing < 0 && v.grabbedBy < 0 && v.state !== 'ledge' && !this.tryCounter(v, a, md.dmg)) {
+    if (md.special === 'slam' && a.slamming === 0 && a.grabbing < 0 && v.grabbedBy < 0 && v.state !== 'ledge' && v.state !== 'shield' && !this.tryCounter(v, a, md.dmg)) {
       // マッスルジャンプ：つかんで、そのまま真下へ
       if (v.grabbing >= 0) this.endGrab(v, this.fighter(v.grabbing));
       a.grabbing = v.slot;

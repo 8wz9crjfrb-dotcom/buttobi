@@ -42,7 +42,7 @@ const place = (sim: Sim, dx: number) => {
   check('ダンベルカール：溜めたほうがダメージが大きい', held.fighters[1].damage > quick.fighters[1].damage * 1.5, `溜め${held.fighters[1].damage.toFixed(1)}% / すぐ${quick.fighters[1].damage.toFixed(1)}%`);
 }
 
-// ---- タックル：突進してつかむ（ガード中でも）
+// ---- タックル：突進してつかむ（ガード中の相手はつかめない）
 {
   const sim = make('trainer', 'guard');
   place(sim, 2.6);
@@ -54,7 +54,7 @@ const place = (sim: Sim, dx: number) => {
   const sh = make('trainer', 'guard');
   place(sh, 2.4);
   run(sh, 30, at(0, { mx: 1, my: 0, buttons: BTN_B }), () => ({ mx: 0, my: 0, buttons: BTN_SHIELD }));
-  check('タックル：ガード中の相手もつかめる', sh.fighters[1].state === 'grabbed');
+  check('タックル：ガード中の相手はつかめない（ガードに当たるだけ）', sh.fighters[1].state === 'shield' && sh.fighters[1].grabbedBy === -1 && sh.fighters[0].grabbing === -1, `${sh.fighters[1].state}`);
 }
 {
   // 投げの威力：同じ前投げでも、トレーナーは警備員より強い
@@ -86,6 +86,15 @@ const place = (sim: Sim, dx: number) => {
   }
   check('マッスルジャンプ：つかんで地面に叩きつける', slammed && sim.fighters[1].damage >= 10 && f.throws === 1, `${sim.fighters[1].damage.toFixed(1)}%`);
   check('マッスルジャンプ：つかんだあと相手は解放されている', sim.fighters[1].grabbedBy === -1 && f.grabbing === -1 && f.slamming === 0);
+  // ガード中の相手はつかめない
+  const gs = make('trainer', 'guard');
+  place(gs, 0.6);
+  let grabbed = false;
+  for (let i = 0; i < 60; i++) {
+    gs.step(new Map([[0, i === 0 ? { mx: 0, my: 1, buttons: BTN_B } : N], [1, { mx: 0, my: 0, buttons: BTN_SHIELD }]]));
+    if (gs.fighters[1].state === 'grabbed') grabbed = true;
+  }
+  check('マッスルジャンプ：ガード中の相手はつかめない', !grabbed && gs.fighters[0].throws === 0);
   const rec = make('trainer', 'guard');
   rec.fighters[1].x = 20;
   const r = rec.fighters[0];
