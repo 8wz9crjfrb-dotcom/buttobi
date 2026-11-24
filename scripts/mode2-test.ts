@@ -39,7 +39,8 @@ const step = (sim: Sim, k: number, inp?: Map<number, InputState>) => { for (let 
   const pts = sim.crownPts.get(0) ?? 0;
   check('王冠：持っている間だけ時間がたまる', pts >= 115 && pts <= 125 && !(sim.crownPts.get(1) ?? 0), `${pts}`);
   check('王冠：撃墜されないので残機は減らない（何度でも復活）', a.stocks === 0);
-  step(sim, 200);
+  // 撃墜された b が復活するまで待つ（約5秒）
+  step(sim, 400);
   // 相手が弱攻撃を当てると奪える
   a.x = 0; a.y = 0; b.x = a.x + 0.8; b.facing = -1; b.y = a.y; b.grounded = true; a.grounded = true;
   step(sim, 2);
@@ -73,7 +74,8 @@ const step = (sim: Sim, k: number, inp?: Map<number, InputState>) => { for (let 
   step(sim, CROWN.respawn + 2);
   check('王冠：中央に出てくる', sim.crown.on && sim.crown.holder === -1 && Math.abs(sim.crown.x) < 0.5);
   for (const f of [b, c]) f.x = 6;
-  step(sim, 100, new Map([[0, { mx: 1, my: 0, buttons: 0 }]]));
+  // 撃墜された a が復活するまで待つ（約5秒）
+  step(sim, 250, new Map([[0, { mx: 1, my: 0, buttons: 0 }]]));
   a.x = sim.crown.x; a.y = 0;
   step(sim, 3);
   check('王冠：中央の王冠に触れると拾う', sim.crown.holder === 0, `${sim.crown.holder}`);

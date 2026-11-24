@@ -224,6 +224,8 @@ export type GameEvent =
   | { k: 'cdrop'; s: number; x: number; y: number; p: number }
   /** サドンデスが始まった */
   | { k: 'sudden' }
+  /** エリア・王冠の延長戦が始まった */
+  | { k: 'overtime' }
   /** 鬼電（メンヘラ）の着信音が鳴った・泣き落とし */
   | { k: 'ring'; x: number; y: number; s: number }
   | { k: 'cry'; x: number; y: number; s: number }
@@ -342,6 +344,8 @@ export interface ViewState {
   coins?: CoinsView;
   /** サドンデス中（1位が同点のときの延長戦） */
   sudden?: boolean;
+  /** 延長中（エリア・王冠） */
+  overtime?: boolean;
 }
 
 /** 王冠うばいの画面用の状態 */

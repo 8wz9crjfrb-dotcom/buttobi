@@ -150,7 +150,10 @@ const gauge = (sim: Sim, key: number) => sim.areaGauge.get(key) ?? 0;
   const f = sim.fighters[1];
   f.x = sim.stage.blast.right + 2;
   f.y = 3;
-  run(sim, 400);
+  // 復活まで約5秒待つ
+  run(sim, 250);
+  check('撃墜されたあと、約5秒は復活しない', f.state === 'dead' && !f.out);
+  run(sim, 350);
   check('場外に出ても負けにならず、復活する', !sim.ended && !f.out && f.falls === 1 && f.alive);
 }
 

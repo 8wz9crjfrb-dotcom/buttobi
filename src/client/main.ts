@@ -516,7 +516,7 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'shot') sfx.shot();
     else if (e.k === 'counter') sfx.counter();
     else if (e.k === 'boom' || e.k === 'shout') sfx.boom();
-    else if (e.k === 'sudden') sfx.finish();
+    else if (e.k === 'sudden' || e.k === 'overtime') sfx.finish();
     else if (e.k === 'rewind') sfx.warp();
     else if (e.k === 'crown') sfx.buff();
     else if (e.k === 'vhit') sfx.hit(Math.min(20, e.p));

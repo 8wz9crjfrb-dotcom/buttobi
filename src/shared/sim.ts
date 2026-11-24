@@ -48,6 +48,7 @@ import {
   type MoveId,
   type ResultEntry,
   type ViewState,
+  type RuleMode,
 } from './types';
 
 export const DT = 1 / 60;
@@ -540,6 +541,14 @@ function applySize(f: Fighter): void {
   f.def = sizedDef(base, f.size);
 }
 
+/** 延長戦の最長（フレーム）。だれも奪えないままでも、これを過ぎたら終わる */
+export const OVERTIME_MAX = 60 * 60;
+
+/** 撃墜されてから復活するまでのフレーム数。ストック制・タイム制・体力制は短め、ほかのルールは約5秒 */
+export function respawnWait(mode: RuleMode): number {
+  return mode === 'stock' || mode === 'time' || mode === 'stamina' ? 100 : 300;
+}
+
 export class Sim {
   readonly setup: MatchSetup;
   readonly stage: StageDef;
@@ -851,15 +860,33 @@ export class Sim {
     this.events.push({ k: 'cdrop', s: v.slot, x: v.x, y: v.y + v.h, p: n });
   }
 
-  /** 撃墜された：持っているコインの半分を、ステージの中央の上からばらまく */
-  private coinsOnKo(f: Fighter): void {
+  /**
+   * 撃墜された：持っているコインの半分を手放す。そのうち半分は撃墜した人がそのままもらい、
+   * 残りはステージのあちこち（ばらばらの場所）に上から降らせる（中央に固めると、そこで待つだけで勝ててしまうため）
+   */
+  private coinsOnKo(f: Fighter, by: number | undefined): void {
     const held = this.coinsHeld.get(f.slot) ?? 0;
     const n = Math.ceil(held * COINS.ko);
     if (n <= 0) return;
     this.coinsHeld.set(f.slot, held - n);
+    const k = by !== undefined ? this.fighter(by) : undefined;
+    const give = k && k.team !== f.team ? Math.floor(n * COINS.koToKiller) : 0;
+    if (k && give > 0) {
+      this.coinsHeld.set(k.slot, (this.coinsHeld.get(k.slot) ?? 0) + give);
+      this.events.push({ k: 'coin', s: k.slot, x: k.x, y: k.y + k.h, v: give });
+    }
+    const rest = n - give;
     const m = this.stage.main;
-    this.scatterCoins((m.x1 + m.x2) / 2, m.top + 6, n, -1);
     this.events.push({ k: 'cdrop', s: f.slot, x: (m.x1 + m.x2) / 2, y: m.top + 6, p: n });
+    if (rest <= 0) return;
+    const pieces = Math.min(rest, Math.max(1, 30 - this.coins.length));
+    for (let i = 0; i < pieces; i++) {
+      const v = Math.floor(rest / pieces) + (i < rest % pieces ? 1 : 0);
+      // 台の幅を pieces 等分して、それぞれの区間の中のランダムな場所へ
+      const w = (m.x2 - m.x1 - 2) / pieces;
+      const x = m.x1 + 1 + w * (i + this.rng.next());
+      this.coins.push({ x, y: m.top + 6 + this.rng.next() * 3, vx: 0, vy: 0, v, no: -1, noT: 0 });
+    }
   }
 
   private coinsView(): CoinsView {
@@ -4032,14 +4059,15 @@ export class Sim {
     }
     if (this.setup.rules.mode === 'crown' && !this.solo) this.crownOnKo(f, by);
     if (this.setup.rules.mode === 'bounty' && !this.solo) this.bountyOnKo(f, by);
-    if (this.setup.rules.mode === 'coins' && !this.solo) this.coinsOnKo(f);
+    if (this.setup.rules.mode === 'coins' && !this.solo) this.coinsOnKo(f, by);
     if (f.grabbing >= 0) this.endGrab(f, this.fighter(f.grabbing));
     f.buzz = 0;
     f.move = null;
     f.ledgeSide = 0;
     this.setState(f, 'dead');
-    f.respawnTimer = 100;
     const rules = this.setup.rules;
+    // ストック制・タイム制・体力制のほか（エリア・玉入れ・王冠・金庫・賞金首・コイン集め）は、復活まで約5秒待つ
+    f.respawnTimer = respawnWait(rules.mode);
     if (rules.horde && f.team !== 0) {
       // 100人組手の敵：すぐ次の敵が出てくる。出す敵がもういなければ退場
       this.hordeDefeated++;
@@ -4070,6 +4098,35 @@ export class Sim {
         f.outFrame = this.frame;
       }
     }
+  }
+
+  /** 延長中（エリア・王冠：時間切れでも、1位でない人が持っている間は続ける） */
+  overtime = false;
+  private overtimeStart = 0;
+
+  /**
+   * エリア・王冠で、1位でない人（チーム）が今「持っている」か。
+   * エリア：エリアの中に、単独1位ではない人がいる（取り合い中も含む）。王冠：単独1位ではない人が持っている
+   */
+  private trailerHolding(): boolean {
+    const r = this.setup.rules;
+    const notTop = (pts: Map<number, number>, k: number) => {
+      const mine = pts.get(k) ?? 0;
+      let best = 0;
+      for (const [o, v] of pts) if (o !== k) best = Math.max(best, v);
+      return mine <= best;
+    };
+    if (r.mode === 'area') {
+      for (const z of this.areaZones()) {
+        for (const f of this.fighters) if (this.inZone(f, z) && notTop(this.areaGauge, this.areaKey(f))) return true;
+      }
+      return false;
+    }
+    if (r.mode === 'crown') {
+      const h = this.crown.holder >= 0 ? this.fighter(this.crown.holder) : undefined;
+      return !!h && h.alive && !h.out && notTop(this.crownPts, this.crownKey(h));
+    }
+    return false;
   }
 
   /** サドンデス中（1位が同点のときの延長戦） */
@@ -4130,7 +4187,7 @@ export class Sim {
     }
     // 制限時間 0 は時間切れなし（100人組手）
     const timeUp = rules.timeLimit > 0 && this.frame > COUNTDOWN_FRAMES && this.timeLeftFrames <= 0;
-    let over = timeUp;
+    let over = false;
     // エリアバトル：だれかのゲージが満タンになったら終わり
     if (rules.mode === 'area' && [...this.areaGauge.values()].some((v) => v >= this.areaGoal)) over = true;
     // 玉入れ：どちらかのチームが先取点に届いたら終わり（ゴールのあと少し間をおく）
@@ -4143,7 +4200,20 @@ export class Sim {
       const teams = new Set(this.fighters.filter((f) => !f.out).map((f) => f.team));
       if (teams.size <= 1) over = true;
     }
+    if (timeUp && !over) {
+      // エリア・王冠：時間切れでも、1位でない人が持っている間は延長（相手に奪われるか、単独1位になったら終わり。最長 OVERTIME_MAX）
+      if ((rules.mode === 'area' || rules.mode === 'crown') && !this.solo && this.trailerHolding() && !(this.overtime && this.frame - this.overtimeStart > OVERTIME_MAX)) {
+        if (!this.overtime) {
+          this.overtime = true;
+          this.overtimeStart = this.frame;
+          this.events.push({ k: 'overtime' });
+        }
+        return;
+      }
+      over = true;
+    }
     if (over) {
+      this.overtime = false;
       // 1位が同点なら、すぐには終わらずサドンデス
       if (this.tryStartSudden()) return;
       this.ended = true;
@@ -4299,6 +4369,7 @@ export class Sim {
       bounty: this.setup.rules.mode === 'bounty' ? this.bountyView() : undefined,
       coins: this.setup.rules.mode === 'coins' ? this.coinsView() : undefined,
       sudden: this.sudden || undefined,
+      overtime: this.overtime || undefined,
       ball: this.setup.rules.mode === 'ball' ? this.ballView() : undefined,
     };
   }

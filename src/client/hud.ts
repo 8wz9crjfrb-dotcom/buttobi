@@ -2,7 +2,7 @@
 
 import { BOUNTY } from '../shared/moves';
 import { areaColor, ballTeamOf, getCharacter, playerColor, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
-import { COUNTDOWN_FRAMES } from '../shared/sim';
+import { COUNTDOWN_FRAMES, respawnWait } from '../shared/sim';
 import { clashMark } from './icons';
 import { buffSvg } from './buffIcons';
 import { DEFAULT_HP, isTwoTeam, FX_ARMOR, FX_ATK_DOWN, FX_ATK_UP, FX_SPD_DOWN, FX_SPD_UP, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
@@ -42,6 +42,12 @@ export class Hud {
   private cdRow: { root: HTMLElement; bars: HTMLElement[] } | null = null;
   private lastCd = '';
 
+  /** 自分の番号と、撃墜後の復活までの待ち時間（フレーム）。待っている間「復活まで ○」を出す */
+  private mySlot: number | null = null;
+  private overtimeFrom: number | undefined;
+  private respawnWaitF = 100;
+  private revive: HTMLElement = document.createElement('div');
+
   constructor() {
     this.el = document.getElementById('hud')!;
     this.timer = document.createElement('div');
@@ -51,6 +57,8 @@ export class Hud {
 
   setup(setup: MatchSetup, myslot: number | null, training = false, portraits: Record<number, string> = {}): void {
     this.training = training;
+    this.mySlot = myslot;
+    this.respawnWaitF = setup.rules.horde ? 0 : respawnWait(setup.rules.mode);
     this.noLimit = setup.rules.timeLimit <= 0;
     this.el.innerHTML = '';
     this.panels.clear();
@@ -130,7 +138,8 @@ export class Hud {
     this.timer.className = 'hud-timer';
     this.center.className = 'hud-center';
     this.net.className = 'hud-net';
-    this.el.append(wrap, this.timer, this.center, this.net);
+    this.revive.className = 'hud-revive hidden';
+    this.el.append(wrap, this.timer, this.center, this.net, this.revive);
     this.lastCenter = '';
     this.area = null;
     this.ball = null;
@@ -427,14 +436,26 @@ export class Hud {
       const el = Math.max(0, Math.floor((v.frame - COUNTDOWN_FRAMES) / 60));
       this.timer.textContent = `${Math.floor(el / 60)}:${String(el % 60).padStart(2, '0')}`;
     } else if (v.sudden) this.timer.textContent = 'サドンデス';
+    else if (v.overtime && !v.ended) this.timer.textContent = '延長中！';
     else this.timer.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     // 残り10秒：タイマーを大きく赤くする（サドンデス・時間制限なしは除く）
     const final = !this.horde && !this.training && !this.noLimit && !v.sudden && !v.ended && v.countdown <= 0 && v.timeLeft > 0 && secs <= 10;
     this.timer.classList.toggle('final', final);
-    this.timer.classList.toggle('sudden', !!v.sudden && !v.ended);
+    this.timer.classList.toggle('sudden', (!!v.sudden || !!v.overtime) && !v.ended);
+    // 撃墜されて待っている間：復活までの秒数（約5秒待つルールだけ）
+    const me = this.mySlot === null ? undefined : v.fighters.find((f) => f.slot === this.mySlot);
+    const wait = me && me.state === 'dead' && !me.out && !v.ended && this.respawnWaitF > 100 ? Math.ceil((this.respawnWaitF - me.stateTime) / 60) : 0;
+    const rv = wait > 0 ? `復活まで ${wait}` : '';
+    if (this.revive.textContent !== rv) {
+      this.revive.textContent = rv;
+      this.revive.classList.toggle('hidden', !rv);
+    }
     let c = '';
     if (v.countdown > 0) c = v.countdown > 100 ? '3' : v.countdown > 50 ? '2' : '1';
     else if (v.frame < 210) c = 'GO!';
+    // 延長戦が始まった瞬間：中央に「延長中！」（2秒ほど）
+    if (v.overtime && !v.ended && v.frame - (this.overtimeFrom ??= v.frame) < 120) c = '延長中！';
+    if (!v.overtime) this.overtimeFrom = undefined;
     if (v.ended) c = this.horde ? ((v.horde ?? 0) >= this.horde ? 'CLEAR!' : 'GAME!') : v.timeLeft <= 0 && !this.noLimit && !v.sudden ? 'TIME UP!' : 'GAME!';
     if (c !== this.lastCenter) {
       this.center.textContent = c;

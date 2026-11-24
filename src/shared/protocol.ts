@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 50;
+export const PROTOCOL_VERSION = 51;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -180,6 +180,8 @@ export interface EncodedState {
   b?: number[];
   /** サドンデス中 */
   sd?: 1;
+  /** 延長中（エリア・王冠） */
+  ot?: 1;
   /** 王冠うばい：[x, y, 持っている人, 出ている(1/0), 勝ちの時間, 番号, 時間, 番号, 時間...] */
   c?: number[];
   /** 金庫まもり：[赤の耐久, 青の耐久, 最大] */
@@ -222,6 +224,7 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
     n: v.entities.map((e) => [ENTITY_KINDS.indexOf(e.kind), Math.round(e.x * 100), Math.round(e.y * 100), e.owner, e.life, e.dir]),
     ev: events.map((e) => ('x' in e ? { ...e, x: r2(e.x), y: r2(e.y) } : e)),
     ...(v.sudden ? { sd: 1 as const } : {}),
+    ...(v.overtime ? { ot: 1 as const } : {}),
     ...(v.crown ? { c: [Math.round(v.crown.x * 100), Math.round(v.crown.y * 100), v.crown.holder, v.crown.on ? 1 : 0, v.crown.goal, v.crown.armor ?? 0, v.crown.armorMax ?? 0, ...v.crown.pts.flat()] } : {}),
     ...(v.bounty ? { bo: [v.bounty.holder, ...v.bounty.pts.flat()] } : {}),
     ...(v.coins ? { co: [v.coins.list.length, ...v.coins.list.flatMap((c) => [Math.round(c.x * 100), Math.round(c.y * 100), c.v]), ...v.coins.held.flat()] } : {}),
@@ -271,6 +274,7 @@ export function decodeState(s: EncodedState): ViewState {
     entities: (s.n ?? []).map((a) => ({ kind: ENTITY_KINDS[a[0]] ?? 'wall', x: a[1] / 100, y: a[2] / 100, owner: a[3], life: a[4], dir: a[5] ?? 1 })),
     events: s.ev,
     sudden: s.sd === 1 || undefined,
+    overtime: s.ot === 1 || undefined,
     crown: s.c
       ? {
           x: s.c[0] / 100,

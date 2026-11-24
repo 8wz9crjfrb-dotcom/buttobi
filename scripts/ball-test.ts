@@ -133,7 +133,8 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N) 
   check('場外のあと、中央にボールが戻る', sim.ball.on && Math.abs(sim.ball.x) < 1);
   const f = sim.fighters[1];
   f.x = sim.stage.blast.right + 2;
-  run(sim, 400);
+  // 復活まで約5秒待つ
+  run(sim, 600);
   check('ふっとばされても負けにならず、復活する', !sim.ended && f.alive && f.falls === 1);
 }
 
