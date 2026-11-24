@@ -449,6 +449,8 @@ function makeOutlineMaterial(thickness: number): THREE.MeshBasicMaterial {
 }
 
 export class FighterModel {
+  /** いま見えていない（倒れた・登場前・透明化）。頭の上のマークもこれに合わせて隠す */
+  hiddenNow = false;
   readonly root = new THREE.Group();
   private turnGroup = new THREE.Group();
   /** 画面の奥行き方向の軸まわりに回すための入れ物（ふっとび中の回転用） */
@@ -2433,6 +2435,7 @@ export class FighterModel {
     }
     const visible = v.state !== 'dead' && this.appear > 0.001;
     this.root.visible = visible;
+    this.hiddenNow = !visible;
     if (!visible) return;
     this.root.position.set(v.x, v.y, 0);
     // 配信スタジオの視聴者リクエスト：でっかく・ちっちゃく（なめらかに変える）
@@ -2532,6 +2535,8 @@ export class FighterModel {
     // 無敵の点滅・溜めの発光・回避や透明化・毒
     const md = v.state === 'attack' && v.move ? moveOf(def.id, v.move, this.job) : null;
     const invisible = md?.special === 'invis' && v.moveFrame >= Math.round(md.startup * def.frameMul) && v.moveFrame < Math.round(md.startup * def.frameMul) + md.active;
+    // 透明になっている間も、頭の上の目印（バフのマーク）を出さないように覚えておく
+    if (invisible) this.hiddenNow = true;
     const flash = v.invuln && !invisible && Math.floor(time * 20) % 2 === 0;
     const charging = v.charge > 0;
     const ghost = v.state === 'dodge' || v.state === 'airdodge' || invisible;

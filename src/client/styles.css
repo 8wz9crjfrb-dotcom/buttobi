@@ -34,6 +34,9 @@ body {
   overscroll-behavior: none;
   /* ダブルタップでの拡大をしない */
   touch-action: manipulation;
+  /* iPhone は縦→横に回すと文字を勝手に大きくして、枠からはみ出すので止める */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #app {

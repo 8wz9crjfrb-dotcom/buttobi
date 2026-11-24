@@ -10,6 +10,8 @@ import { DEFAULT_HP, isTwoTeam, FX_ARMOR, FX_ATK_DOWN, FX_ATK_UP, FX_SPD_DOWN, F
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 export class Hud {
+  private onResize: (() => void) | null = null;
+  private resizeHooked = false;
   private el: HTMLElement;
   private panels = new Map<number, { root: HTMLElement; dmg: HTMLElement; stk: HTMLElement; last: number; job: HTMLElement; fitted: boolean; buffs: HTMLElement; lastBuffs: string; shown: number; t: number }>();
   private timer: HTMLElement;
@@ -66,6 +68,17 @@ export class Hud {
     const shown = this.horde ? setup.players.slice(0, 1) : setup.players;
     // 6人（5人以上）のときは枠を少し小さくして、右下のボタンと重ならないようにする
     wrap.classList.toggle('many', shown.length >= 5);
+    // 画面の向き・大きさが変わったら、職業名の大きさを測り直す（縦で始まったときに縮んだままにしない）
+    if (!this.onResize) this.onResize = () => {
+      for (const p of this.panels.values()) {
+        p.fitted = false;
+        p.job.style.fontSize = '';
+        const span = p.job.firstElementChild as HTMLElement | null;
+        if (span) span.style.transform = '';
+      }
+    };
+    if (!this.resizeHooked) window.addEventListener('resize', this.onResize);
+    this.resizeHooked = true;
     for (const p of shown) {
       // 上から：職業名（キャラ名）・ダメージ%・残機・プレイヤー名の帯（プレイヤーの色。チーム戦はチームの色）
       const root = document.createElement('div');

@@ -641,7 +641,7 @@ export class PropRenderer {
     return pool[n];
   }
 
-  update(view: ViewState, time: number, dt: number): void {
+  update(view: ViewState, time: number, dt: number, shownSlots?: Set<number>): void {
     for (const pool of this.pools.values()) for (const o of pool) o.visible = false;
     const used = new Map<string, number>();
     for (const p of view.projectiles) {
@@ -757,10 +757,15 @@ export class PropRenderer {
         o.scale.setScalar(e.life < 40 && Math.floor(time * 10) % 2 === 0 ? 0.98 : 1);
       }
     }
+    // いなくなった人（100人組手で消えた敵・抜けた人）の目印は、その場に残さず隠す
+    const present = new Set(view.fighters.map((f) => f.slot));
+    for (const [id, sp] of this.debuffs) if (!present.has(Number(id.replace(/^\D+/, '')))) sp.visible = false;
+    for (const [slot, q] of this.question) if (!present.has(slot)) q.visible = false;
+    for (const [slot, z] of this.zzz) if (!present.has(slot)) z.visible = false;
     // 眠っている人の頭上に Zzz、操作が逆の人に「？」、毒の人から泡
     for (const f of view.fighters) {
       let q = this.question.get(f.slot);
-      if (f.fx & FX_CONFUSED && f.state !== 'dead') {
+      if (f.fx & FX_CONFUSED && f.state !== 'dead' && (!shownSlots || shownSlots.has(f.slot))) {
         if (!q) {
           q = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.qTex, depthWrite: false }));
           q.scale.setScalar(0.5);
@@ -782,7 +787,7 @@ export class PropRenderer {
       for (const [key, on] of marks) {
         const id = `${key}${f.slot}`;
         let sp = this.debuffs.get(id);
-        if (on && f.state !== 'dead') {
+        if (on && f.state !== 'dead' && (!shownSlots || shownSlots.has(f.slot))) {
           if (!sp) {
             sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.buffTex[key], depthWrite: false, transparent: true }));
             sp.scale.setScalar(0.42);
@@ -845,6 +850,12 @@ export class PropRenderer {
     this.zzz.clear();
     for (const q of this.question.values()) this.scene.remove(q);
     this.question.clear();
+    // 頭の上の剣・ブーツの目印も片付ける（残すと、前の試合の場所に浮いたまま次の試合に出てしまう）
+    for (const sp of this.debuffs.values()) {
+      this.scene.remove(sp);
+      sp.material.dispose();
+    }
+    this.debuffs.clear();
     // 試合の途中で消える文字・泡も、画像と形を片付ける（残すと試合のたびにたまっていく）
     for (const t of this.texts) {
       this.scene.remove(t.sprite);

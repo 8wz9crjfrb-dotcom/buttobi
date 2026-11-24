@@ -743,8 +743,10 @@ export class GameRenderer {
         m.model.showMarker = !this.cinema;
         m.model.update(f, getCharacter(m.charId), this.time, dt);
       }
-      // 飛び道具・壁・罠・広告ウィンドウ・Zzz
-      this.props.update(view, this.time, dt);
+      // 飛び道具・壁・罠・広告ウィンドウ・Zzz（頭の上のマークは、キャラが見えているときだけ）
+      const shownSlots = new Set<number>();
+      for (const [slot, m] of this.models) if (!m.model.hiddenNow) shownSlots.add(slot);
+      this.props.update(view, this.time, dt, shownSlots);
       this.updateDecoys(view, dt);
       this.updateWires(view);
       for (const e of newEvents) this.effect(e, view);
