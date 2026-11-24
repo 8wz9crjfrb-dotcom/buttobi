@@ -138,3 +138,8 @@ export function diceMark(): string {
 export function chatMark(): string {
   return `<svg class="chat-mark" viewBox="0 0 24 22" aria-hidden="true"><path d="M5 2h14a3.5 3.5 0 0 1 3.5 3.5v7A3.5 3.5 0 0 1 19 16h-8l-5 4.5V16H5a3.5 3.5 0 0 1-3.5-3.5v-7A3.5 3.5 0 0 1 5 2z" fill="currentColor"/><g fill="#1b1f3b"><circle cx="7.5" cy="9" r="1.5"/><circle cx="12" cy="9" r="1.5"/><circle cx="16.5" cy="9" r="1.5"/></g></svg>`;
 }
+
+/** 観戦の目（「対戦を見る」・見られている表示） */
+export function eyeMark(): string {
+  return `<svg class="eye-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 12C4.4 7.2 8 4.8 12 4.8s7.6 2.4 10.2 7.2c-2.6 4.8-6.2 7.2-10.2 7.2S4.4 16.8 1.8 12z"/><circle cx="12" cy="12" r="3.6" fill="currentColor"/></svg>`;
+}

@@ -363,6 +363,15 @@ export class Room extends DurableObject<Env> {
     return s;
   }
 
+  private watcherNames(): string[] {
+    const names: string[] = [];
+    for (const ws of this.ctx.getWebSockets()) {
+      const a = ws.deserializeAttachment() as Attachment | null;
+      if (a && a.slot === SPECTATOR) names.push(a.name || '観戦者');
+    }
+    return names;
+  }
+
   private spectatorCount(): number {
     let n = 0;
     for (const ws of this.ctx.getWebSockets()) {
@@ -400,7 +409,7 @@ export class Room extends DurableObject<Env> {
     // CPU はキャラで見分けられる名前に（「CPU 配信者」など）
     nameCpus(players);
     const tour: TourInfo | undefined = l.tour ? { ...l.tour, nextIn: !this.sim && this.tourNextAt ? Math.max(0, this.tourNextAt - Date.now()) : 0, ...this.tourVotes() } : undefined;
-    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim || !!this.rouletteSetup, spectators: this.spectatorCount(), again: l.again ?? [], tourOn: !!l.tourOn, tourThird: l.tourThird !== false, dropOn: l.dropOn !== false, ...(tour ? { tour } : {}) };
+    return { code: l.code, hostSlot: l.hostSlot, players, rules: l.rules, stageId: l.stageId, inMatch: !!this.sim || !!this.rouletteSetup, spectators: this.spectatorCount(), watchers: this.watcherNames(), again: l.again ?? [], tourOn: !!l.tourOn, tourThird: l.tourThird !== false, dropOn: l.dropOn !== false, ...(tour ? { tour } : {}) };
   }
 
   private pushLobby(): void {

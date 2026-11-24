@@ -11,7 +11,7 @@ import { RANDOM_STAGE, resolveStage, STAGES, getStage, stageFor } from '../share
 import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
-import { championMark, chatMark, diceMark, ICONS, iconTile, predictMark, rewardMark } from './icons';
+import { championMark, chatMark, diceMark, eyeMark, ICONS, iconTile, predictMark, rewardMark } from './icons';
 import { markNewsSeen, NEWS, NEWS_LABEL, newsSeen, unreadNews } from './changelog';
 import { applyData, issueTransfer, takeTransfer } from './transfer';
 import logoUrl from './assets/logo.png';
@@ -313,6 +313,7 @@ function startSession(s: Session): void {
     hidePredict();
     hideDrop();
   }
+  renderWatch();
   lastView = null;
   renderer.setMatch(s.setup, stageFor(s.setup.stageId, s.setup.players.length, !!s.setup.rules.horde));
   input.reset();
@@ -453,6 +454,7 @@ function loop(t: number): void {
       if (session.kind === 'demo' && session.sim.finished) startDemo();
       else if (session.kind === 'local' && !session.training && session.sim.finished && !resultsShown) {
         resultsShown = true;
+        renderWatch();
         showResults(session.sim.results(), session.setup, false);
       }
     }
@@ -727,7 +729,7 @@ function showFriends(): void {
   if (friendPick !== 'me' && !sorted.some((f) => f.code === friendPick)) friendPick = 'me';
   const rows = sorted
     .map((f) => {
-      const status = f.room ? `<span class="fr-room">ルーム公開中 ${f.room.n}/${f.room.max}</span>` : f.online ? '<span class="fr-on">オンライン</span>' : '<span class="muted">オフライン</span>';
+      const status = f.room ? `<span class="fr-room">${f.room.match ? '対戦中' : 'ルーム公開中'} ${f.room.n}/${f.room.max}</span>` : f.online ? '<span class="fr-on">オンライン</span>' : '<span class="muted">オフライン</span>';
       // オフラインの人だけ、最後にアプリを開いていた時刻を添える
       const sub = f.online || f.room ? '' : `・最終ログイン ${f.seen ? agoText(f.seen) : '記録なし'}`;
       return `<button type="button" class="fr-item ${friendPick === f.code ? 'on' : ''}" data-pick="${f.code}">
@@ -749,7 +751,13 @@ function showFriends(): void {
   const pick = st.friends.find((f) => f.code === friendPick);
   const card = pick
     ? `${profileCard(pick.name, pick.code, pick.prof, social.together(pick.code))}
-       <div class="fr-acts">${pick.room ? `<button class="btn small primary" data-join="${pick.room.code}">ルームに参加</button>` : ''}</div>
+       <div class="fr-acts">${
+         pick.room
+           ? pick.room.match
+             ? `<button class="btn small primary" data-watch="${pick.room.code}">${eyeMark()}対戦を見る</button>`
+             : `<button class="btn small primary" data-join="${pick.room.code}">ルームに参加</button>`
+           : ''
+       }</div>
        <div class="fr-danger"><button class="btn small danger-outline" data-remove="${pick.code}" data-name="${esc(pick.name)}">フレンドから外す</button></div>`
     : `${profileCard(settings.name || 'あなた', '', me, undefined, social.code)}
        <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
@@ -762,7 +770,7 @@ function showFriends(): void {
          ${inbox}
          <div class="opt-label">フレンド（${st.friends.length}人）</div>
          ${rows || '<p class="muted">まだフレンドがいません。右上の「＋フレンド追加」から、相手のフレンドコードで申請しましょう。</p>'}
-         <p class="muted small-note">フレンドがルームを「フレンドに公開」にすると「ルームに参加」が出ます。${settings.hideOnline ? 'あなたのオンライン状態は隠しています。' : 'オンライン状態は設定画面で隠せます。'}</p>
+         <p class="muted small-note">フレンドがルームを「フレンドに公開」にすると「ルームに参加」が出ます（対戦中なら「対戦を見る」）。${settings.hideOnline ? 'あなたのオンライン状態は隠しています。' : 'オンライン状態は設定画面で隠せます。'}</p>
        </div>
        <div class="fr-right">${card}</div>
      </div>`,
@@ -839,6 +847,14 @@ function showFriends(): void {
         }),
       );
       root.querySelectorAll<HTMLElement>('[data-join]').forEach((b) => b.addEventListener('click', () => joinRoom(b.dataset.join!, showFriends)));
+      // フレンドが対戦中なら、参加ではなく観戦（見るだけ）
+      root.querySelectorAll<HTMLElement>('[data-watch]').forEach((b) =>
+        b.addEventListener('click', () => {
+          lastJoinCode = b.dataset.watch!;
+          showScreen(`<h2>接続中…</h2>`, 'overlay');
+          net.connect(settings.serverUrl, b.dataset.watch!, false, settings.name || 'プレイヤー', settings.charId, undefined, true);
+        }),
+      );
     },
   );
 }
@@ -2351,6 +2367,53 @@ let predictTour = false;
 /** 「みんなの予想」を試合の始めに見せる時間（カウントダウンの間＋少し） */
 const PREDICT_SHOW_MS = 4500;
 let predictShowUntil = 0;
+
+// ---------------------------------------------------------------------------
+// 観戦されている表示：対戦中、左上に「目」と観戦の人数。押すと、だれが見ていて、だれがだれに予想したかを出す
+const watchEl = document.createElement('button');
+watchEl.type = 'button';
+watchEl.id = 'watching';
+watchEl.className = 'hidden';
+document.getElementById('app')!.appendChild(watchEl);
+let watchOpen = false;
+let watchAutoClose = 0;
+let watchSeen = '';
+watchEl.addEventListener('click', () => {
+  watchOpen = !watchOpen;
+  clearTimeout(watchAutoClose);
+  renderWatch();
+});
+
+function renderWatch(): void {
+  const setup = session?.kind === 'net' && !resultsShown && lobby?.inMatch ? session.setup : null;
+  const watchers = lobby?.watchers ?? [];
+  const votes = setup ? predicts.filter((x) => setup.players.some((p) => p.slot === x.p)) : [];
+  if (!setup || (!watchers.length && !votes.length)) {
+    watchEl.className = 'hidden';
+    watchOpen = false;
+    watchSeen = '';
+    return;
+  }
+  // 新しく見に来た人・予想した人がいたら、少しの間だけ中身を開いて知らせる
+  const key = `${watchers.join('|')}#${votes.map((v) => `${v.n}>${v.p}`).join('|')}`;
+  if (watchSeen && key !== watchSeen && !watchOpen) {
+    watchOpen = true;
+    clearTimeout(watchAutoClose);
+    watchAutoClose = window.setTimeout(() => {
+      watchOpen = false;
+      renderWatch();
+    }, 4000);
+  }
+  watchSeen = key;
+  const nameOf = (slot: number) => esc(setup.players.find((p) => p.slot === slot)?.name ?? '？');
+  const detail = watchOpen
+    ? `<span class="w-detail">${watchers.length ? `<span class="w-row"><b>観戦</b>${watchers.map(esc).join('、')}</span>` : ''}${
+        votes.length ? `<span class="w-row"><b>予想</b>${votes.map((v) => `${esc(v.n)}→${nameOf(v.p)}`).join('、')}</span>` : ''
+      }</span>`
+    : '';
+  watchEl.className = watchOpen ? 'open' : '';
+  watchEl.innerHTML = `<span class="w-head">${eyeMark()}観戦 ${watchers.length}人${votes.length ? `・予想 ${votes.length}` : ''}</span>${detail}`;
+}
 
 /** この試合で予想できるか（個人戦で、自分が出ていない） */
 function canPredictMatch(setup: MatchSetup): boolean {
@@ -4046,6 +4109,7 @@ const net = new NetClient({
     updateAgainInfo();
     onTourLobby(l);
     updateRoomShare();
+    renderWatch();
     // 対戦中：通信が切れた・抜けた人の枠に「CPUが操作中」を出す
     if (session?.kind === 'net') hud.setAway(new Set(l.players.filter((p) => !p.cpu && !p.connected).map((p) => p.slot)));
     // ロビーからキャラ選択を開いている間は画面を切り替えない（戻ったときに最新の内容を出す）
@@ -4057,6 +4121,7 @@ const net = new NetClient({
     startSession(new NetSession(setup, setup.players.find((p) => p.slot === net.slot) ? net.slot : -1, net));
     onPredictStart(setup);
     onDropStart(setup);
+    renderWatch();
   },
   onEnd(results) {
     onPredictEnd(results);
@@ -4068,6 +4133,7 @@ const net = new NetClient({
     }
     if (session?.kind === 'net') {
       resultsShown = true;
+      renderWatch();
       showResults(results, session.setup, true);
     }
   },
@@ -4137,12 +4203,14 @@ const net = new NetClient({
     predicts = list;
     if (predictSetup) renderPredict();
     updateTourInfo();
+    renderWatch();
   },
   onClose() {
     toast('サーバーとの接続が切れました', 3500);
     lobby = null;
     hidePredict();
     hideDrop();
+    renderWatch();
     if (session?.kind === 'net') endToMenu();
     else showMenu();
   },

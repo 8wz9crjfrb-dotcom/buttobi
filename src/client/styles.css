@@ -5257,3 +5257,64 @@ table.rec td:first-child {
   padding: 3px 10px;
   font-size: 11px;
 }
+
+/* 対戦中：観戦されている表示（左上・通信の下） */
+#watching {
+  position: absolute;
+  top: calc(28px + var(--safe-t));
+  left: calc(10px + var(--safe-l));
+  z-index: 54;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: min(320px, 46vw);
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 12, 30, 0.6);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+#watching.hidden {
+  display: none;
+}
+#watching.open {
+  background: rgba(10, 12, 30, 0.88);
+  border-color: rgba(255, 216, 74, 0.5);
+}
+#watching .w-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+}
+#watching .eye-mark {
+  width: 16px;
+  height: 16px;
+  color: #ffd84a;
+}
+#watching .w-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+#watching .w-row b {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 10px;
+}
+.btn .eye-mark {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+  margin-right: 4px;
+}

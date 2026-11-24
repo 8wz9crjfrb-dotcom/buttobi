@@ -69,6 +69,8 @@ export interface LobbyInfo {
   inMatch: boolean;
   /** 観戦している人数 */
   spectators?: number;
+  /** 観戦している人の名前（対戦中に「見られている」ことを出すため） */
+  watchers?: string[];
   /** 結果画面で「もう1戦したい」を押している人（slot） */
   again?: number[];
   /** 対戦の形式がトーナメント（ホストが選ぶ） */
