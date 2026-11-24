@@ -20,6 +20,26 @@ export interface CardBgDef {
 
 /** SVG を CSS の url() にする */
 const svg = (w: number, h: number, body: string) => `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>${body}</svg>`)}")`;
+/** カード全体に1枚で敷く SVG（繰り返さない。中で SMIL のアニメーションを動かせる） */
+const full = (w: number, h: number, body: string) =>
+  `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}' preserveAspectRatio='xMidYMid slice'>${body}</svg>`)}") center / cover no-repeat`;
+/** 花火1発（中心 x,y・半径 r・色。dur 秒ごと、そのうち最初の vis の割合だけ見える） */
+const burst = (x: number, y: number, r: number, c: string, dur: number, begin: number, vis = 0.9) => {
+  const rays = Array.from({ length: 16 }, (_, i) => {
+    const a = (i / 16) * Math.PI * 2;
+    const x2 = (Math.cos(a) * r).toFixed(1);
+    const y2 = (Math.sin(a) * r).toFixed(1);
+    return `<line x1='${(Math.cos(a) * r * 0.35).toFixed(1)}' y1='${(Math.sin(a) * r * 0.35).toFixed(1)}' x2='${x2}' y2='${y2}'/><circle cx='${x2}' cy='${y2}' r='${(r / 22).toFixed(1)}' fill='${c}' stroke='none'/>`;
+  }).join('');
+  const k = (n: number) => (n * vis).toFixed(3);
+  return `<g transform='translate(${x} ${y})'><g stroke='${c}' stroke-width='${(r / 26).toFixed(1)}' stroke-linecap='round' opacity='0'>${rays}<animateTransform attributeName='transform' type='scale' values='0.15;1;1.12;1.12' keyTimes='0;${k(0.4)};${k(1)};1' dur='${dur}s' begin='${begin}s' repeatCount='indefinite'/><animate attributeName='opacity' values='0;1;0;0' keyTimes='0;${k(0.12)};${k(1)};1' dur='${dur}s' begin='${begin}s' repeatCount='indefinite'/></g></g>`;
+};
+/** またたく星（SMIL） */
+const twinkle = (x: number, y: number, r: number, dur: number) => `<circle cx='${x}' cy='${y}' r='${r}' fill='#fff'><animate attributeName='opacity' values='1;.15;1' dur='${dur}s' repeatCount='indefinite'/></circle>`;
+/** 舞い落ちる紙吹雪（SMIL。カードの上から下へ） */
+const confetti = (x: number, c: string, dur: number, begin: number, rot: number) =>
+  `<g><rect x='${x}' y='-12' width='5' height='9' fill='${c}' transform='rotate(${rot} ${x + 2} -8)'/><animateTransform attributeName='transform' type='translate' values='0 0;${rot > 0 ? 14 : -14} 230' dur='${dur}s' begin='${begin}s' repeatCount='indefinite'/></g>`;
+
 /** 明るい背景の上でも白い文字が読めるよう、うすく暗くする層 */
 const SHADE = 'linear-gradient(rgba(10,12,30,.28), rgba(10,12,30,.28))';
 
@@ -202,7 +222,7 @@ export const CARD_BGS: CardBgDef[] = [
     group: 'ssr',
     rarity: 5,
     fx: 'sea',
-    bg: `radial-gradient(circle at 70% 58%, #fff3b0 0 18px, #ffb347 19px 22px, transparent 23px), linear-gradient(180deg, #ff7a59 0%, #ffb37a 52%, #2a5a99 56%, #142a55 100%)`,
+    bg: `radial-gradient(circle at 88% 50%, #fff3b0 0 16px, #ffb347 17px 20px, transparent 21px), linear-gradient(180deg, #ff7a59 0%, #ffb37a 48%, #2a5a99 52%, #142a55 100%)`,
   },
   {
     name: '蛍の森',
@@ -217,21 +237,21 @@ export const CARD_BGS: CardBgDef[] = [
     group: 'ur',
     rarity: 6,
     fx: 'galaxy',
-    bg: `${svg(120, 90, `<g fill='#fff'><circle cx='12' cy='14' r='1.2'/><circle cx='80' cy='10' r='.9'/><circle cx='104' cy='70' r='1.3'/><circle cx='40' cy='78' r='1'/></g>`)}, radial-gradient(ellipse at 50% 50%, #3a1f7a, #0a0620 75%)`,
+    bg: `${full(320, 200, `${twinkle(30, 30, 1.6, 1.7)}${twinkle(250, 24, 1.3, 2.3)}${twinkle(290, 150, 2, 1.4)}${twinkle(110, 170, 1.5, 2.9)}${twinkle(180, 60, 1.1, 1.9)}${twinkle(60, 120, 1.2, 2.6)}${twinkle(220, 120, 1.4, 2.1)}`)}, radial-gradient(ellipse at 50% 50%, #3a1f7a, #0a0620 75%)`,
   },
   {
     name: '打ち上げ花火',
     group: 'ur',
     rarity: 6,
     fx: 'fireworks',
-    bg: `${svg(200, 60, `<g fill='#0a0f22'><rect x='0' y='30' width='24' height='30'/><rect x='28' y='18' width='18' height='42'/><rect x='50' y='36' width='30' height='24'/><rect x='120' y='24' width='20' height='36'/><rect x='144' y='34' width='26' height='26'/><rect x='174' y='14' width='26' height='46'/></g>`)} 0 100% / 100% auto repeat-x, linear-gradient(180deg, #0a0a2a, #1f1650 80%)`,
+    bg: `${svg(200, 60, `<g fill='#0a0f22'><rect x='0' y='30' width='24' height='30'/><rect x='28' y='18' width='18' height='42'/><rect x='50' y='36' width='30' height='24'/><rect x='120' y='24' width='20' height='36'/><rect x='144' y='34' width='26' height='26'/><rect x='174' y='14' width='26' height='46'/></g>`)} 0 100% / 100% auto repeat-x, ${full(400, 200, `${burst(95, 70, 62, '#ffc850', 2.6, 0)}${burst(235, 58, 50, '#78dcff', 2.6, 1.3)}${burst(362, 40, 24, '#ff7eb6', 7.8, 3.1, 0.33)}${burst(318, 26, 16, '#c8ff78', 11, 6.5, 0.24)}`)}, linear-gradient(180deg, #0a0a2a, #1f1650 80%)`,
   },
   {
     name: '黄金の大舞台',
     group: 'ur',
     rarity: 6,
     fx: 'spotlight',
-    bg: `linear-gradient(90deg, #7a0f1f 0 7%, transparent 7% 93%, #7a0f1f 93%), repeating-linear-gradient(90deg, rgba(0,0,0,.25) 0 3px, transparent 3px 12px) 0 0 / 7% 100% no-repeat, linear-gradient(180deg, #2a0f1a, #120608 70%, #6a4a12)`,
+    bg: `${full(320, 200, `${confetti(40, '#ffd84a', 4.2, 0, 25)}${confetti(110, '#fff6c9', 5.1, 1.2, -30)}${confetti(170, '#ffd84a', 3.8, 2.3, 40)}${confetti(230, '#ffb347', 4.6, 0.6, -20)}${confetti(280, '#fff6c9', 5.4, 3, 30)}${confetti(80, '#ffb347', 4.9, 3.6, -40)}${confetti(200, '#ffd84a', 4.4, 4.4, 15)}`)}, linear-gradient(90deg, #7a0f1f 0 7%, transparent 7% 93%, #7a0f1f 93%), repeating-linear-gradient(90deg, rgba(0,0,0,.25) 0 3px, transparent 3px 12px) 0 0 / 7% 100% no-repeat, linear-gradient(180deg, #2a0f1a, #120608 70%, #6a4a12)`,
   },
 ];
 

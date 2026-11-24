@@ -4,7 +4,7 @@ import { IS_TEST } from './testEnv';
 import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, RANDOM_CHAR, getCharacter, HIDDEN_CHARS, PREVIEW, PREVIEW_KEY, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
-import { picStamp, PIC_STAMPS, setStampPortrait, tierName } from './stamps';
+import { FREE_STAMPS, picStamp, PIC_STAMPS, setStampPortrait, tierName } from './stamps';
 import { cardBgAttrs, CARD_BG_GROUPS, CARD_BGS } from './cardBgs';
 import { ITEM_COST, ITEM_DUP_REFUND, itemCounts, ownsBg, pullItems, stampTier, type ItemPull } from './items';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
@@ -1075,7 +1075,7 @@ function showProfileEdit(): void {
            <div class="opt-label">ひとこと</div>
            <div class="pe-chips">${PROFILE_COMMENTS.map((t, i) => chip('cm', i, esc(t), i === draft.comment)).join('')}</div>
            <div class="opt-label">カードの色</div>
-           <div class="pe-chips">${PROFILE_COLORS.map(([a, b], i) => `<button type="button" class="pe-color ${i === draft.color ? 'on' : ''}" data-color="${i}" style="background:linear-gradient(135deg,${a},${b})" aria-label="色${i + 1}"></button>`).join('')}</div>
+           <div class="pe-chips">${PROFILE_COLORS.map(([a, b], i) => `<button type="button" class="pe-color ${i === draft.color && !draft.bg ? 'on' : ''}" data-color="${i}" style="background:linear-gradient(135deg,${a},${b})" aria-label="色${i + 1}"></button>`).join('')}</div>
            <div class="opt-label">カードの背景 <small class="muted">（スタンプ＆背景ガチャで集めた背景から）</small></div>
            <div class="pe-chips"><button type="button" class="pe-bg none ${draft.bg === 0 ? 'on' : ''}" data-bg="0"><span>なし（色だけ）</span></button></div>
            ${CARD_BG_GROUPS.filter((g) => CARD_BGS.some((d, i) => d.group === g.id && ownsBg(wallet, i + 1))).map(
@@ -1114,7 +1114,11 @@ function showProfileEdit(): void {
           });
         });
         on('[data-cm]', (b) => (draft.comment = Number(b.dataset.cm)));
-        on('[data-color]', (b) => (draft.color = Number(b.dataset.color)));
+        // 色を選んだら背景は外す（背景を選んでいる間は、色の選択は外れて見える）
+        on('[data-color]', (b) => {
+          draft.color = Number(b.dataset.color);
+          draft.bg = 0;
+        });
         on('[data-bg]', (b) => (draft.bg = Number(b.dataset.bg)));
         root.querySelector('#back')!.addEventListener('click', () => showFriends());
         root.querySelector('#save')!.addEventListener('click', () => {
@@ -3534,9 +3538,10 @@ function showItemList(tab: 's' | 'b'): void {
   const c = itemCounts(wallet);
   const body =
     tab === 's'
-      ? `<div class="pic-grid">${PIC_STAMPS.map((s, i) => {
+      ? `<div class="il-tiers"><div class="il-th"></div><div class="il-th"><b class="rr4">SR</b><small>ふつう</small></div><div class="il-th"><b class="rr5">SSR</b><small>金の縁・きらめき</small></div><div class="il-th"><b class="rr6">UR</b><small>虹色に光って動く</small></div>${PIC_STAMPS.map((s, i) => {
           const t = stampTier(wallet, i);
-          return t ? `<div class="il-item">${picStamp(i, t)}</div>` : `<div class="il-item locked"><span class="il-q">？</span><small>${esc(s.text)}</small></div>`;
+          const cell = (r: number) => `<div class="il-cell ${t >= r ? 'have' : 'no'} ${t === r ? 'cur' : ''}">${picStamp(i, r)}<small>${t === r ? '使っている' : t > r ? '' : 'まだ'}</small></div>`;
+          return `<div class="il-name">${esc(s.text)}${FREE_STAMPS.includes(i) ? '<small>最初から</small>' : ''}</div>${cell(4)}${cell(5)}${cell(6)}`;
         }).join('')}</div>`
       : CARD_BG_GROUPS.map(
           (g) =>
