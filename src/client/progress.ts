@@ -2,7 +2,7 @@
 
 import { CHARACTERS, getCharacter } from '../shared/characters';
 import { GACHA_COSTUMES } from '../shared/costumes';
-import { dayKey, type Wallet } from './wallet';
+import { dayKey, GACHA_COST, type Wallet } from './wallet';
 
 const KEY = 'buttobi-progress-v1';
 
@@ -49,7 +49,8 @@ export interface Progress {
   /** 勝敗予想の成績（予想した回数・当たった回数・予想でもらったコイン） */
   pred?: { n: number; hit: number; coins: number };
   /** メニューの赤い点：最後にその画面を開いたときの状態（開くと赤い点が消える） */
-  seen?: { coins: number; missionDay: string; missionsDone: number; titles: number };
+  /** afford：最後に見たとき、ガチャを引けるだけコインがあったか */
+  seen?: { coins: number; missionDay: string; missionsDone: number; titles: number; afford?: boolean };
 }
 
 // ---------------------------------------------------------------- メニューの赤い点（一度見ると消える）
@@ -59,7 +60,13 @@ function seenOf(p: Progress): NonNullable<Progress['seen']> {
 
 /** ガチャ：前に見たときよりコインが増えていて、1回引ける */
 export function gachaBadge(p: Progress, w: Wallet, cost: number): boolean {
-  return w.coins >= cost && w.coins > (p.seen?.coins ?? 0);
+  // 赤い点は「引けない → 引ける」に変わったときだけ（もともと引ける状態でコインが少し増えただけでは出さない）
+  const s = seenOf(p);
+  if (w.coins < cost) {
+    s.afford = false;
+    return false;
+  }
+  return s.afford === undefined ? w.coins > s.coins : !s.afford;
 }
 
 /** 戦績・ミッション：今日のミッションをまだ見ていない／ミッションを達成した／称号が増えた */
@@ -72,6 +79,7 @@ export function recordsBadge(p: Progress): boolean {
 /** ガチャ画面を開いた */
 export function markGachaSeen(p: Progress, w: Wallet): void {
   seenOf(p).coins = w.coins;
+  seenOf(p).afford = w.coins >= GACHA_COST.one;
 }
 
 /** 戦績・ミッション画面を開いた */

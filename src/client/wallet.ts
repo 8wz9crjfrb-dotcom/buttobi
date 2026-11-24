@@ -15,6 +15,9 @@ export interface Wallet {
   streak: number;
   /** 連続ログイン日数（くり返さずに数える。称号用） */
   run?: number;
+  /** 今日（winDay の日）に対戦の勝利でもらったコイン（1日の上限 WIN_DAILY_CAP まで） */
+  winDay?: string;
+  winToday?: number;
   /** 受け取り済みの通算勝利ボーナスの勝利数 */
   milestone: number;
   /** 持っている衣装の id */
@@ -107,6 +110,8 @@ export function loadWallet(): Wallet {
       lastLogin: typeof w.lastLogin === 'string' ? w.lastLogin : '',
       streak: Math.min(7, num(w.streak)),
       run: num(w.run),
+      winDay: typeof w.winDay === 'string' ? w.winDay : '',
+      winToday: num(w.winToday),
       milestone: num(w.milestone),
       owned: Array.isArray(w.owned) ? w.owned.filter((id): id is string => typeof id === 'string' && GACHA_COSTUMES.some((c) => c.id === id)) : [],
       // 天井が50回から30回に変わったので、それより多く数えていた分は30回目の手前でそろえる
@@ -148,10 +153,23 @@ export function claimLogin(w: Wallet, now = new Date()): { day: number; amount: 
 }
 
 /** 勝ったときに記録して、もらえるコインを返す */
-export function recordWin(w: Wallet, online: boolean, cpuLevel: number): { base: number; bonus: { wins: number; amount: number } | null; total: number } {
+/** CPU戦・オンライン対戦の勝利でもらえるコインの、1日の上限（称号・ログインボーナス・ミッションなどは含めない） */
+export const WIN_DAILY_CAP = 1000;
+
+/** 今日、勝利でもらったコイン（日付が変わっていたら0） */
+export function winCoinsToday(w: Wallet, now = new Date()): number {
+  return w.winDay === dayKey(now) ? w.winToday ?? 0 : 0;
+}
+
+export function recordWin(w: Wallet, online: boolean, cpuLevel: number, now = new Date()): { base: number; full: number; today: number; capped: boolean; bonus: { wins: number; amount: number } | null; total: number } {
   if (online) w.wins.online++;
   else w.wins.cpu++;
-  const base = winReward(online, cpuLevel);
+  // 1日の上限まで（上限に届いたら、その日はもう増えない）
+  const full = winReward(online, cpuLevel);
+  const before = winCoinsToday(w, now);
+  const base = Math.max(0, Math.min(full, WIN_DAILY_CAP - before));
+  w.winDay = dayKey(now);
+  w.winToday = before + base;
   w.coins += base;
   const total = w.wins.cpu + w.wins.online;
   let bonus: { wins: number; amount: number } | null = null;
@@ -161,5 +179,5 @@ export function recordWin(w: Wallet, online: boolean, cpuLevel: number): { base:
     w.coins += amt;
     bonus = { wins: total, amount: amt };
   }
-  return { base, bonus, total };
+  return { base, full, today: w.winToday, capped: base < full, bonus, total };
 }

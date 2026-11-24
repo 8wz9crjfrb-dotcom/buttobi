@@ -37,7 +37,7 @@ import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
 import { applyTouchLayout, currentButtonPositions } from './touchLayout';
 import { checkTitles, MOVED_TITLES, RENAMED_TITLES, gachaBadge, markGachaSeen, markRecordsSeen, recordsBadge, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, TITLE_GROUPS, type MatchStats } from './progress';
-import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, UR_PITY_LIMIT, UR_RATE, urAvailable, type PullResult } from './wallet';
+import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, UR_PITY_LIMIT, UR_RATE, urAvailable, WIN_DAILY_CAP, type PullResult } from './wallet';
 
 /** UR のカード・衣装ボタンの上に舞うキラキラの粒（中身は styles.css の .ur-sp） */
 const URSP = '<i class="ur-sp" aria-hidden="true"></i>';
@@ -2715,9 +2715,11 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
     const cpuLevel = Math.max(0, ...setup.players.filter((p) => p.cpu).map((p) => p.cpuLevel));
     const r = recordWin(wallet, online, cpuLevel);
     saveWallet(wallet);
-    reward = `<div class="reward"><span class="coin-icon"></span>勝利 +${r.base} コイン${
+    // 勝利のコインは1日 WIN_DAILY_CAP 枚まで。今日の分と上限を出す
+    const cap = r.capped ? (r.base > 0 ? `<span class="cap">本日の上限に達しました</span>` : `<span class="cap">本日の上限に達しているため、勝利のコインはもらえません</span>`) : '';
+    reward = `<div class="reward"><span class="coin-icon"></span>勝利 +${r.base} コイン${cap}${
       r.bonus ? `<span class="bonus">通算${r.bonus.wins}勝ボーナス +${r.bonus.amount}</span>` : ''
-    }<small>（所持 __COINS__・通算 ${r.total} 勝）</small></div>`;
+    }<small>（本日の勝利コイン ${r.today}/${WIN_DAILY_CAP}・所持 __COINS__・通算 ${r.total} 勝）</small></div>`;
   }
   // 戦績・ミッション・称号（自分が戦った試合だけ）
   if (myResult) {
