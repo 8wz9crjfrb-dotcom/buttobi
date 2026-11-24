@@ -3428,29 +3428,36 @@ function bindGachaTabs(root: HTMLElement): void {
   bindSeg(root, 'gtab', (v) => (v === 'item' ? showItemGacha() : showGacha()));
 }
 
-/** 着せ替えガチャの見本：SSR と UR の衣装を1着ずつ、ランダムに切り替えて見せる */
+/** 着せ替えガチャの見本：SSR と UR の衣装を着たキャラを1体ずつ、3Dで動かして見せる（SSR → UR → SSR … と交互、衣装はランダム） */
 function startCostumeShowcase(root: HTMLElement): void {
-  const pool = (r: number) => GACHA_COSTUMES.filter((c) => c.rarity === r);
-  const last: Record<number, string> = {};
-  const fill = () => {
-    root.querySelectorAll<HTMLElement>('.gs-slot').forEach((el) => {
-      const r = Number(el.dataset.r);
-      const list = pool(r).filter((c) => c.id !== last[r]);
-      if (!list.length) return el.remove();
-      const c = list[Math.floor(Math.random() * list.length)];
-      last[r] = c.id;
-      el.classList.remove('in');
-      void el.offsetWidth;
-      el.innerHTML = `<img alt="" src="${renderer.fullBody(c.charId, c.id)}"/><b class="rr${r}">${rarityName(r)}</b><span>${esc(c.name)}</span><small>${esc(getCharacter(c.charId).name)}</small>${r === 6 ? URSP : ''}`;
-      el.classList.add('in');
-    });
+  const slot = root.querySelector<HTMLElement>('.gs-slot');
+  const stage = slot?.querySelector<HTMLElement>('.gs-stage');
+  const label = slot?.querySelector<HTMLElement>('.gs-label');
+  if (!slot || !stage || !label) return;
+  let rarity = Math.random() < 0.5 ? 5 : 6;
+  let lastId = '';
+  const show = () => {
+    let list = GACHA_COSTUMES.filter((c) => c.rarity === rarity && c.id !== lastId);
+    if (!list.length) list = GACHA_COSTUMES.filter((c) => c.rarity >= 5);
+    if (!list.length) return;
+    const c = list[Math.floor(Math.random() * list.length)];
+    lastId = c.id;
+    slot.dataset.r = String(c.rarity);
+    label.innerHTML = `<b class="rr${c.rarity}">${rarityName(c.rarity)}</b><span>${esc(c.name)}</span><small>${esc(getCharacter(c.charId).name)}</small>`;
+    slot.classList.remove('in');
+    void slot.offsetWidth;
+    slot.classList.add('in');
+    // 名刺カードと同じ 3D の入れ物を使い回して、キャラを動かす（タップでアクション）
+    cardViewer.mount(stage, c.charId, c.id);
+    cardViewer.action();
+    rarity = rarity === 5 ? 6 : 5;
   };
-  fill();
+  show();
   const timer = window.setInterval(() => {
     // 画面を離れたら止める
     if (!root.isConnected) return clearInterval(timer);
-    fill();
-  }, 2600);
+    show();
+  }, 4500);
 }
 
 /** 背景の小さな見本 */
@@ -3599,7 +3606,7 @@ function showGacha(): void {
   showScreen(
     `<div class="row" style="justify-content:space-between">${gachaTabs('cos')}${coinBadge()}</div>
      <div class="gacha-hero cos">
-       <div class="gs-show"><div class="gs-slot" data-r="5"></div><div class="gs-slot" data-r="6"></div></div>
+       <div class="gs-show"><div class="gs-slot" data-r="5"><div class="gs-stage"></div><div class="gs-label"></div></div></div>
        <div class="gacha-info">
          <div>全${COSTUMES.filter((c) => c.rarity >= 4).length}着。SSR・UR はエフェクト付き！</div>
          <div>出る確率：${ur ? `<b class="rr6">UR ${Math.round(UR_RATE * 100)}%</b>／` : ''}<b class="rr5">SSR ${Math.round(SSR_RATE * 100)}%</b>／<b class="rr4">SR ${Math.round((1 - SSR_RATE - (ur ? UR_RATE : 0)) * 100)}%</b></div>

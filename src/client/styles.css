@@ -6113,62 +6113,65 @@ table.rec td:first-child {
 }
 .gs-slot {
   position: relative;
-  width: 118px;
-  height: 172px;
-  border-radius: 14px;
+  width: 190px;
+  height: 230px;
+  border-radius: 16px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: flex-end;
-  padding-bottom: 6px;
   text-align: center;
-  background: radial-gradient(circle at 50% 40%, rgba(255, 210, 63, 0.35), rgba(10, 12, 30, 0.7));
-  border: 2px solid #ffd23f;
+  background: radial-gradient(circle at 50% 45%, rgba(255, 210, 63, 0.35), rgba(10, 12, 30, 0.75));
+  border: 3px solid #ffd23f;
 }
 .gs-slot[data-r='6'] {
   border-color: transparent;
   background:
-    radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.28), rgba(10, 12, 30, 0.75)) padding-box,
+    radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.3), rgba(10, 12, 30, 0.8)) padding-box,
     linear-gradient(90deg, #ff4d4d, #ffd24d, #4dff88, #4dc3ff, #c34dff, #ff4d4d) border-box;
 }
-.gs-slot img {
+.gs-stage {
   position: absolute;
-  inset: 0 0 34px 0;
-  width: 100%;
-  height: calc(100% - 34px);
-  object-fit: contain;
+  inset: 0 0 40px 0;
 }
-.gs-slot b,
-.gs-slot span,
-.gs-slot small {
+.gs-label {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 4px 6px;
   line-height: 1.2;
+  pointer-events: none;
 }
-.gs-slot b {
-  font-size: 12px;
+.gs-label b {
+  font-size: 13px;
   font-weight: 900;
 }
-.gs-slot span {
-  font-size: 12px;
+.gs-label span {
+  font-size: 13px;
   font-weight: 800;
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 0 4px;
 }
-.gs-slot small {
+.gs-label small {
   font-size: 10px;
   color: var(--muted);
 }
-.gs-slot.in {
+.gs-slot.in .gs-label {
   animation: gs-in 0.45s ease-out;
 }
 @keyframes gs-in {
-  from { opacity: 0; transform: scale(0.92) translateY(6px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
+}
+@media (max-height: 420px) {
+  .gs-slot {
+    width: 160px;
+    height: 200px;
+  }
 }
 /* スタンプ＆背景ガチャ：スタンプと背景が2段で横に流れる */
 .ig-marquee {
@@ -6205,7 +6208,7 @@ table.rec td:first-child {
 }
 @media (prefers-reduced-motion: reduce) {
   .ig-track,
-  .gs-slot.in {
+  .gs-slot.in .gs-label {
     animation: none;
   }
 }
