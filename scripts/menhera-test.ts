@@ -85,6 +85,53 @@ check('キャラとステージの中身がある', getCharacter('menhera').id =
   check('赤い糸（場外）：台の上に戻ると、また離れられない', Math.hypot(v.x - m.x, v.y - m.y) <= MENHERA.leashLen + 0.05, `${Math.hypot(v.x - m.x, v.y - m.y).toFixed(2)}m`);
 }
 {
+  // 台の端の下の空中にいる相手が、糸で空中にぶら下がって動けなくならない（落ちていく）
+  const sim = make('menhera', 'guard');
+  const [m, v] = sim.fighters;
+  const x2 = sim.stage.main.x2;
+  m.x = x2 - 3;
+  m.facing = 1;
+  v.x = x2 - 0.5;
+  v.facing = -1;
+  run(sim, 20, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+  check('赤い糸（空中）：つながる', v.leashT > 0);
+  m.x = x2 - 0.3;
+  v.x = x2 + 1.2;
+  v.y = -2.6;
+  v.vx = 0;
+  v.vy = 0;
+  v.grounded = false;
+  v.state = 'air';
+  v.jumpsLeft = 0;
+  const y0 = v.y;
+  // 台へ向かって入力：端につかまるか台に戻れる（空中で止まったままにならない）
+  run(sim, 60, () => N, () => ({ mx: -1, my: 0, buttons: 0 }));
+  check('赤い糸（空中）：台へ向かえば、端につかまるか台に戻れる', v.grounded || (v.state as string) === 'ledge', `状態=${v.state} y ${y0.toFixed(1)}→${v.y.toFixed(1)}`);
+  check('赤い糸（空中）：横には離れられない', Math.abs(v.x - m.x) <= MENHERA.leashLen + 0.05, `${Math.abs(v.x - m.x).toFixed(2)}m`);
+}
+{
+  // 台の端の下の空中で、台から離れる向きに入力しても、空中で止まらず落ちていく
+  const sim = make('menhera', 'guard');
+  const [m, v] = sim.fighters;
+  const x2 = sim.stage.main.x2;
+  m.x = x2 - 3;
+  m.facing = 1;
+  v.x = x2 - 0.5;
+  v.facing = -1;
+  run(sim, 20, at(0, { mx: 0, my: 0, buttons: BTN_B }));
+  m.x = x2 - 0.3;
+  v.x = x2 + 1.2;
+  v.y = -2.6;
+  v.vx = 0;
+  v.vy = 0;
+  v.grounded = false;
+  v.state = 'air';
+  v.jumpsLeft = 0;
+  const y0 = v.y;
+  run(sim, 60, () => N, () => ({ mx: 1, my: 0, buttons: 0 }));
+  check('赤い糸（空中）：空中に浮いたまま止まらず、落ちていく', v.leashT > 0 ? v.y < y0 - 3 : true, `y ${y0.toFixed(1)}→${v.y.toFixed(1)}`);
+}
+{
   // 強くふっとばされたら糸は切れる（撃墜できなくならない）
   const sim = make('menhera', 'guard');
   place(sim, 2.5);

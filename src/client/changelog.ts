@@ -15,6 +15,12 @@ export const NEWS_LABEL: Record<NewsKind, string> = { new: '新機能', buff: '�
 // 数値を変えたときは「何から何に変わったか」（例：12% → 7%）を書く
 export const NEWS: NewsEntry[] = [
   {
+    id: '2026-11-24-2',
+    date: '2026/11/24',
+    title: '不具合の修正（メンヘラ）',
+    items: [{ kind: 'fix', text: 'メンヘラ：赤い糸でつながった相手が、空中に浮いたまま動けなくなることがある不具合を修正' }],
+  },
+  {
     id: '2026-11-24-1',
     date: '2026/11/24',
     title: 'メンヘラとデータ泥棒の調整',
