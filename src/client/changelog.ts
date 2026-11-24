@@ -20,7 +20,7 @@ export const NEWS: NewsEntry[] = [
     title: 'メンヘラとデータ泥棒の調整',
     items: [
       { kind: 'buff', text: 'メンヘラ：泣き落とし（下B）の効く範囲 3m → 約4.2m' },
-      { kind: 'nerf', text: 'データ泥棒：マルウェア（B）に約0.3秒の待ち時間を追加（これまでは待ち時間なし）' },
+      { kind: 'nerf', text: 'データ泥棒：マルウェア（B）に約0.3秒の待ち時間を追加' },
     ],
   },
   {
