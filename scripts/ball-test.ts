@@ -2,7 +2,7 @@
 import { Sim, COUNTDOWN_FRAMES, BALL, ballBaskets } from '../src/shared/sim';
 import { ballTeamOf, playerColor, TEAM_COLORS } from '../src/shared/characters';
 import { decodeState, encodeState } from '../src/shared/protocol';
-import { BTN_A, type InputState, type MatchRules, type PlayerSetup } from '../src/shared/types';
+import { BTN_A, BTN_B, type InputState, type MatchRules, type PlayerSetup } from '../src/shared/types';
 import { ballRun } from './ball-balance';
 
 let fail = 0;
@@ -158,5 +158,29 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N) 
   }
   check('CPU：4人の試合で点が入る', goals >= 8, `4試合で${goals}点`);
   check('CPU：試合がきちんと終わる', ended === 4);
+}
+// ---- 飛び道具の連射だけでは点が入らない（押す力は弱く、同じ人が押せるのは約1秒に1回）
+{
+  let goals = 0;
+  for (let i = 0; i < 24; i++) {
+    const sim = new Sim({ players: [P(0, 'hacker'), P(1, 'trainer')], stageId: 'plain', rules: { mode: 'ball', stocks: 3, timeLimit: 60, goals: 99, items: false }, seed: i + 1 });
+    while (sim.frame <= COUNTDOWN_FRAMES + 120) sim.step(new Map());
+    const g = ballBaskets(sim.stage)[1];
+    const m = sim.stage.main;
+    const bx = g.cx - 1 - (i % 6);
+    Object.assign(sim.ball, { x: bx, y: m.top + BALL.r, vx: 0, vy: 0, on: true });
+    sim.fighters[1].x = m.x1 + 1;
+    const f = sim.fighters[0];
+    f.x = bx - 3 - (i % 4) * 0.8;
+    f.facing = 1;
+    let prev = 0;
+    for (let t = 0; t < 300 && sim.ballScore[0] === 0; t++) {
+      const buttons = !prev ? BTN_B : 0;
+      prev = buttons;
+      sim.step(new Map([[0, { mx: 0, my: 0, buttons }]]));
+    }
+    if (sim.ballScore[0] > 0) goals++;
+  }
+  check('飛び道具（ハッカーのB）を連打するだけでは、かごに入らない', goals === 0, `24回中${goals}回入った`);
 }
 process.exit(fail ? 1 : 0);

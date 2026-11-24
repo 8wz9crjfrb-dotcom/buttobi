@@ -436,6 +436,11 @@ export const BALL = {
   respawn: 100,
   /** 何点先取で勝ちか（未指定のとき） */
   target: 5,
+  /** 飛び道具で押したとき：横に足す速さ・浮かせる速さ・横の速さの上限・同じ人が押せる間隔（フレーム） */
+  shotPush: 3.5,
+  shotLift: 2.5,
+  shotMax: 6,
+  shotCd: 60,
 };
 
 /** 玉入れのかご（0 = 赤チームが守る左、1 = 青チームが守る右）。床の端の上に、ポールで少し高く付ける */
@@ -965,6 +970,8 @@ export class Sim {
 
   // ---------------------------------------------------------------- 玉入れ
   ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1 };
+  /** 飛び道具でボールを最後に押した時刻（slot ごと） */
+  private ballShotAt = new Map<number, number>();
   ballScore: [number, number] = [0, 0];
 
   get ballTarget(): number {
@@ -1025,12 +1032,17 @@ export class Sim {
         break;
       }
     }
-    // 飛び道具が当たると、進む向きに押される
+    // 飛び道具が当たると、進む向きに少しだけ押される（連射で遠くから運べないように：
+    // 勢いを上書きせず少し足すだけ。同じ人の飛び道具で押せるのは約1秒に1回まで）
     for (const p of this.projectiles) {
       if (Math.hypot(p.x - b.x, p.y - b.y) > r + 0.35) continue;
       if (p.ballHit) continue;
       p.ballHit = true;
-      this.kickBall(Math.sign(p.vx || 1) * 9, 5, p.owner);
+      if (this.frame - (this.ballShotAt.get(p.owner) ?? -9999) < BALL.shotCd) continue;
+      this.ballShotAt.set(p.owner, this.frame);
+      const dir = Math.sign(p.vx || 1);
+      const vx = Math.max(-BALL.shotMax, Math.min(BALL.shotMax, b.vx + dir * BALL.shotPush));
+      this.kickBall(vx, Math.max(b.vy, BALL.shotLift), p.owner);
     }
     // 体で押す（ドリブル）
     for (const f of this.fighters) {
