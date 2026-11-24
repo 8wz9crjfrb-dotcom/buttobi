@@ -6233,3 +6233,35 @@ table.rec td:first-child {
 .dm-box {
   max-width: calc(100vw - var(--safe-l) - var(--safe-r) - 16px);
 }
+/* プロフィール編集：カードの背景は3つずつ並べる */
+.pe-bgs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.pe-bgs .pe-bg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+.pe-bg > span i {
+  font-style: normal;
+}
+/* 名前が入りきらないときは、左右に行ったり来たり流す */
+.pe-bg > span.flow {
+  text-overflow: clip;
+}
+.pe-bg > span.flow i {
+  display: inline-block;
+  animation: bg-name-flow 6s ease-in-out infinite;
+}
+@keyframes bg-name-flow {
+  0%, 18% { transform: translateX(0); }
+  62%, 80% { transform: translateX(var(--dist, 0)); }
+  100% { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pe-bg > span.flow i {
+    animation: none;
+  }
+}

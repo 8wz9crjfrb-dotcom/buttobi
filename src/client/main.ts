@@ -1091,7 +1091,7 @@ function showProfileEdit(): void {
            <div class="pe-chips"><button type="button" class="pe-bg none ${draft.bg === 0 ? 'on' : ''}" data-bg="0"><span>なし（色だけ）</span></button></div>
            ${CARD_BG_GROUPS.filter((g) => CARD_BGS.some((d, i) => d.group === g.id && ownsBg(wallet, i + 1))).map(
              (g) =>
-               `<div class="pe-bg-group">${g.name}</div><div class="pe-chips">${CARD_BGS.map((d, i) => (d.group === g.id && ownsBg(wallet, i + 1) ? `<button type="button" class="pe-bg ${draft.bg === i + 1 ? 'on' : ''} ${cardBgAttrs(i + 1).cls}" data-bg="${i + 1}" style="${cardBgAttrs(i + 1).style}"><span>${esc(d.name)}</span></button>` : '')).join('')}</div>`,
+               `<div class="pe-bg-group">${g.name}</div><div class="pe-bgs">${CARD_BGS.map((d, i) => (d.group === g.id && ownsBg(wallet, i + 1) ? `<button type="button" class="pe-bg ${draft.bg === i + 1 ? 'on' : ''} ${cardBgAttrs(i + 1).cls}" data-bg="${i + 1}" style="${cardBgAttrs(i + 1).style}"><span><i>${esc(d.name)}</i></span></button>` : '')).join('')}</div>`,
            ).join('')}
          </div>
        </div>
@@ -1101,6 +1101,7 @@ function showProfileEdit(): void {
         const opts = root.querySelector<HTMLElement>('.pe-opts')!;
         opts.scrollTop = scroll;
         mountCardViewer(root);
+        marqueeBgNames(root);
         const on = (sel: string, f: (el: HTMLElement) => void) =>
           root.querySelectorAll<HTMLElement>(sel).forEach((b) =>
             b.addEventListener('click', () => {
@@ -3459,8 +3460,8 @@ function startCostumeShowcase(root: HTMLElement): void {
     void slot.offsetWidth;
     slot.classList.add('in');
     // 名刺カードと同じ 3D の入れ物を使い回して、キャラを動かす（タップでアクション）
+    // 切り替えたときに跳ねさせない（タップしたときだけアクション）
     cardViewer.mount(stage, c.charId, c.id);
-    cardViewer.action();
     rarity = rarity === 5 ? 6 : 5;
   };
   show();
@@ -3469,6 +3470,22 @@ function startCostumeShowcase(root: HTMLElement): void {
     if (!root.isConnected) return clearInterval(timer);
     show();
   }, 4500);
+}
+
+/** 背景の見本の名前：枠に入りきらないものは、横に流して全部読めるようにする */
+function marqueeBgNames(root: HTMLElement): void {
+  requestAnimationFrame(() =>
+    root.querySelectorAll<HTMLElement>('.pe-bg > span').forEach((box) => {
+      const text = box.querySelector<HTMLElement>('i');
+      if (!text) return;
+      // 文字（インライン）の幅は、入れ物のはみ出し分（scrollWidth）で測る
+      if (box.scrollWidth <= box.clientWidth + 1) return;
+      const over = box.scrollWidth - box.clientWidth + 10;
+      box.classList.add('flow');
+      text.style.setProperty('--dist', `${-over}px`);
+      text.style.animationDuration = `${Math.max(4, over / 12 + 3)}s`;
+    }),
+  );
 }
 
 /** 背景の小さな見本 */
