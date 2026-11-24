@@ -110,6 +110,8 @@ interface StoredHuman {
   name: string;
   charId: string;
   costume?: string;
+  /** キャラごとに着ている衣装（キャラ「おまかせ」で決まったキャラに着せる） */
+  costumes?: Record<string, string>;
   /** チーム戦のチーム */
   team?: number;
   /** 通信が切れたときに同じ枠へ戻るための合言葉 */
@@ -132,6 +134,10 @@ interface StoredLobby {
   cpuLevel: number;
   /** ホストが決めたCPUのチーム（slot → チーム） */
   cpuTeams?: Record<number, number>;
+  /** ホストが決めたCPUのキャラ（CPUの順番ごと。'random' = おまかせ） */
+  cpuChars?: string[];
+  /** ホストに外された人（フレンド用の番号）。同じルームには入り直せない */
+  kickedFh?: string[];
   /** 結果画面で「もう1戦したい」を押している人（slot） */
   again?: number[];
   /** 対戦の形式がトーナメント */
@@ -189,9 +195,20 @@ function validChar(id: unknown): id is string {
   return id === RANDOM_CHAR || CHARACTERS.some((c) => c.id === id);
 }
 /** 試合で使うキャラ：「おまかせ」なら、ここでランダムに決める（衣装はいつもの服） */
-function pickChar(charId: string, costume: string | undefined): { charId: string; costume: string | undefined } {
+function pickChar(charId: string, costume: string | undefined, costumes?: Record<string, string>): { charId: string; costume: string | undefined } {
   if (charId !== RANDOM_CHAR) return { charId, costume };
-  return { charId: CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id, costume: undefined };
+  const id = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)].id;
+  return { charId: id, costume: costumes?.[id] };
+}
+/** キャラごとの衣装の一覧を確かめる（そのキャラの衣装だけ残す） */
+function validCostumes(m: unknown): Record<string, string> | undefined {
+  if (!m || typeof m !== 'object') return undefined;
+  const out: Record<string, string> = {};
+  for (const c of CHARACTERS) {
+    const v = validCostume(c.id, (m as Record<string, unknown>)[c.id]);
+    if (v) out[c.id] = v;
+  }
+  return out;
 }
 
 function validCostume(charId: string, id: unknown): string | undefined {
@@ -375,7 +392,7 @@ export class Room extends DurableObject<Env> {
       let added = 0;
       for (let s = 0; s < MAX_PLAYERS && added < l.cpuCount; s++) {
         if (used.has(s)) continue;
-        players.push({ slot: s, name: `CPU ${l.cpuLevel}`, charId: CHARACTERS[s % CHARACTERS.length].id, cpu: true, cpuLevel: l.cpuLevel, connected: true, team: l.cpuTeams?.[s] ?? s % 2 });
+        players.push({ slot: s, name: `CPU ${l.cpuLevel}`, charId: l.cpuChars?.[added] ?? RANDOM_CHAR, cpu: true, cpuLevel: l.cpuLevel, connected: true, team: l.cpuTeams?.[s] ?? s % 2 });
         added++;
       }
     }
@@ -484,13 +501,19 @@ export class Room extends DurableObject<Env> {
         this.send(ws, { t: 'error', code: 'notfound', msg: 'ルームが見つかりません。コードを確認してください。' });
         return ws.close(1000, 'notfound');
       }
+      // ホストに外された人は、同じルームに入り直せない
+      if (active && isFriendHash(msg.fh) && this.lobby?.kickedFh?.includes(msg.fh)) {
+        this.send(ws, { t: 'error', code: 'kicked', msg: 'このルームには入れません（ホストに外されました）。' });
+        return ws.close(1000, 'kicked');
+      }
       if (!active) {
         this.lobby = {
           code: att?.code ?? '0000',
           hostSlot: 0,
           humans: [],
           rules: { ...DEFAULT_RULES },
-          stageId: STAGES[0].id,
+          // ステージは「おまかせ」から
+          stageId: RANDOM_STAGE,
           cpuCount: 0,
           cpuLevel: 3,
         };
@@ -511,7 +534,7 @@ export class Room extends DurableObject<Env> {
       while (l.humans.some((h) => h.slot === s)) s++;
       const charId = validChar(msg.charId) ? msg.charId : CHARACTERS[0].id;
       const token = makeToken();
-      l.humans.push({ slot: s, name: sanitizeName(msg.name), charId, costume: validCostume(charId, msg.costume), token, goneAt: 0, ...(isFriendHash(msg.fh) ? { fh: msg.fh } : {}) });
+      l.humans.push({ slot: s, name: sanitizeName(msg.name), charId, costume: validCostume(charId, msg.costume), costumes: validCostumes(msg.costumes), token, goneAt: 0, ...(isFriendHash(msg.fh) ? { fh: msg.fh } : {}) });
       if (l.humans.length === 1 || !l.humans.some((h) => h.slot === l.hostSlot)) l.hostSlot = s;
       l.cpuCount = Math.min(l.cpuCount, MAX_PLAYERS - l.humans.length);
       ws.serializeAttachment({ slot: s, code: l.code });
@@ -593,6 +616,7 @@ export class Room extends DurableObject<Env> {
         if (h && validChar(msg.charId)) {
           h.charId = msg.charId;
           h.costume = validCostume(h.charId, msg.costume);
+          h.costumes = validCostumes(msg.costumes);
         }
         await this.save();
         return this.pushLobby();
@@ -635,6 +659,8 @@ export class Room extends DurableObject<Env> {
         if (msg.stageId === RANDOM_STAGE || STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;
         l.cpuCount = Math.max(0, Math.min(MAX_PLAYERS - l.humans.length, msg.cpuCount | 0));
         l.cpuLevel = Math.max(1, Math.min(9, msg.cpuLevel | 0 || 3));
+        // CPUのキャラ（おまかせ＝試合ごとにランダム）
+        if (Array.isArray(msg.cpuChars)) l.cpuChars = msg.cpuChars.slice(0, MAX_PLAYERS).map((c) => (validChar(c) ? c : RANDOM_CHAR));
         // トーナメントをやめたら、進行中のものも終わりにする
         l.tourOn = msg.tour === true;
         // 3位決定戦（初期は「あり」）。次に始めるトーナメントから
@@ -650,6 +676,9 @@ export class Room extends DurableObject<Env> {
       }
       case 'start': {
         if (this.sim || slot !== l.hostSlot) return;
+        // つながっている人（ホスト以外）が全員「準備OK」を押していないと始められない
+        const conn = this.connectedSlots();
+        if (l.humans.some((h) => h.slot !== l.hostSlot && conn.has(h.slot) && !h.ready)) return;
         // トーナメントの途中は、ホストだけでは始められない（全員の「OK！」か、予想がそろうか、時間で始まる）
         if (l.tourOn && l.tour && l.tour.champion < 0) return;
         this.startFromLobby();
@@ -682,6 +711,24 @@ export class Room extends DurableObject<Env> {
         await this.save();
         this.broadcast({ t: 'notice', msg: 'チームをおまかせで分けました' });
         return this.pushLobby();
+      }
+      case 'kick': {
+        // ホストが、ほかの人をルームから外す（対戦していないときだけ）
+        if (this.sim || this.rouletteSetup || slot !== l.hostSlot) return;
+        const target = Number(msg.slot) | 0;
+        const h = l.humans.find((x) => x.slot === target);
+        if (!h || target === slot) return;
+        if (h.fh) (l.kickedFh ??= []).push(h.fh);
+        for (const w of this.ctx.getWebSockets()) {
+          const a = w.deserializeAttachment() as Attachment | null;
+          if (a?.slot !== target) continue;
+          this.send(w, { t: 'error', code: 'kicked', msg: 'ホストにルームから外されました。' });
+          w.serializeAttachment({ slot: -1 });
+          w.close(1000, 'kicked');
+        }
+        this.broadcast({ t: 'notice', msg: `${h.name} さんがルームから外されました` });
+        await this.handleLeave(target, true);
+        return;
       }
       case 'host': {
         // ホストを譲る：ホストだけが、対戦していないときに、つながっているほかの人へ
@@ -851,7 +898,7 @@ export class Room extends DurableObject<Env> {
       const e = t.entrants.find((x) => x.slot === slot)!;
       const h = l.humans.find((x) => x.slot === slot);
       // 人：今のキャラで出る。抜けた・通信が切れた人は CPU が代わりに戦う（戻ってきたら本人に戻る）
-      if (!e.cpu && h) return { slot, name: h.name, ...pickChar(h.charId, h.costume), cpu: !connected.has(slot), cpuLevel: Math.max(3, l.cpuLevel), team: i };
+      if (!e.cpu && h) return { slot, name: h.name, ...pickChar(h.charId, h.costume, h.costumes), cpu: !connected.has(slot), cpuLevel: Math.max(3, l.cpuLevel), team: i };
       return { slot, name: e.name, charId: pickChar(e.charId, undefined).charId, cpu: true, cpuLevel: e.cpu ? e.cpuLevel : Math.max(3, l.cpuLevel), team: i };
     });
     t.cur = nm;
@@ -886,7 +933,8 @@ export class Room extends DurableObject<Env> {
     if (l.rules.teams && new Set(players.map((p) => (isTwoTeam(l.rules.mode) ? (p.team ?? 0) % 2 : p.team ?? 0))).size < 2) return false;
     const seed = (Math.random() * 2 ** 31) | 0;
     const setup: MatchSetup = {
-      players: players.map((p) => ({ slot: p.slot, name: p.name, ...pickChar(p.charId, p.costume), cpu: p.cpu, cpuLevel: p.cpuLevel, team: p.team ?? 0 })),
+      // おまかせのキャラはここで決める。CPU の名前は決まったキャラで付け直す
+      players: nameCpus(players.map((p) => ({ slot: p.slot, name: p.name, ...pickChar(p.charId, p.costume, l.humans.find((h) => h.slot === p.slot && !p.cpu)?.costumes), cpu: p.cpu, cpuLevel: p.cpuLevel, team: p.team ?? 0 }))),
       // おまかせなら、試合ごとにランダムなステージ
       stageId: resolveStage(l.stageId, seed),
       rules: l.rules,

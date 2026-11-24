@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 45;
+export const PROTOCOL_VERSION = 47;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -111,11 +111,11 @@ export interface TourInfo {
 /** 端末 → サーバー */
 export type ClientMsg =
   /** rejoin：通信が切れた後に、同じ枠に戻る（welcome で受け取った合言葉を使う） */
-  | { t: 'hello'; v: number; name: string; charId: string; create: boolean; costume?: string; rejoin?: { slot: number; token: string }; spectate?: boolean; fh?: string }
-  | { t: 'char'; charId: string; costume?: string }
+  | { t: 'hello'; v: number; name: string; charId: string; create: boolean; costume?: string; costumes?: Record<string, string>; rejoin?: { slot: number; token: string }; spectate?: boolean; fh?: string }
+  | { t: 'char'; charId: string; costume?: string; costumes?: Record<string, string> }
   /** チーム戦のチームを変える（自分の枠。ホストは slot でCPUの枠も変えられる） */
   | { t: 'team'; team: number; slot?: number }
-  | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number; tour?: boolean; tourThird?: boolean; dropOn?: boolean }
+  | { t: 'config'; rules: MatchRules; stageId: string; cpuCount: number; cpuLevel: number; tour?: boolean; tourThird?: boolean; dropOn?: boolean; cpuChars?: string[] }
   | { t: 'start' }
   /** 結果画面の「もう1戦したい」（on = 押した / 取り消した）。人が全員押すと再戦が始まる */
   | { t: 'again'; on: boolean }
@@ -127,6 +127,8 @@ export type ClientMsg =
   | { t: 'host'; slot: number }
   /** ホストが、チームをおまかせで分ける（赤・青に同じ人数ずつ） */
   | { t: 'autoteam' }
+  /** ホストが、ほかの人をルームから外す */
+  | { t: 'kick'; slot: number }
   /** 乱入アイテム（アイテムの種類）。試合に出ていない人が、1試合に1回だけ落とせる */
   | { t: 'drop'; kind: number }
   /** 勝敗予想（勝つと思う選手の slot）。試合に出ていない人だけ */
@@ -159,7 +161,7 @@ export type ServerMsg =
   /** 勝敗予想の一覧（n = 予想した人の名前、p = 勝つと思う選手の slot） */
   | { t: 'predicts'; list: { n: string; p: number }[] }
   | { t: 'pong'; c: number }
-  | { t: 'error'; code: 'full' | 'taken' | 'notfound' | 'inmatch' | 'version' | 'bad'; msg: string };
+  | { t: 'error'; code: 'full' | 'taken' | 'notfound' | 'inmatch' | 'version' | 'bad' | 'kicked'; msg: string };
 
 export interface EncodedState {
   f: number; // frame

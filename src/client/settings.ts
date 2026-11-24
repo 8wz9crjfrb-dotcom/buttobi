@@ -1,7 +1,7 @@
 // 設定（端末に保存）
 
 import { CHARACTERS } from '../shared/characters';
-import { STAGES } from '../shared/stages';
+import { RANDOM_STAGE } from '../shared/stages';
 import { DEFAULT_RULES, type MatchRules } from '../shared/types';
 import type { Quality } from './renderer';
 
@@ -74,7 +74,8 @@ export function loadSettings(): Settings {
     cpuCount: 3,
     cpuLevel: 3,
     cpuChars: ['random', 'random', 'random', 'random', 'random'],
-    stageId: STAGES[0].id,
+    // ステージは「おまかせ」から
+    stageId: RANDOM_STAGE,
     rules: { ...DEFAULT_RULES },
     costumes: {},
     autoQuality: true,

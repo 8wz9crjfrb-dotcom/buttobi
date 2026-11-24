@@ -115,6 +115,8 @@ export class NetClient {
   /** つなぎ直しに使う情報 */
   private params: { baseUrl: string; code: string; name: string; charId: string; costume?: string; spectate?: boolean } | null = null;
   private token = '';
+  /** キャラごとに着ている衣装（キャラ「おまかせ」で決まったキャラに着せるため、サーバーに送る） */
+  costumeMap: Record<string, string> = {};
   private attempt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   /** つなぎ直している最中 */
@@ -156,7 +158,7 @@ export class NetClient {
     const rejoin = this.reconnecting && this.token ? { slot: this.slot, token: this.token } : undefined;
     ws.onopen = () => {
       const fh = this.friendHash();
-      this.send({ t: 'hello', v: PROTOCOL_VERSION, name: p.name, charId: p.charId, costume: p.costume, create: rejoin ? false : create, rejoin, spectate: p.spectate || undefined, ...(fh ? { fh } : {}) });
+      this.send({ t: 'hello', v: PROTOCOL_VERSION, name: p.name, charId: p.charId, costume: p.costume, costumes: this.costumeMap, create: rejoin ? false : create, rejoin, spectate: p.spectate || undefined, ...(fh ? { fh } : {}) });
       // 往復の時間（r）もサーバーに伝える（当たり判定の巻き戻しに使う）
       this.lastPong = performance.now();
       this.pingTimer = setInterval(() => {
@@ -361,7 +363,7 @@ export class NetClient {
       this.params.charId = charId;
       this.params.costume = costume;
     }
-    this.send({ t: 'char', charId, costume });
+    this.send({ t: 'char', charId, costume, costumes: this.costumeMap });
   }
 
   /** チーム戦のチームを変える（slot を指定するとその枠。ホストだけ） */
@@ -369,8 +371,13 @@ export class NetClient {
     this.send({ t: 'team', team, slot });
   }
 
-  config(rules: MatchRules, stageId: string, cpuCount: number, cpuLevel: number, tour = false, tourThird = true, dropOn = true): void {
-    this.send({ t: 'config', rules, stageId, cpuCount, cpuLevel, tour, tourThird, dropOn });
+  config(rules: MatchRules, stageId: string, cpuCount: number, cpuLevel: number, tour = false, tourThird = true, dropOn = true, cpuChars?: string[]): void {
+    this.send({ t: 'config', rules, stageId, cpuCount, cpuLevel, tour, tourThird, dropOn, cpuChars });
+  }
+
+  /** ホストが、ほかの人をルームから外す */
+  kick(slot: number): void {
+    this.send({ t: 'kick', slot });
   }
 
   start(): void {

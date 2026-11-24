@@ -1200,6 +1200,16 @@ interface CharSelectOptions {
 }
 
 /** オンライン対戦で使うキャラ（おまかせなら RANDOM_CHAR） */
+/** キャラごとに今着ている衣装（持っているものだけ。キャラ「おまかせ」で決まったキャラに着せる） */
+function myCostumeMap(): Record<string, string> {
+  const m: Record<string, string> = {};
+  for (const c of CHARACTERS) {
+    const id = myCostume(c.id);
+    if (id) m[c.id] = id;
+  }
+  return m;
+}
+
 function onlineChar(): string {
   return settings.onlineRandom ? RANDOM_CHAR : settings.charId;
 }
@@ -2094,8 +2104,8 @@ function confirmDialog(title: string, note: string, okLabel: string, onOk: () =>
   screensEl.appendChild(el);
 }
 
-function pickCpuChar(i: number, onPick: (id: string) => void): void {
-  const cur = settings.cpuChars[i] ?? 'random';
+function pickCpuChar(i: number, onPick: (id: string) => void, current?: string): void {
+  const cur = current ?? settings.cpuChars[i] ?? 'random';
   const el = document.createElement('div');
   el.className = 'modal';
   el.innerHTML = `<div class="modal-box">
@@ -4061,7 +4071,7 @@ const net = new NetClient({
   },
   onError(code, msg) {
     social.shareRoom(null);
-    if (code === 'notfound') clearRejoin();
+    if (code === 'notfound' || code === 'kicked') clearRejoin();
     if (code === 'taken' && creating && createAttempts < 6) {
       createRoom(createAttempts + 1);
       return;
@@ -4146,6 +4156,7 @@ function createRoom(attempt: number): void {
   roomShared = false;
   const code = String(1000 + Math.floor(Math.random() * 9000));
   showScreen(`<h2>ルームを作成中…</h2>`, 'overlay');
+  net.costumeMap = myCostumeMap();
   net.connect(settings.serverUrl, code, true, settings.name || 'プレイヤー', onlineChar(), onlineCostume());
 }
 
@@ -4162,6 +4173,7 @@ function joinRoom(code: string, back: () => void): void {
     onNext: () => {
       creating = false;
       showScreen(`<h2>接続中…</h2>`, 'overlay');
+      net.costumeMap = myCostumeMap();
       net.connect(settings.serverUrl, code, false, settings.name || 'プレイヤー', onlineChar(), onlineCostume());
     },
   });
@@ -4238,7 +4250,7 @@ function showLobby(): void {
     const dot = l.rules.teams ? TEAM_COLORS[team % TEAM_COLORS.length] : SLOT_COLORS[i];
     const teamTag = l.rules.teams ? `<span class="team-tag" style="--tc:${hex(dot)}">${TEAM_NAMES[team % TEAM_NAMES.length]}${canTap ? ' ⇄' : ''}</span>` : '';
     return `<div class="pslot ${canTap ? 'team-tap' : ''}" data-slot="${p.slot}" data-tm="${team}"><span class="dot" style="background:${hex(dot)}"></span>
-      <div><div>${esc(p.name)}${tags} ${teamTag}${!p.cpu && p.ready ? '<span class="ready-tag">準備OK</span>' : ''}</div><div style="font-size:11px;color:var(--muted)">${charLabel(p.charId)}</div></div></div>`;
+      <div><div>${esc(p.name)}${tags} ${teamTag}${!p.cpu && p.ready ? '<span class="ready-tag">準備OK</span>' : ''}</div><div style="font-size:11px;color:var(--muted)">${charLabel(p.charId)}</div></div>${isHost && !p.cpu && p.slot !== net.slot && !l.inMatch ? `<button type="button" class="btn small kick-btn" data-kick="${p.slot}" data-kname="${esc(p.name)}">外す</button>` : ''}</div>`;
   }).join('');
   const rules = { ...l.rules };
   const maxCpu = MAX_PLAYERS - humans;
@@ -4260,6 +4272,7 @@ function showLobby(): void {
       <div data-pane="cpu"><div class="setup-grid wide">
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
+        ${cpus.length ? `<div class="opt opt-wide"><div class="opt-label">CPUのキャラ（タップで変える）</div>${cpus.map((p, i) => `<button type="button" class="cpu-chip ${p.charId === RANDOM_CHAR ? 'rnd' : ''}" data-lcpu="${i}"><small>CPU${i + 1}</small>${p.charId === RANDOM_CHAR ? `${diceMark()}おまかせ` : esc(getCharacter(p.charId).name)}</button>`).join('')}</div>` : ''}
       </div></div>`
     : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}${tourOn ? ` ／ 乱入アイテム${l.dropOn !== false ? 'あり' : 'なし'}` : ''}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
   const teamCount = new Set(l.players.map((p) => (isTwoTeam(l.rules.mode) ? (p.team ?? 0) % 2 : p.team ?? 0))).size;
@@ -4269,7 +4282,9 @@ function showLobby(): void {
   const humanN = humanList.length;
   const allReady = humanN >= 2 && readyN === humanN;
   const meReady = !!l.players.find((p) => p.slot === net.slot)?.ready;
-  const canStart = !l.inMatch && (tourLive || (tourOn ? l.players.length >= 3 : l.players.length >= 2 && (!l.rules.teams || teamCount >= 2)));
+  // ホスト以外の人が全員「準備OK」を押すまでは始められない
+  const notReady = humanList.filter((p) => p.slot !== l.hostSlot && !p.ready).length;
+  const canStart = !l.inMatch && notReady === 0 && (tourLive || (tourOn ? l.players.length >= 3 : l.players.length >= 2 && (!l.rules.teams || teamCount >= 2)));
   const startLabel = tourOn ? 'トーナメント開始！' : '対戦開始！';
   // トーナメントの途中：ホストの開始ボタンの代わりに、全員の「OK！」で次の試合へ
   const okHumans = l.players.filter((p) => !p.cpu && p.connected);
@@ -4305,7 +4320,7 @@ function showLobby(): void {
        ${isHost && !tourOn && l.rules.teams && teamCount < 2 ? '<span class="muted">2チーム以上に分けてください</span>' : ''}
        ${isHost && tourOn && !tourLive && l.players.length < 3 ? '<span class="muted">トーナメントは3人から（CPUを足せます）</span>' : ''}
        ${isHost ? `<span class="rule-sum">${tourOn ? `トーナメント（3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}）・` : ''}${esc(ruleSummary(l.rules, l.stageId, cpus.length, cpuLevel))}</span>` : ''}
-       ${isHost && !tourLive ? `<span class="ready-count ${allReady ? 'all' : ''}">準備OK ${readyN}/${humanN}</span>` : ''}
+       ${isHost && !tourLive ? `<span class="ready-count ${allReady ? 'all' : ''}">準備OK ${readyN}/${humanN}${notReady ? '（全員そろうと始められます）' : ''}</span>` : ''}
        ${isHost && !tourLive ? `<button class="btn primary ${allReady && canStart ? 'glow' : ''}" id="start" ${canStart ? '' : 'disabled'}>${startLabel}</button>` : ''}
        ${tourLive && !net.spectating ? `<span class="ready-count ${okN === okHumans.length ? 'all' : ''}">OK ${okN}/${okHumans.length}人</span><button class="btn ${myOk ? 'on-toggle' : 'primary'}" id="tour-ok">${myOk ? 'OK（取り消す）' : 'OK！'}</button>` : ''}
      </div>`,
@@ -4313,6 +4328,12 @@ function showLobby(): void {
     (root) => {
       root.querySelector('#invite')!.addEventListener('click', () => void shareInvite(l.code));
       root.querySelector('#give-host')?.addEventListener('click', () => openGiveHost(hostCandidates));
+      root.querySelectorAll<HTMLElement>('[data-kick]').forEach((b) =>
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          confirmDialog(`${b.dataset.kname} さんをルームから外しますか？`, '外された人は、このルームに入り直せません。', '外す', () => net.kick(Number(b.dataset.kick)));
+        }),
+      );
       root.querySelector('#auto-team')?.addEventListener('click', () => {
         net.autoTeam();
         sfx.click();
@@ -4345,6 +4366,7 @@ function showLobby(): void {
           allowRandom: true,
           onBack: showLobby,
           onNext: (id) => {
+            net.costumeMap = myCostumeMap();
             net.setChar(id, id === RANDOM_CHAR ? undefined : myCostume(id));
             showLobby();
           },
@@ -4365,7 +4387,21 @@ function showLobby(): void {
         let fmtTour = tourOn;
         let third = l.tourThird !== false;
         let dropOn = l.dropOn !== false;
-        const push = () => net.config(rules, stageId, cpuCount, lv, fmtTour, third, dropOn);
+        const cpuChars = cpus.map((p) => p.charId);
+        const push = () => net.config(rules, stageId, cpuCount, lv, fmtTour, third, dropOn, cpuChars);
+        root.querySelectorAll<HTMLElement>('[data-lcpu]').forEach((b) =>
+          b.addEventListener('click', () => {
+            const i = Number(b.dataset.lcpu);
+            pickCpuChar(
+              i,
+              (id) => {
+                cpuChars[i] = id;
+                push();
+              },
+              cpuChars[i],
+            );
+          }),
+        );
         bindSeg(root, 'dropon', (v) => {
           dropOn = v === 'on';
           push();

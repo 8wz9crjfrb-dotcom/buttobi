@@ -522,7 +522,7 @@ export function nameCpus<T extends { name: string; charId: string; cpu: boolean 
   const seen = new Map<string, number>();
   for (const p of players) {
     if (!p.cpu) continue;
-    const base = `CPU ${CPU_SHORT[p.charId] ?? getCharacter(p.charId).name}`;
+    const base = p.charId === RANDOM_CHAR ? 'CPU おまかせ' : `CPU ${CPU_SHORT[p.charId] ?? getCharacter(p.charId).name}`;
     const k = (seen.get(p.charId) ?? 0) + 1;
     seen.set(p.charId, k);
     p.name = (count.get(p.charId) ?? 0) > 1 ? `${base}${k}` : base;
