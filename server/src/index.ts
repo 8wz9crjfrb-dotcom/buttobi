@@ -22,7 +22,7 @@ import {
   type ServerMsg,
 } from '../../src/shared/protocol';
 import { LAG_COMP_MAX, Sim } from '../../src/shared/sim';
-import { isFriendHash } from '../../src/shared/social';
+import { isFriendHash, PIC_STAMP_COUNT } from '../../src/shared/social';
 import { MAX_BYTES, makeTransferCode, normalizeTransferCode, TransferBox } from './transfer';
 import { RANDOM_STAGE, resolveStage, STAGES } from '../../src/shared/stages';
 import { DEFAULT_HP, DEFAULT_RULES, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup } from '../../src/shared/types';
@@ -568,6 +568,22 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
+    if (msg.t === 'stamp' && this.lobby && (slot >= 0 || slot === SPECTATOR)) {
+      // 定型文・絵スタンプ（観戦している人も送れる）。送りすぎないよう、1人1秒に1回まで
+      const pic = msg.pic ? 1 : 0;
+      const id = Number(msg.id) | 0;
+      if (id < 0 || id >= (pic ? PIC_STAMP_COUNT : STAMPS.length)) return;
+      // 戦っている最中の人からは受け付けない
+      if (slot >= 0 && this.sim && this.setup?.players.some((p) => p.slot === slot)) return;
+      const key = slot >= 0 ? slot : 1000 + (att?.sid ?? 0);
+      const now = Date.now();
+      if (now - (this.lastStamp.get(key) ?? 0) < 850) return;
+      this.lastStamp.set(key, now);
+      const name = slot >= 0 ? this.lobby.humans.find((h) => h.slot === slot)?.name : `${(att as Attachment | null)?.name ?? '観戦'}（観戦）`;
+      if (name) this.broadcast({ t: 'stamp', slot, name, id, ...(pic ? { pic: 1 as const } : {}) });
+      return;
+    }
+
     if (msg.t === 'predict' && this.lobby && (slot >= 0 || slot === SPECTATOR)) {
       // 勝敗予想：試合に出ていない人だけ。決め直しはできる
       const targets = this.predictTargets();
@@ -749,17 +765,6 @@ export class Room extends DurableObject<Env> {
         await this.save();
         this.broadcast({ t: 'notice', msg: `${to.name} さんがホストになりました` });
         this.pushLobby();
-        return;
-      }
-      case 'stamp': {
-        // 定型文のスタンプ。送りすぎないよう、1人1.2秒に1回まで
-        const id = Number(msg.id) | 0;
-        if (id < 0 || id >= STAMPS.length) return;
-        const now = Date.now();
-        if (now - (this.lastStamp.get(slot) ?? 0) < 1200) return;
-        this.lastStamp.set(slot, now);
-        const h = l.humans.find((x) => x.slot === slot);
-        if (h) this.broadcast({ t: 'stamp', slot, name: h.name, id });
         return;
       }
       case 'again': {

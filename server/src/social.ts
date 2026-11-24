@@ -3,11 +3,17 @@
 // 保存するもの：
 //   u:<id>   … その人の記録（フレンドコード・名前・フレンド・届いた申請・送った申請・隠す設定）
 //   c:<コード> … フレンドコード → id
+//   d:<id>|<id> … フレンド2人の DM（新しい DM_KEEP 通まで。id は小さい順）
 // 公開ルームは保存しない。接続ごとに覚えておき（サーバーが休んでも接続とともに残る）、接続が切れたら消える
 
 import { DurableObject } from 'cloudflare:workers';
 import { sanitizeName } from '../../src/shared/protocol';
 import {
+  DM_COOLDOWN_MS,
+  DM_KEEP,
+  DM_PHRASES,
+  DM_ROOM_PHRASE,
+  PIC_STAMP_COUNT,
   FRIEND_ALPHABET,
   MAX_FRIENDS,
   MAX_INBOX,
@@ -15,6 +21,7 @@ import {
   isSocialId,
   normalizeFriendCode,
   sanitizeProfile,
+  type DmMsg,
   type FriendInfo,
   type Profile,
   type SharedRoom,
@@ -39,7 +46,19 @@ interface User {
   profile?: Profile;
   /** 最後にアプリを開いていた時刻（在席を隠している間は更新しない） */
   seen?: number;
+  /** まだ読んでいない DM の数（送ってきたフレンドの id → 数） */
+  un?: Record<string, number>;
 }
+
+/** 保存する DM（s = 送った人の id） */
+interface StoredDm {
+  s: string;
+  k: 'p' | 's';
+  i: number;
+  r?: string;
+  at: number;
+}
+const dmKey = (a: string, b: string) => `d:${a < b ? `${a}|${b}` : `${b}|${a}`}`;
 
 interface Attachment {
   id: string;
@@ -49,6 +68,8 @@ interface Attachment {
 
 export class Social extends DurableObject {
   private users = new Map<string, User>();
+  /** 最後に DM を送った時刻（送りすぎを防ぐ。サーバーが休むと消えるが、それで困ることはない） */
+  private lastDm = new Map<string, number>();
 
   async fetch(req: Request): Promise<Response> {
     if (req.headers.get('Upgrade') !== 'websocket') return new Response('WebSocket only', { status: 426 });
@@ -128,7 +149,8 @@ export class Social extends DurableObject {
       const room = this.roomOf(online.get(fid));
       // 隠していればオフラインに見える。ただし、自分から公開したルームは見せる
       const shownOnline = on && !f.hidden;
-      friends.push({ code: f.code, name: f.name, online: shownOnline, ...(room ? { room } : {}), ...(f.profile ? { prof: f.profile } : {}), ...(!shownOnline && !f.hidden && f.seen ? { seen: f.seen } : {}) });
+      const un = u.un?.[fid] ?? 0;
+      friends.push({ code: f.code, name: f.name, online: shownOnline, ...(un ? { un } : {}), ...(room ? { room } : {}), ...(f.profile ? { prof: f.profile } : {}), ...(!shownOnline && !f.hidden && f.seen ? { seen: f.seen } : {}) });
     }
     const names = async (ids: string[]) => {
       const out: { code: string; name: string }[] = [];
@@ -242,6 +264,10 @@ export class Social extends DurableObject {
         } else {
           me.friends = drop(me.friends, oid);
           other.friends = drop(other.friends, id);
+          // フレンドでなくなったら、DM も消す
+          if (me.un) delete me.un[oid];
+          if (other.un) delete other.un[id];
+          await this.ctx.storage.delete(dmKey(id, oid));
         }
         await this.save(id, me);
         await this.save(oid, other);
@@ -264,6 +290,41 @@ export class Social extends DurableObject {
         me.profile = p;
         await this.save(id, me);
         await this.pushAround(id);
+        return;
+      }
+      case 'dmOpen':
+      case 'dmSend': {
+        const oid = await this.idOf(normalizeFriendCode(msg.code) ?? '');
+        const other = oid ? await this.user(oid) : null;
+        if (!oid || !other || !me.friends.includes(oid)) return err('フレンドにだけ送れます');
+        const key = dmKey(id, oid);
+        let list = (await this.ctx.storage.get<StoredDm[]>(key)) ?? [];
+        const view = (forId: string): DmMsg[] => list.map((m) => ({ me: m.s === forId, k: m.k, i: m.i, ...(m.r ? { r: m.r } : {}), at: m.at }));
+        if (msg.t === 'dmSend') {
+          const k = msg.k === 's' ? 's' : 'p';
+          const i = Number(msg.i) | 0;
+          if (i < 0 || i >= (k === 'p' ? DM_PHRASES.length : PIC_STAMP_COUNT)) return;
+          const now = Date.now();
+          // 1秒に1回まで（端末の時計のずれを少し見込む）
+          if (now - (this.lastDm.get(id) ?? 0) < DM_COOLDOWN_MS - 150) return;
+          this.lastDm.set(id, now);
+          const r = k === 'p' && i === DM_ROOM_PHRASE && isRoomCode(String(msg.r ?? '')) ? String(msg.r) : undefined;
+          const m: StoredDm = { s: id, k, i, ...(r ? { r } : {}), at: now };
+          list = [...list, m].slice(-DM_KEEP);
+          await this.ctx.storage.put(key, list);
+          other.un = { ...(other.un ?? {}), [id]: Math.min(99, (other.un?.[id] ?? 0) + 1) };
+          await this.save(oid, other);
+          // 相手のつながっている端末に届ける
+          const online = this.sockets();
+          for (const ows of online.get(oid) ?? []) this.send(ows, { t: 'dmNew', code: me.code, name: me.name, m: { me: false, k, i, ...(r ? { r } : {}), at: now } });
+          await this.push([oid]);
+        } else if (me.un?.[oid]) {
+          // 開いた：既読にする
+          delete me.un[oid];
+          await this.save(id, me);
+          await this.push([id]);
+        }
+        this.send(ws, { t: 'dm', code: other.code, list: view(id) });
         return;
       }
       case 'room': {

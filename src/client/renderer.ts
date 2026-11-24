@@ -12,7 +12,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { FighterModel, fxTexture } from './fighterModel';
+import { FighterModel, fxTexture, type FaceKind, type FaceMouth } from './fighterModel';
 import { buildStageScene, makeSkyTexture, type BuiltStage } from './stageScene';
 import { PropRenderer } from './props';
 
@@ -539,8 +539,8 @@ export class GameRenderer {
 
   private portraits = new Map<string, string>();
   /** HUD用の顔アイコン（キャラの顔を正面から描いた小さな画像。衣装ごとに使い回す） */
-  portrait(charId: string, costumeId?: string): string {
-    const key = `${charId}/${costumeId ?? ''}`;
+  portrait(charId: string, costumeId?: string, face?: [FaceKind, FaceMouth]): string {
+    const key = `${charId}/${costumeId ?? ''}${face ? `/${face.join('-')}` : ''}`;
     const hit = this.portraits.get(key);
     if (hit) return hit;
     const scene = new THREE.Scene();
@@ -552,6 +552,7 @@ export class GameRenderer {
     const model = new FighterModel(def, getCostume(costumeId, charId), 0xffffff);
     model.previewTurn = 0.25;
     model.showMarker = false;
+    if (face) model.forceFace = face;
     scene.add(model.root);
     const fake: ViewFighter = {
       slot: 0, x: 0, y: 0, facing: 1, state: 'idle', stateTime: 0, move: null, moveFrame: 0,
@@ -559,7 +560,12 @@ export class GameRenderer {
     };
     model.update(fake, def, 0.5, 1);
     const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
-    const hy = 1.62 * def.scale;
+    let hy = 1.62 * def.scale;
+    if (face) {
+      // 絵スタンプ：キャラごとに頭の高さが違うので、頭の位置を測って顔を真ん中に写す
+      model.root.updateMatrixWorld(true);
+      hy = model.head.getWorldPosition(new THREE.Vector3()).y + 0.34 * def.scale;
+    }
     cam.position.set(0.25, hy + 0.05, 2.1 * def.scale);
     cam.lookAt(0, hy, 0);
     const S = 96;

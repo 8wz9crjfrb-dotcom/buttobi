@@ -448,16 +448,22 @@ function makeOutlineMaterial(thickness: number): THREE.MeshBasicMaterial {
   return m;
 }
 
+/** 表情の種類（目）と口 */
+export type FaceKind = 'normal' | 'angry' | 'hurt' | 'closed' | 'happy' | 'panic' | 'smug' | 'look';
+export type FaceMouth = 'line' | 'open' | 'smile';
+
 export class FighterModel {
   /** いま見えていない（倒れた・登場前・透明化）。頭の上のマークもこれに合わせて隠す */
   hiddenNow = false;
+  /** 表情を決めて描く（絵スタンプの似顔絵用） */
+  forceFace: [FaceKind, FaceMouth] | null = null;
   readonly root = new THREE.Group();
   private turnGroup = new THREE.Group();
   /** 画面の奥行き方向の軸まわりに回すための入れ物（ふっとび中の回転用） */
   private spin = new THREE.Group();
   private body = new THREE.Group();
   private hips = new THREE.Group();
-  private head = new THREE.Group();
+  readonly head = new THREE.Group();
   private armL = new THREE.Group();
   private armR = new THREE.Group();
   private legL = new THREE.Group();
@@ -831,7 +837,7 @@ export class FighterModel {
   }
 
   /** 表情を切り替える */
-  private setExpression(kind: 'normal' | 'angry' | 'hurt' | 'closed' | 'happy' | 'panic' | 'smug' | 'look', mouth: 'line' | 'open' | 'smile', tired: boolean): void {
+  private setExpression(kind: FaceKind, mouth: FaceMouth, tired: boolean): void {
     const eye: EyeKind = kind === 'normal' && tired ? 'tired' : kind === 'look' && tired ? 'lookTired' : kind;
     if (eye !== this.eyeKind) {
       this.eyeKind = eye;
@@ -2513,7 +2519,8 @@ export class FighterModel {
     const tired = def.id === 'gacha';
     const special = v.state === 'attack' && v.move ? moveOf(def.id, v.move, this.job).special : undefined;
     const smugType = def.id === 'guard' || def.id === 'hacker' || def.id === 'thief' || def.id === 'ai';
-    if (acting) this.setExpression('happy', 'open', false);
+    if (this.forceFace) this.setExpression(this.forceFace[0], this.forceFace[1], false);
+    else if (acting) this.setExpression('happy', 'open', false);
     else if (this.victory || this.fancyIdle) this.setExpression(smugType ? 'smug' : 'happy', smugType ? 'smile' : 'open', false);
     else if (v.state === 'hitstun' || v.state === 'shieldbreak' || v.state === 'helpless' || v.state === 'grabbed') this.setExpression('hurt', 'open', false);
     else if (v.state === 'sleep' || blinking) this.setExpression('closed', 'line', false);

@@ -2,7 +2,7 @@
 // 人に見せない番号（id）はこの端末に保存する（データ引き継ぎで別の端末へ移せる）。
 
 import { httpBase } from './transfer';
-import { friendHash, SOCIAL_VERSION, type FriendInfo, type Profile, type SharedRoom, type SocialClientMsg, type SocialServerMsg } from '../shared/social';
+import { friendHash, SOCIAL_VERSION, type DmMsg, type FriendInfo, type Profile, type SharedRoom, type SocialClientMsg, type SocialServerMsg } from '../shared/social';
 
 export const SOCIAL_KEY = 'buttobi-social-v1';
 
@@ -62,6 +62,12 @@ export class SocialClient {
   onChange: () => void = () => {};
   /** サーバーからのお知らせ（申請しました・エラーなど） */
   onNotice: (msg: string, ok: boolean) => void = () => {};
+  /** DM：フレンドコード → 最近のやり取り（開いたことがある人だけ） */
+  dms = new Map<string, DmMsg[]>();
+  /** DM：やり取りが届いた（開いている画面を描き直す） */
+  onDm: (code: string) => void = () => {};
+  /** DM：フレンドから新しく届いた（お知らせを出す） */
+  onDmNew: (code: string, name: string, m: DmMsg) => void = () => {};
 
   /** つなぐ（サーバーの URL が空なら何もしない） */
   start(serverUrl: string, name: string, hidden: boolean): void {
@@ -108,6 +114,17 @@ export class SocialClient {
       if (m.t === 'me') this.code = m.code;
       else if (m.t === 'state') this.state = { friends: m.friends, inbox: m.inbox, sent: m.sent };
       else if (m.t === 'err' || m.t === 'ok') this.onNotice(m.msg, m.t === 'ok');
+      else if (m.t === 'dm') {
+        this.dms.set(m.code, m.list);
+        this.onDm(m.code);
+        return;
+      } else if (m.t === 'dmNew') {
+        const list = this.dms.get(m.code);
+        if (list) this.dms.set(m.code, [...list, m.m]);
+        this.onDmNew(m.code, m.name, m.m);
+        this.onDm(m.code);
+        return;
+      }
       this.onChange();
     };
     ws.onclose = () => {
@@ -169,6 +186,19 @@ export class SocialClient {
     if (JSON.stringify(p) === JSON.stringify(this.profile)) return;
     this.profile = p;
     this.send({ t: 'profile', p });
+  }
+
+  /** DM：そのフレンドとのやり取りを開く（既読にして、最近のやり取りをもらう） */
+  openDm(code: string): void {
+    this.send({ t: 'dmOpen', code });
+  }
+  /** DM を送る（k = 'p' 定型文 / 's' 絵スタンプ、r = 付けるルームコード） */
+  sendDm(code: string, k: 'p' | 's', i: number, r?: string): void {
+    this.send({ t: 'dmSend', code, k, i, ...(r ? { r } : {}) });
+  }
+  /** まだ読んでいない DM の合計 */
+  get unread(): number {
+    return this.state.friends.reduce((n, f) => n + (f.un ?? 0), 0);
   }
 
   /** そのフレンドと一緒に戦った回数 */

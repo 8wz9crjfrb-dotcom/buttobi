@@ -5318,3 +5318,297 @@ table.rec td:first-child {
   vertical-align: -3px;
   margin-right: 4px;
 }
+
+/* ---------- DM（フレンドへのメッセージ）と絵スタンプ ---------- */
+.dm-open-btn .chat-mark,
+.stamp-btn .chat-mark,
+#spec-stamp .chat-mark {
+  width: 15px;
+  height: 14px;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.dm-open-btn {
+  position: relative;
+}
+.dm-open-btn .m-dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+}
+.dm-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ff3b5c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+}
+.fr-item .dm-count {
+  margin-left: auto;
+}
+.dm-box {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 94vw);
+  height: min(560px, 92vh);
+  height: min(560px, 92dvh);
+  padding: 10px 12px;
+}
+.dm-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.dm-head .grow {
+  flex: 1;
+  min-width: 0;
+}
+.dm-head small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.dm-log {
+  flex: 1;
+  min-height: 60px;
+  overflow-y: auto;
+  padding: 8px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dm-empty {
+  margin: auto;
+  font-size: 13px;
+}
+.dm-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.dm-row.me {
+  flex-direction: row-reverse;
+}
+.dm-bubble {
+  max-width: 75%;
+  padding: 6px 12px;
+  border-radius: 14px 14px 14px 4px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 14px;
+  font-weight: 800;
+}
+.dm-row.me .dm-bubble {
+  border-radius: 14px 14px 4px 14px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.dm-bubble.pic {
+  padding: 2px;
+  background: transparent !important;
+}
+.dm-bubble .dm-join {
+  display: block;
+  margin-top: 6px;
+}
+.dm-room {
+  display: block;
+  font-size: 10px;
+  opacity: 0.8;
+}
+.dm-time {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.dm-tabs {
+  display: flex;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.dm-tabs button {
+  flex: 1;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 800;
+  font-size: 13px;
+}
+.dm-tabs button.on {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.dm-pad {
+  height: 38%;
+  min-height: 96px;
+  overflow-y: auto;
+  padding-top: 6px;
+}
+.dm-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.dm-group > span {
+  flex-shrink: 0;
+  width: 64px;
+  padding-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.dm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dm-chips .stamp-btn,
+.pal-text .stamp-btn {
+  flex-shrink: 0;
+}
+.pal-text {
+  margin-top: 10px;
+}
+.dm-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dm-pick-box {
+  width: min(420px, 92vw);
+}
+
+/* 絵スタンプ：似顔絵＋重ねる絵＋ひとこと */
+.pic-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+}
+.pic-btn {
+  padding: 2px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+.pic-btn:disabled {
+  opacity: 0.45;
+}
+.pic-stamp {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  width: 84px;
+  padding: 4px 2px 3px;
+  border-radius: 12px;
+  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--sc) 70%, #fff), var(--sc));
+  border: 2px solid #fff;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.pic-stamp .ps-faces {
+  display: flex;
+  justify-content: center;
+  height: 58px;
+}
+.pic-stamp .ps-faces img {
+  width: 58px;
+  height: 58px;
+}
+.pic-stamp.group .ps-faces img {
+  width: 36px;
+  height: 36px;
+  margin: 0 -7px;
+  align-self: flex-end;
+}
+.pic-stamp .ps-deco {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.pic-stamp b {
+  position: relative;
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.7),
+    0 1px 0 rgba(0, 0, 0, 0.6);
+}
+.stamp-pop.pic {
+  padding: 4px 6px 6px;
+}
+.pic-pal-box {
+  width: min(520px, 94vw);
+}
+.stamp-btn.pic-open {
+  background: rgba(255, 216, 74, 0.18);
+  border-color: rgba(255, 216, 74, 0.6);
+}
+#spec-stamp {
+  position: absolute;
+  right: calc(16px + var(--safe-r));
+  bottom: calc(16px + var(--safe-b));
+  z-index: 55;
+  padding: 8px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(10, 12, 30, 0.75);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  font-size: 13px;
+}
+#spec-stamp.hidden {
+  display: none;
+}
+/* 横持ちのスマホ（高さが低い）：やり取りを左、送るボタンを右に並べる */
+@media (max-height: 520px) {
+  .dm-box {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    width: min(880px, 96vw);
+    column-gap: 12px;
+  }
+  .dm-head {
+    grid-column: 1 / 3;
+  }
+  .dm-log {
+    grid-column: 1;
+    grid-row: 2 / 4;
+  }
+  .dm-tabs {
+    grid-column: 2;
+    grid-row: 2;
+    border-top: 0;
+  }
+  .dm-pad {
+    grid-column: 2;
+    grid-row: 3;
+    height: auto;
+  }
+}
+.pic-stamp b.long {
+  font-size: 10px;
+  letter-spacing: -0.04em;
+}

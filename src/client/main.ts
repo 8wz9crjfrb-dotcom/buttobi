@@ -4,6 +4,7 @@ import './testEnv';
 import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, RANDOM_CHAR, getCharacter, HIDDEN_CHARS, PREVIEW, PREVIEW_KEY, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
+import { picStamp, PIC_STAMPS, setStampPortrait } from './stamps';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
@@ -20,7 +21,7 @@ import { DEBUTS, DebutSession, type DebutDef } from './debut';
 import { InputManager } from './input';
 import { SocialClient } from './social';
 import { CardViewer } from './cardViewer';
-import { PROFILE_COLORS, PROFILE_COMMENTS, type Profile } from '../shared/social';
+import { DM_COOLDOWN_MS, DM_GROUPS, DM_PHRASES, DM_ROOM_PHRASE, PROFILE_COLORS, PROFILE_COMMENTS, type FriendInfo, type Profile } from '../shared/social';
 import { clearRejoin, loadRejoin, NetClient } from './net';
 import { Predictor } from './predictor';
 import {
@@ -89,6 +90,7 @@ const pauseBtn = document.getElementById('pause-btn')!;
 const toastEl = document.getElementById('toast')!;
 
 const renderer = new GameRenderer(canvas);
+setStampPortrait((charId, face) => renderer.portrait(charId, undefined, face));
 renderer.setQuality(settings.quality);
 const hud = new Hud();
 const input = new InputManager();
@@ -310,6 +312,8 @@ function startSession(s: Session): void {
   if (!(s instanceof LocalSession && s.training && tutorialStarting)) stopTutorial();
   session = s;
   resultsShown = false;
+  // 戦い始めたら、DM の小窓は閉じる（戦っている最中は送れない）
+  if (fightingNow()) closeDm();
   if (s.kind !== 'net') {
     hidePredict();
     hideDrop();
@@ -735,7 +739,7 @@ function showFriends(): void {
       const sub = f.online || f.room ? '' : `・最終ログイン ${f.seen ? agoText(f.seen) : '記録なし'}`;
       return `<button type="button" class="fr-item ${friendPick === f.code ? 'on' : ''}" data-pick="${f.code}">
         <span class="fr-dot ${f.online || f.room ? 'on' : ''}"></span>${friendFace(f.name, f.prof)}
-        <span class="fr-txt"><b>${esc(f.name)}</b><small>${status}${sub}</small></span></button>`;
+        <span class="fr-txt"><b>${esc(f.name)}</b><small>${status}${sub}</small></span>${f.un ? `<span class="dm-count">${f.un}</span>` : ''}</button>`;
     })
     .join('');
   const inbox = st.inbox.length
@@ -758,7 +762,7 @@ function showFriends(): void {
              ? `<button class="btn small primary" data-watch="${pick.room.code}">${eyeMark()}対戦を見る</button>`
              : `<button class="btn small primary" data-join="${pick.room.code}">ルームに参加</button>`
            : ''
-       }</div>
+       }<button class="btn small dm-open-btn" data-dm="${pick.code}">${chatMark()}メッセージ${pick.un ? `<span class="dm-count">${pick.un}</span>` : ''}</button></div>
        <div class="fr-danger"><button class="btn small danger-outline" data-remove="${pick.code}" data-name="${esc(pick.name)}">フレンドから外す</button></div>`
     : `${profileCard(settings.name || 'あなた', '', me, undefined, social.code)}
        <div class="fr-acts"><button class="btn small primary" id="pf-edit">プロフィールを編集</button></div>`;
@@ -848,6 +852,7 @@ function showFriends(): void {
         }),
       );
       root.querySelectorAll<HTMLElement>('[data-join]').forEach((b) => b.addEventListener('click', () => joinRoom(b.dataset.join!, showFriends)));
+      root.querySelectorAll<HTMLElement>('[data-dm]').forEach((b) => b.addEventListener('click', () => openDm(b.dataset.dm!)));
       // フレンドが対戦中なら、参加ではなく観戦（見るだけ）
       root.querySelectorAll<HTMLElement>('[data-watch]').forEach((b) =>
         b.addEventListener('click', () => {
@@ -858,6 +863,155 @@ function showFriends(): void {
       );
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// DM：フレンドに定型文・絵スタンプを送る（自由な文は送れない）。戦っている最中は開けない
+let dmCode = '';
+let dmTab: 'p' | 's' = 'p';
+let dmLastSend = 0;
+
+/** いま自分が戦っている最中か（CPU戦・オンライン対戦。観戦・結果画面は含めない） */
+function fightingNow(): boolean {
+  if (!session || session.kind === 'demo' || resultsShown) return false;
+  if (session.kind === 'net') return net.slot >= 0 && session.setup.players.some((p) => p.slot === net.slot);
+  return true;
+}
+
+/** まだ読んでいない DM があれば赤い点 */
+function dmDot(): string {
+  return social.unread > 0 ? '<span class="m-dot"></span>' : '';
+}
+
+function closeDm(): void {
+  document.getElementById('dm')?.remove();
+  document.getElementById('dm-pick')?.remove();
+  dmCode = '';
+}
+
+/** 待機画面から：メッセージを送るフレンドを選ぶ */
+function openDmPicker(): void {
+  if (fightingNow()) return;
+  document.getElementById('dm-pick')?.remove();
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.id = 'dm-pick';
+  el.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const b = t.closest<HTMLElement>('[data-dmto]');
+    if (b) {
+      el.remove();
+      openDm(b.dataset.dmto!);
+    } else if (t === el || t.closest('[data-close]')) el.remove();
+  });
+  // 画面の描き直し（フレンド一覧・待機画面）で消えないよう、画面の外側に置く
+  document.getElementById('app')!.appendChild(el);
+  renderDmPicker();
+}
+
+function renderDmPicker(): void {
+  const el = document.getElementById('dm-pick');
+  if (!el) return;
+  const on = (f: FriendInfo) => Number(f.online || !!f.room);
+  const list = [...social.state.friends].sort((a, b) => (b.un ?? 0) - (a.un ?? 0) || on(b) - on(a) || a.name.localeCompare(b.name));
+  el.innerHTML = `<div class="modal-box dm-pick-box">
+      <h3>メッセージを送るフレンド</h3>
+      <div class="modal-body dm-pick-list">${
+        list.length
+          ? list
+              .map(
+                (f) => `<button type="button" class="fr-item" data-dmto="${f.code}"><span class="fr-dot ${f.online || f.room ? 'on' : ''}"></span>${friendFace(f.name, f.prof)}
+                  <span class="fr-txt"><b>${esc(f.name)}</b><small>${f.room ? (f.room.match ? '対戦中' : 'ルーム公開中') : f.online ? 'オンライン' : 'オフライン'}</small></span>${f.un ? `<span class="dm-count">${f.un}</span>` : ''}</button>`,
+              )
+              .join('')
+          : '<p class="muted">まだフレンドがいません。</p>'
+      }</div>
+      <div class="footer"><button class="btn" data-close>閉じる</button></div>
+    </div>`;
+}
+
+/** フレンドとのやり取りを開く */
+function openDm(code: string): void {
+  if (fightingNow()) return;
+  closeDm();
+  dmCode = code;
+  social.openDm(code);
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.id = 'dm';
+  el.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const send = t.closest<HTMLButtonElement>('[data-dmsend]');
+    const tab = t.closest<HTMLElement>('[data-dmtab]');
+    const join = t.closest<HTMLElement>('[data-dmjoin]');
+    if (send && !send.disabled) {
+      const [k, i] = send.dataset.dmsend!.split(':');
+      sendDm(k === 's' ? 's' : 'p', Number(i));
+    } else if (tab) {
+      dmTab = tab.dataset.dmtab === 's' ? 's' : 'p';
+      renderDm();
+    } else if (join) {
+      closeDm();
+      joinRoom(join.dataset.dmjoin!, showMenu);
+    } else if (t === el || t.closest('[data-close]')) closeDm();
+  });
+  document.getElementById('app')!.appendChild(el);
+  renderDm();
+}
+
+function sendDm(k: 'p' | 's', i: number): void {
+  if (fightingNow() || !dmCode) return;
+  const now = Date.now();
+  if (now - dmLastSend < DM_COOLDOWN_MS) return;
+  dmLastSend = now;
+  // 「ルーム作ったよ！」は、いま入っているルームの「参加する」ボタンを付ける
+  const room = k === 'p' && i === DM_ROOM_PHRASE && lobby && net.slot >= 0 ? lobby.code : undefined;
+  social.sendDm(dmCode, k, i, room);
+  sfx.click();
+  // 1秒は押せない（押せるようになるまで薄くする）
+  const el = document.getElementById('dm');
+  el?.querySelectorAll<HTMLButtonElement>('[data-dmsend]').forEach((b) => (b.disabled = true));
+  setTimeout(() => document.getElementById('dm')?.querySelectorAll<HTMLButtonElement>('[data-dmsend]').forEach((b) => (b.disabled = false)), DM_COOLDOWN_MS);
+}
+
+function renderDm(): void {
+  const el = document.getElementById('dm');
+  if (!el) return;
+  const f = social.state.friends.find((x) => x.code === dmCode);
+  if (!f) return closeDm();
+  const list = social.dms.get(dmCode);
+  const hm = (at: number) => {
+    const d = new Date(at);
+    const today = new Date().toDateString() === d.toDateString();
+    return `${today ? '' : `${d.getMonth() + 1}/${d.getDate()} `}${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  const inRoom = !!lobby && net.slot >= 0;
+  const log = !list
+    ? '<p class="muted dm-empty">読み込み中…</p>'
+    : list.length
+      ? list
+          .map(
+            (m) => `<div class="dm-row ${m.me ? 'me' : ''}"><div class="dm-bubble ${m.k === 's' ? 'pic' : ''}">${m.k === 'p' ? esc(DM_PHRASES[m.i] ?? '') : picStamp(m.i)}${
+              m.r && !m.me && !inRoom ? `<button type="button" class="btn small primary dm-join" data-dmjoin="${m.r}">ルーム ${m.r} に参加する</button>` : m.r ? `<small class="dm-room">ルーム ${m.r}</small>` : ''
+            }</div><small class="dm-time">${hm(m.at)}</small></div>`,
+          )
+          .join('')
+      : '<p class="muted dm-empty">まだメッセージはありません。下から送ってみよう！</p>';
+  const cool = Date.now() - dmLastSend < DM_COOLDOWN_MS ? 'disabled' : '';
+  const phrases = DM_GROUPS.map(
+    (g) => `<div class="dm-group"><span>${g.name}</span><div class="dm-chips">${g.ids.map((i) => `<button type="button" class="stamp-btn" data-dmsend="p:${i}" ${cool}>${esc(DM_PHRASES[i])}</button>`).join('')}</div></div>`,
+  ).join('');
+  const stamps = `<div class="pic-grid">${PIC_STAMPS.map((_, i) => `<button type="button" class="pic-btn" data-dmsend="s:${i}" ${cool}>${picStamp(i)}</button>`).join('')}</div>`;
+  const keepY = el.querySelector<HTMLElement>('.dm-pad')?.scrollTop ?? 0;
+  el.innerHTML = `<div class="modal-box dm-box">
+      <div class="dm-head">${friendFace(f.name, f.prof)}<div class="grow"><b>${esc(f.name)}</b><small>${f.room ? (f.room.match ? '対戦中' : 'ルーム公開中') : f.online ? 'オンライン' : 'オフライン'}</small></div><button class="btn small" data-close>閉じる</button></div>
+      <div class="dm-log">${log}</div>
+      <div class="dm-tabs"><button type="button" class="${dmTab === 'p' ? 'on' : ''}" data-dmtab="p">定型文</button><button type="button" class="${dmTab === 's' ? 'on' : ''}" data-dmtab="s">スタンプ</button></div>
+      <div class="dm-pad">${dmTab === 'p' ? phrases : stamps}</div>
+    </div>`;
+  const logEl = el.querySelector<HTMLElement>('.dm-log')!;
+  logEl.scrollTop = logEl.scrollHeight;
+  el.querySelector<HTMLElement>('.dm-pad')!.scrollTop = keepY;
 }
 
 /** プロフィールの編集（左に名刺カードの見本、右で選ぶ） */
@@ -1763,11 +1917,11 @@ function showMenu(sub: 'solo' | 'multi' | null = null): void {
            ${online && loadRejoin() ? big('rejoin', '↩', `ルーム ${loadRejoin()!.code} の対戦に戻る`, '途中で抜けた対戦の続きに入る', '', 'primary') : ''}
            ${big('create', '🏠', 'ルームを作る', online ? '友達とオンライン対戦' : 'サーバーが設定されていません', '', online ? 'primary' : 'off')}
            ${big('join', '🔢', 'コードで参加', online ? '4桁の合言葉を入力' : 'サーバーが設定されていません', '', online ? '' : 'off')}
-           ${big('friends', '👥', 'フレンド', online ? (social.connected ? `オンライン ${social.onlineCount}人・公開ルームに参加` : 'フレンドの追加・オンラインの確認') : 'サーバーが設定されていません', dot(social.state.inbox.length > 0), online ? '' : 'off')}
+           ${big('friends', '👥', 'フレンド', online ? (social.connected ? `オンライン ${social.onlineCount}人・公開ルームに参加` : 'フレンドの追加・オンラインの確認') : 'サーバーが設定されていません', dot(social.state.inbox.length > 0 || social.unread > 0), online ? '' : 'off')}
            ${big('invite', '🔗', '友達にゲームを教える', 'このゲームのURLをコピー')}
            <div class="m-foot"><button class="btn" id="m-back">もどる</button></div>`
         : `${big('solo', '🎮', 'ひとりで', 'CPU対戦・100人組手・練習', '', 'primary')}
-           ${big('multi', '🌐', 'みんなで', 'ルーム・フレンド', dot(social.state.inbox.length > 0))}
+           ${big('multi', '🌐', 'みんなで', 'ルーム・フレンド', dot(social.state.inbox.length > 0 || social.unread > 0))}
            ${big('gacha', '🎁', 'ガチャ・衣装', '衣装を引く・着替える', dot(gachaBadge(progress, wallet, GACHA_COST.one)))}
            ${big('records', '🏆', '戦績・ミッション', '今日のミッション', `<span class="m-prog">${done}/3</span>${dot(recordsBadge(progress))}`)}`;
   const c = getCharacter(settings.charId);
@@ -2276,24 +2430,62 @@ function openGiveHost(list: { slot: number; name: string; charId: string }[]): v
 }
 
 function stampBar(): string {
-  return `<div class="stamp-bar">${STAMPS.map((t, i) => `<button type="button" class="stamp-btn" data-stamp="${i}">${t}</button>`).join('')}</div>`;
+  return `<div class="stamp-bar"><button type="button" class="stamp-btn pic-open" data-picopen>${chatMark()}絵スタンプ</button>${STAMPS.map((t, i) => `<button type="button" class="stamp-btn" data-stamp="${i}">${t}</button>`).join('')}</div>`;
+}
+/** 定型文・絵スタンプを送れる間隔（サーバーも1秒に1回まで） */
+const ROOM_STAMP_MS = 1000;
+let roomStampAt = 0;
+function sendRoomStamp(id: number, pic: boolean): void {
+  // 戦っている最中は送れない
+  if (fightingNow()) return;
+  const now = Date.now();
+  if (now - roomStampAt < ROOM_STAMP_MS) return;
+  roomStampAt = now;
+  net.stamp(id, pic);
+  sfx.click();
+  // 連打しすぎないよう、少しの間押せなくする
+  const all = () => document.querySelectorAll<HTMLButtonElement>('[data-stamp], [data-pstamp]');
+  all().forEach((x) => (x.disabled = true));
+  setTimeout(() => all().forEach((x) => (x.disabled = false)), ROOM_STAMP_MS);
 }
 function bindStampBar(root: HTMLElement): void {
-  root.querySelectorAll<HTMLElement>('[data-stamp]').forEach((b) =>
-    b.addEventListener('click', () => {
-      net.stamp(Number(b.dataset.stamp));
-      // 連打しすぎないよう、少しの間押せなくする（サーバーも1.2秒に1回まで）
-      root.querySelectorAll<HTMLButtonElement>('[data-stamp]').forEach((x) => (x.disabled = true));
-      setTimeout(() => root.querySelectorAll<HTMLButtonElement>('[data-stamp]').forEach((x) => (x.disabled = false)), 1200);
-    }),
-  );
+  root.querySelectorAll<HTMLElement>('[data-stamp]').forEach((b) => b.addEventListener('click', () => sendRoomStamp(Number(b.dataset.stamp), false)));
+  root.querySelector('[data-picopen]')?.addEventListener('click', () => openPicPalette());
 }
-function showStamp(slot: number, name: string, text: string): void {
-  if (!text) return;
+/** ルームで送る絵スタンプを選ぶ（観戦中は定型文もここから） */
+function openPicPalette(withText = false): void {
+  document.getElementById('pic-pal')?.remove();
   const el = document.createElement('div');
-  el.className = 'stamp-pop';
-  el.style.setProperty('--pc', hex(SLOT_COLORS[slot % SLOT_COLORS.length]));
-  el.innerHTML = `<small>${esc(name)}</small>${esc(text)}`;
+  el.className = 'modal';
+  el.id = 'pic-pal';
+  el.innerHTML = `<div class="modal-box pic-pal-box">
+      <h3>スタンプを送る</h3>
+      <div class="modal-body">
+        <div class="pic-grid">${PIC_STAMPS.map((_, i) => `<button type="button" class="pic-btn" data-pstamp="${i}">${picStamp(i)}</button>`).join('')}</div>
+        ${withText ? `<div class="dm-chips pal-text">${STAMPS.map((t, i) => `<button type="button" class="stamp-btn" data-ptext="${i}">${t}</button>`).join('')}</div>` : ''}
+      </div>
+      <div class="footer"><button class="btn" data-close>閉じる</button></div>
+    </div>`;
+  el.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const p = t.closest<HTMLButtonElement>('[data-pstamp]');
+    const q = t.closest<HTMLButtonElement>('[data-ptext]');
+    if (p && !p.disabled) {
+      sendRoomStamp(Number(p.dataset.pstamp), true);
+      el.remove();
+    } else if (q) {
+      sendRoomStamp(Number(q.dataset.ptext), false);
+      el.remove();
+    } else if (t === el || t.closest('[data-close]')) el.remove();
+  });
+  screensEl.appendChild(el);
+}
+function showStamp(slot: number, name: string, text: string, html = ''): void {
+  if (!text && !html) return;
+  const el = document.createElement('div');
+  el.className = `stamp-pop ${html ? 'pic' : ''}`;
+  el.style.setProperty('--pc', slot >= 0 ? hex(SLOT_COLORS[slot % SLOT_COLORS.length]) : '#c8ccd8');
+  el.innerHTML = `<small>${esc(name)}</small>${html || esc(text)}`;
   stampLayer.appendChild(el);
   // 多いときは古いものから消す
   while (stampLayer.children.length > 4) stampLayer.firstElementChild?.remove();
@@ -2385,7 +2577,17 @@ watchEl.addEventListener('click', () => {
   renderWatch();
 });
 
+// 観戦中（試合を見ているとき）：右下にスタンプのボタン
+const specStampEl = document.createElement('button');
+specStampEl.type = 'button';
+specStampEl.id = 'spec-stamp';
+specStampEl.className = 'hidden';
+specStampEl.innerHTML = `${chatMark()}スタンプ`;
+specStampEl.addEventListener('click', () => openPicPalette(true));
+document.getElementById('app')!.appendChild(specStampEl);
+
 function renderWatch(): void {
+  specStampEl.classList.toggle('hidden', !(session?.kind === 'net' && net.slot < 0 && net.spectating && !resultsShown));
   const setup = session?.kind === 'net' && !resultsShown && lobby?.inMatch ? session.setup : null;
   const watchers = lobby?.watchers ?? [];
   const votes = setup ? predicts.filter((x) => setup.players.some((p) => p.slot === x.p)) : [];
@@ -2821,7 +3023,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
      ${reward}
      ${online && lobby?.tourOn ? '<div data-tour></div>' : ''}
      <div class="results">${rows}</div>
-     ${online && net.slot >= 0 ? stampBar() : ''}
+     ${online ? stampBar() : ''}
      ${online ? '<div class="again-count muted" data-again></div>' : ''}
      <div class="footer">
        <button class="btn" id="menu">メニューへ</button>
@@ -4093,8 +4295,35 @@ social.onNotice = (msg) => toast(msg, 3000);
 social.onChange = () => {
   // フレンド画面を開いていれば描き直す。メニューの印も更新する
   if (screensEl.querySelector('.friends-screen')) showFriends();
-  const dotEl = screensEl.querySelector<HTMLElement>('#friends .m-dot, #multi .m-dot');
-  if (dotEl) dotEl.classList.toggle('hidden', social.state.inbox.length === 0);
+  // 申請・まだ読んでいない DM があれば赤い点（なかった点も足す）
+  const want = social.state.inbox.length > 0 || social.unread > 0;
+  screensEl.querySelectorAll<HTMLElement>('#friends, #multi').forEach((b) => {
+    let d = b.querySelector<HTMLElement>('.m-dot');
+    if (!d && want) {
+      d = document.createElement('span');
+      d.className = 'm-dot';
+      b.appendChild(d);
+    }
+    d?.classList.toggle('hidden', !want);
+  });
+  // 待機画面の「フレンドにメッセージ」の赤い点・DM の相手選びの数
+  const lb = screensEl.querySelector<HTMLElement>('#lobby-dm');
+  if (lb) lb.innerHTML = `${chatMark()}フレンドにメッセージ${dmDot()}`;
+  if (document.getElementById('dm-pick')) renderDmPicker();
+  if (document.getElementById('dm')) renderDm();
+};
+social.onDm = (code) => {
+  if (code === dmCode && document.getElementById('dm')) renderDm();
+};
+social.onDmNew = (code, name, m) => {
+  // 開いているやり取りに届いた：そのまま既読にする
+  if (code === dmCode && document.getElementById('dm')) {
+    social.openDm(code);
+    return;
+  }
+  // 戦っている最中はお知らせを出さない（赤い点だけ）
+  if (fightingNow()) return;
+  toast(`${name} さんからメッセージ：${m.k === 'p' ? `「${DM_PHRASES[m.i] ?? ''}」` : `スタンプ「${PIC_STAMPS[m.i]?.text ?? ''}」`}`, 3000);
 };
 function startSocial(): void {
   social.start(settings.serverUrl, settings.name || 'プレイヤー', settings.hideOnline);
@@ -4186,8 +4415,9 @@ const net = new NetClient({
   onNotice(msg) {
     toast(msg, 4000);
   },
-  onStamp(slot, name, id) {
-    showStamp(slot, name, STAMPS[id] ?? '');
+  onStamp(slot, name, id, pic) {
+    if (pic) showStamp(slot, name, '', picStamp(id));
+    else showStamp(slot, name, STAMPS[id] ?? '');
   },
   onRoulette(stageId) {
     stageRoulette(stageId);
@@ -4379,12 +4609,13 @@ function showLobby(): void {
        }
        ${!net.spectating && !isHost && !tourLive ? `<button class="btn small ${meReady ? 'on-toggle' : 'primary'}" id="ready">${meReady ? '準備OK（取り消す）' : '準備OK'}</button>` : ''}
        <button class="btn small" id="invite">招待リンクを送る</button>
+       ${social.connected && social.state.friends.length ? `<button class="btn small dm-open-btn" id="lobby-dm">${chatMark()}フレンドにメッセージ${dmDot()}</button>` : ''}
        ${isHost ? `<button class="btn small ${roomShared ? 'on-toggle' : ''}" id="share-friends">フレンドに公開：${roomShared ? 'する' : 'しない'}</button>` : ''}
        ${isHost && !l.inMatch && hostCandidates.length ? '<button class="btn small" id="give-host">ホストを譲る</button>' : ''}
        ${isHost && !l.inMatch && !tourOn && l.rules.teams && l.players.length >= 2 ? '<button class="btn small" id="auto-team">チームをおまかせで分ける</button>' : ''}
        ${l.spectators ? `<span class="muted">観戦 ${l.spectators}人</span>` : ''}
      </div>
-     ${net.spectating ? '' : stampBar()}
+     ${stampBar()}
      ${hostControls}
      <div class="footer">
        <button class="btn" id="leave">抜ける</button>
@@ -4398,6 +4629,7 @@ function showLobby(): void {
     'overlay',
     (root) => {
       root.querySelector('#invite')!.addEventListener('click', () => void shareInvite(l.code));
+      root.querySelector('#lobby-dm')?.addEventListener('click', () => openDmPicker());
       root.querySelector('#give-host')?.addEventListener('click', () => openGiveHost(hostCandidates));
       root.querySelectorAll<HTMLElement>('[data-kick]').forEach((b) =>
         b.addEventListener('click', (e) => {

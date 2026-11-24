@@ -91,11 +91,48 @@ export interface FriendInfo {
   code: string;
   name: string;
   online: boolean;
+  /** その人から届いて、まだ読んでいない DM の数 */
+  un?: number;
   room?: SharedRoom;
   /** プロフィール（まだ設定していない人はなし） */
   prof?: Profile;
   /** 最後にアプリを開いていた時刻（ms。オフラインのときだけ。在席を隠している人・記録がない人はなし） */
   seen?: number;
+}
+
+// ---------------------------------------------------------------- DM（フレンドどうしのメッセージ）
+// 自由な文は送れない。定型文（DM_PHRASES）か絵スタンプ（番号）だけ。送れるのは 1 秒に 1 回まで
+/** DM の定型文（種類ごと）。番号で送るので、並びを変えない・新しいものは最後に足す */
+export const DM_PHRASES = [
+  'おはよう！', 'こんにちは！', 'こんばんは！', 'ひさしぶり！',
+  '対戦しよう！', '今ひま？', 'ルーム作ったよ！', 'トーナメントやろう！', 'あとで遊ぼう！',
+  'いいよ！', '今行く！', 'ちょっと待って', '今は無理〜', 'また今度！',
+  'GG！', 'ナイス！', '強すぎ！', 'リベンジさせて！', 'おつかれさま！', 'ありがとう！', 'またね！',
+  'ひまだよ！',
+];
+/** 定型文を画面で並べるときの種類と順番（DM_PHRASES の番号） */
+export const DM_GROUPS: { name: string; ids: number[] }[] = [
+  { name: 'あいさつ', ids: [0, 1, 2, 3] },
+  { name: 'さそう', ids: [4, 5, 6, 7, 8] },
+  { name: '返事', ids: [9, 21, 10, 11, 12, 13] },
+  { name: '試合のあと', ids: [14, 15, 16, 17, 18, 19, 20] },
+];
+/** 「ルーム作ったよ！」（これを送ると、自分のルームの「参加する」ボタンが付く） */
+export const DM_ROOM_PHRASE = 6;
+/** DM を送れる間隔（ミリ秒） */
+export const DM_COOLDOWN_MS = 1000;
+/** 1 人のフレンドとの間で残しておく DM の数（古いものから消す） */
+export const DM_KEEP = 50;
+/** 絵スタンプの数（番号は 0〜） */
+export const PIC_STAMP_COUNT = 16;
+
+/** DM 1通。k = 'p'（定型文）/ 's'（絵スタンプ）、i = 番号、r = 付けたルームコード、at = 送った時刻（ms） */
+export interface DmMsg {
+  me: boolean;
+  k: 'p' | 's';
+  i: number;
+  r?: string;
+  at: number;
 }
 
 /** 端末 → サーバー */
@@ -113,14 +150,22 @@ export type SocialClientMsg =
   /** 自分のルームをフレンドに公開する（null で取り消す） */
   | { t: 'room'; room: SharedRoom | null }
   /** 自分のプロフィールを送る（つないだときと、変えたとき） */
-  | { t: 'profile'; p: Profile };
+  | { t: 'profile'; p: Profile }
+  /** DM：フレンドとのやり取りを開く（届いた分を既読にして、最近のやり取りをもらう） */
+  | { t: 'dmOpen'; code: string }
+  /** DM を送る（r = 「ルーム作ったよ！」に付けるルームコード） */
+  | { t: 'dmSend'; code: string; k: 'p' | 's'; i: number; r?: string }
 
 /** サーバー → 端末 */
 export type SocialServerMsg =
   | { t: 'me'; code: string }
   | { t: 'state'; friends: FriendInfo[]; inbox: { code: string; name: string }[]; sent: { code: string; name: string }[] }
   | { t: 'err'; msg: string }
-  | { t: 'ok'; msg: string };
+  | { t: 'ok'; msg: string }
+  /** DM：そのフレンドとの最近のやり取り（開いたとき・送ったとき） */
+  | { t: 'dm'; code: string; list: DmMsg[] }
+  /** DM：フレンドから新しく届いた（name = 送った人の名前） */
+  | { t: 'dmNew'; code: string; name: string; m: DmMsg };
 
 /**
  * フレンドコードから作る、元に戻せない短い印（8文字の16進数）。ルームの中ではコードそのものではなくこれを見せ合い、
