@@ -1,5 +1,6 @@
 // 追加4体の必殺技と、8体の特性が意図どおりに動くかを確かめる
 import { Sim, COUNTDOWN_FRAMES } from '../src/shared/sim';
+import { moveOf } from '../src/shared/moves';
 import { platformAt } from '../src/shared/stages';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type InputState } from '../src/shared/types';
 
@@ -240,7 +241,15 @@ const at = (k: number, inp: InputState) => (i: number) => (i === k ? inp : N);
   const sim = make('ai', 'hacker');
   sim.fighters[0].x = 0; sim.fighters[0].facing = 1; sim.fighters[1].x = 4; sim.fighters[1].facing = -1;
   run(sim, 30, at(0, B(1, 0)), at(0, B()));
-  check('学習で飛び道具を吸収してダメージを受けない', sim.fighters[0].damage === 0 && sim.fighters[0].absorbCharge, `${sim.fighters[0].damage}%`);
+  check('学習で飛び道具を吸収してダメージを受けない', sim.fighters[0].damage === 0 && sim.fighters[0].absorbBuff > 0, `${sim.fighters[0].damage}%`);
+  const priv = sim as unknown as { powerMul(f: unknown): { dmg: number; kb: number } };
+  const ai = sim.fighters[0];
+  const base = { dmg: ai.def.dmgMul * ai.stale, kb: ai.def.kbMul };
+  const pm = priv.powerMul(ai);
+  check('学習：吸収すると約4秒、攻撃力1.3倍・ふっとばし力1.2倍', Math.abs(pm.dmg / base.dmg - 1.3) < 0.01 && Math.abs(pm.kb / base.kb - 1.2) < 0.01 && ai.absorbBuff > 200, `${(pm.dmg / base.dmg).toFixed(2)}倍/${(pm.kb / base.kb).toFixed(2)}倍 残り${ai.absorbBuff}`);
+  run(sim, 260);
+  check('学習：約4秒で強化が切れる', ai.absorbBuff === 0);
+  check('学習：使ったあと約2秒は使えない', moveOf('ai', 'sspecial').cd === 120);
 }
 {
   const sim = make('ai', 'streamer');

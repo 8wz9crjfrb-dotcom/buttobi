@@ -228,7 +228,7 @@ const SPECIALS: Record<string, Specials> = {
     // 物理ファイアウォール：前に壁を出す（飛び道具を消し、相手を押し返す）
     sspecial: { startup: 8, active: 4, end: 18, hitboxes: [{ x: 1.0, y: 0.9, r: 0.7 }], dmg: 4, base: 7, growth: 4, angle: 30, air: true, special: 'wall', landLag: 10, cd: 90 },
     // クレーム対応：構えている間に攻撃されたら1.3倍で返す
-    dspecial: { startup: 4, active: 30, end: 24, hitboxes: [], dmg: 0, base: 7, growth: 10, angle: 40, air: true, special: 'counter' },
+    dspecial: { startup: 4, active: 30, end: 24, hitboxes: [], dmg: 0, base: 7, growth: 10, angle: 40, air: true, special: 'counter', cd: 18 },
     // 非常口ダッシュ：斜め上へ突進して復帰
     uspecial: {
       startup: 6,
@@ -503,7 +503,7 @@ const SPECIALS: Record<string, Specials> = {
       shots: [{ at: 0, kind: 'orb', x: 0.8, y: 1.2, vx: 6.5, vy: 1, life: 130, r: 0.35, dmg: 7, base: 4.8, growth: 5, angle: 40, homing: 0.06 }],
     },
     // 学習：構えている間に飛んできた飛び道具を吸収し、次の攻撃を強化
-    sspecial: { startup: 4, active: 40, end: 16, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'absorb' },
+    sspecial: { startup: 4, active: 40, end: 16, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'absorb', cd: 120 },
     // エージェント起動：AIドローンを呼び出す（そばを飛び、近くの相手を自動で撃つ）
     dspecial: { startup: 10, active: 1, end: 18, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'drone', cd: 120 },
     // API呼び出し：ワイヤーで遠くの崖をつかんで復帰
@@ -636,7 +636,7 @@ export const MENHERA = {
   dereSpeed: 1.1,
   leashLen: 3.5,
   call: { dmg: 11, base: 7, growth: 8, angle: 70 },
-  cry: { range: 3, time: 240, mul: 0.8 },
+  cry: { range: 4.2, time: 240, mul: 0.8 },
   float: 60,
   floatFall: 3,
   /** デレモードの移動アップが、一度出てから次に出るまで（7秒） */
@@ -743,6 +743,8 @@ export const POPUP = { life: 200, w: 2.4 };
 export const SPEEDUP = { duration: 420, cooldown: 330, speed: 1.35, frame: 0.75 };
 /** 課金：増えるダメージ%、効果時間、攻撃力・ふっとばし力の倍率 */
 export const PAY = { cost: 8, duration: 360, dmg: 1.3, kb: 1.15 };
+/** 学習（AIエンジニアの横B）で吸収したときの強化：時間、攻撃力、ふっとばし力 */
+export const ABSORB = { time: 240, dmg: 1.3, kb: 1.2 };
 /** 緊急警報（警備員の特性）：ダメージがこの%以上になると、1ストックに1回、しばらく攻撃力アップ */
 export const ALARM = { at: 100, time: 720, dmg: 1.3 };
 /** 自転車：乗っていられる時間、速さ、ぶつかったときに同じ相手へ再び当たるまで */

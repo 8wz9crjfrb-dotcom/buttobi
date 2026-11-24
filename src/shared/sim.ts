@@ -2,7 +2,7 @@
 // 座標は x が右、y が上。単位はおおよそメートル、速度は m/秒。1ステップ = 1/60 秒。
 
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
-import { ALARM, RECOMMEND, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
+import { ABSORB, ALARM, RECOMMEND, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { platformAt, stageFor, WIDE_PLAYERS, type StageDef } from './stages';
 
@@ -124,7 +124,7 @@ const SNAPSHOT_KEYS = [
   'ledgeSide', 'ledgeCooldown', 'dropThrough', 'respawnTimer', 'dodgeDir', 'prevButtons', 'prevMx', 'prevMy',
   'flickX', 'flickY', 'neutralXAge', 'neutralYAge', 'poison', 'poisonFrom',
   'speedBuff', 'speedCd', 'powerBuff', 'bike', 'bikeAir', 'bikeHp', 'bikeHitCd', 'wallHit', 'confused', 'chain', 'redirected', 'pity', 'crit',
-  'absorbCharge', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
+  'absorbCharge', 'absorbBuff', 'chargedMove', 'stale', 'runTime', 'buzz', 'recentMoves', 'learnHits', 'holdA', 'grabbing', 'grabbedBy', 'grabTimer', 'dealt', 'throws', 'tetherOn', 'tetherX', 'tetherY',
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
   'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'warpSlow', 'moveAim',
   'leashT', 'leashBy', 'leashDmg', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'dereCd', 'floatT', 'heavyT',
@@ -277,6 +277,8 @@ export class Fighter {
   crit = false;
   /** 学習で吸収した（次の攻撃が強くなる） */
   absorbCharge = false;
+  /** 学習（AIエンジニア）で吸収したあとの強化の残り時間 */
+  absorbBuff = 0;
   /** 今出している技が、吸収で強くなっているか */
   chargedMove = false;
   /** 弱攻撃を出してからAを押し続けている（溜め攻撃に移る） */
@@ -1877,6 +1879,11 @@ export class Sim {
     if (a.jobBuff > 0) dmg *= THREEB_RULES.buffMul;
     // 緊急警報（警備員）
     if (a.alarmT > 0) dmg *= ALARM.dmg;
+    // 学習（AIエンジニア）で吸収したあと
+    if (a.absorbBuff > 0) {
+      dmg *= ABSORB.dmg;
+      kb *= ABSORB.kb;
+    }
     if (a.chargedMove) {
       dmg *= 1.6;
       kb *= 1.2;
@@ -1901,6 +1908,7 @@ export class Sim {
   private menheraTimers(f: Fighter): void {
     // 緊急警報（警備員）：ダメージが100%をこえたら警報が鳴り、しばらく攻撃力アップ（1ストックに1回）
     if (f.alarmT > 0) f.alarmT--;
+    if (f.absorbBuff > 0) f.absorbBuff--;
     if (f.def.id === 'guard' && f.alive && !f.alarmUsed && f.damage >= ALARM.at && this.setup.rules.mode !== 'stamina') {
       f.alarmUsed = true;
       f.alarmT = ALARM.time;
@@ -1980,7 +1988,7 @@ export class Sim {
       f.powerBuff > 0 ||
       f.jobBuff > 0 ||
       f.alarmT > 0 ||
-      f.absorbCharge ||
+      f.absorbBuff > 0 ||
       f.buzz > 0 ||
       (f.def.id === 'menhera' && (f.lonely >= MENHERA.lonely || this.fighters.some((v) => v !== f && v.leashT > 0 && v.leashBy === f.slot)));
     return (atkUp ? FX_ATK_UP : 0) | (f.awkward > 0 ? FX_ATK_DOWN : 0) | (f.speedBuff > 0 || f.dere > 0 ? FX_SPD_UP : 0) | (f.heavyT > 0 ? FX_SPD_DOWN : 0);
@@ -3171,6 +3179,7 @@ export class Sim {
     f.alarmT = 0;
     f.alarmUsed = false;
     f.absorbCharge = false;
+    f.absorbBuff = 0;
     f.recentMoves = [];
     f.learnHits = f.learnHits.map(() => 0);
     f.jobCdN = [0, 0, 0];
@@ -3616,7 +3625,8 @@ export class Sim {
     if (md.special !== 'absorb') return false;
     const t = moveTiming(md, v);
     if (v.moveFrame < t.s || v.moveFrame >= t.s + t.a) return false;
-    v.absorbCharge = true;
+    // 吸収した：しばらく攻撃力・ふっとばし力アップ
+    v.absorbBuff = ABSORB.time;
     this.events.push({ k: 'absorb', x: p.x, y: p.y, s: v.slot });
     return true;
   }
@@ -4264,7 +4274,7 @@ export class Sim {
           (f.powerBuff > 0 ? FX_POWER : 0) |
           (f.bike > 0 ? FX_BIKE : 0) |
           (f.confused > 0 ? FX_CONFUSED : 0) |
-          (f.absorbCharge ? FX_CHARGED : 0) |
+          (f.absorbBuff > 0 ? FX_CHARGED : 0) |
           (f.armor > 0 ? FX_ARMOR : 0) |
           (f.size === 1 ? FX_BIG : f.size === 2 ? FX_SMALL : 0) |
           (f.warpCd > 0 ? FX_WARPCD : 0) |
