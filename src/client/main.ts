@@ -919,9 +919,9 @@ function renderDmPicker(): void {
   if (!el) return;
   const on = (f: FriendInfo) => Number(f.online || !!f.room);
   const list = [...social.state.friends].sort((a, b) => (b.un ?? 0) - (a.un ?? 0) || on(b) - on(a) || a.name.localeCompare(b.name));
-  el.innerHTML = `<div class="modal-box dm-pick-box">
-      <h3>メッセージを送るフレンド</h3>
-      <div class="modal-body dm-pick-list">${
+  // 枠は最初の1回だけ作る（作り直すと開く動きがもう一度動く）
+  if (!el.querySelector('.dm-pick-box')) el.innerHTML = `<div class="modal-box dm-pick-box"><h3>メッセージを送るフレンド</h3><div class="modal-body dm-pick-list"></div><div class="footer"><button class="btn" data-close>閉じる</button></div></div>`;
+  el.querySelector<HTMLElement>('.dm-pick-list')!.innerHTML = `${
         list.length
           ? list
               .map(
@@ -930,9 +930,7 @@ function renderDmPicker(): void {
               )
               .join('')
           : '<p class="muted">まだフレンドがいません。</p>'
-      }</div>
-      <div class="footer"><button class="btn" data-close>閉じる</button></div>
-    </div>`;
+      }`;
 }
 
 /** フレンドとのやり取りを開く */
@@ -1009,16 +1007,29 @@ function renderDm(): void {
     (g) => `<div class="dm-group"><span>${g.name}</span><div class="dm-chips">${g.ids.map((i) => `<button type="button" class="stamp-btn" data-dmsend="p:${i}" ${cool}>${esc(DM_PHRASES[i])}</button>`).join('')}</div></div>`,
   ).join('');
   const stamps = `<div class="pic-grid">${ownedStampButtons('dmsend', cool)}</div>${stampMoreNote()}`;
-  const keepY = el.querySelector<HTMLElement>('.dm-pad')?.scrollTop ?? 0;
-  el.innerHTML = `<div class="modal-box dm-box">
-      <div class="dm-head">${friendFace(f.name, f.prof)}<div class="grow"><b>${esc(f.name)}</b><small>${f.room ? (f.room.match ? '対戦中' : 'ルーム公開中') : f.online ? 'オンライン' : 'オフライン'}</small></div><button class="btn small" data-close>閉じる</button></div>
-      <div class="dm-log">${log}</div>
-      <div class="dm-tabs"><button type="button" class="${dmTab === 'p' ? 'on' : ''}" data-dmtab="p">定型文</button><button type="button" class="${dmTab === 's' ? 'on' : ''}" data-dmtab="s">スタンプ</button></div>
-      <div class="dm-pad">${dmTab === 'p' ? phrases : stamps}</div>
-    </div>`;
-  const logEl = el.querySelector<HTMLElement>('.dm-log')!;
+  // 枠（modal-box）は最初の1回だけ作り、あとは中身だけを入れ替える
+  // （枠ごと作り直すと、開くときの「ポンと出る」動きが送るたびに動いて、大きさが一瞬変わって見える）
+  if (!el.querySelector('.dm-box')) el.innerHTML = `<div class="modal-box dm-box"><div class="dm-head"></div><div class="dm-log"></div><div class="dm-tabs"></div><div class="dm-pad"></div></div>`;
+  const set = (sel: string, html: string) => {
+    const part = el.querySelector<HTMLElement>(sel)!;
+    if (part.innerHTML !== html) part.innerHTML = html;
+    return part;
+  };
+  set('.dm-head', `${friendFace(f.name, f.prof)}<div class="grow"><b>${esc(f.name)}</b><small>${f.room ? (f.room.match ? '対戦中' : 'ルーム公開中') : f.online ? 'オンライン' : 'オフライン'}</small></div><button class="btn small" data-close>閉じる</button>`);
+  const logEl = set('.dm-log', log);
   logEl.scrollTop = logEl.scrollHeight;
-  el.querySelector<HTMLElement>('.dm-pad')!.scrollTop = keepY;
+  set('.dm-tabs', `<button type="button" class="${dmTab === 'p' ? 'on' : ''}" data-dmtab="p">定型文</button><button type="button" class="${dmTab === 's' ? 'on' : ''}" data-dmtab="s">スタンプ</button>`);
+  const pad = el.querySelector<HTMLElement>('.dm-pad')!;
+  const padHtml = dmTab === 'p' ? phrases : stamps;
+  if (pad.dataset.tab !== dmTab) {
+    pad.dataset.tab = dmTab;
+    pad.innerHTML = padHtml;
+    pad.scrollTop = 0;
+  } else if (pad.innerHTML !== padHtml) {
+    const y = pad.scrollTop;
+    pad.innerHTML = padHtml;
+    pad.scrollTop = y;
+  }
 }
 
 /** プロフィールの編集（左に名刺カードの見本、右で選ぶ） */
