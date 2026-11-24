@@ -1,6 +1,7 @@
 // コインと着せ替えガチャ。コインはログインボーナスと、勝利・通算勝利数の節目で増え、ガチャで衣装を引くのに使う。
 // アカウントがないので、この端末のブラウザに保存する（端末ごと・ブラウザごとに別になる）。
 
+import { CARD_BG_COUNT, PIC_STAMP_COUNT } from '../shared/social';
 import { GACHA_COSTUMES } from '../shared/costumes';
 
 const KEY = 'buttobi-wallet-v1';
@@ -26,6 +27,11 @@ export interface Wallet {
   pity: number;
   /** UR が出ないまま引いた回数（UR の天井用。UR が出たら 0 に戻る） */
   urPity: number;
+  /** スタンプ＆背景ガチャ：持っているスタンプのレア度（番号 → 4 SR・5 SSR・6 UR）・持っている背景・天井（衣装ガチャとは別） */
+  stamps?: Record<string, number>;
+  bgs?: number[];
+  ipity?: number;
+  iurPity?: number;
 }
 
 // ---------------------------------------------------------------- 着せ替えガチャ
@@ -100,12 +106,26 @@ function fresh(): Wallet {
 
 export function loadWallet(): Wallet {
   const w = loadWalletRaw();
-  // テスト版：すぐに全部を確かめられるよう、ガチャの衣装を全部持っていて、コインもたっぷりある
+  // テスト版：すぐに全部を確かめられるよう、最初の1回だけ全部持たせる（ガチャの演出を見るために空にもできる）。コインはいつもたっぷり
   if (import.meta.env.VITE_TEST === '1') {
-    w.owned = [...new Set([...w.owned, ...GACHA_COSTUMES.map((c) => c.id)])];
     w.coins = Math.max(w.coins, 100000);
+    let granted = false;
+    try {
+      granted = !!localStorage.getItem('buttobi-test-granted');
+      localStorage.setItem('buttobi-test-granted', '1');
+    } catch {
+      // 保存できない
+    }
+    if (!granted) testGrantAll(w);
   }
   return w;
+}
+
+/** テスト版：衣装・スタンプ（全部 UR）・背景を全部持つ */
+export function testGrantAll(w: Wallet): void {
+  w.owned = [...new Set([...w.owned, ...GACHA_COSTUMES.map((c) => c.id)])];
+  w.stamps = Object.fromEntries(Array.from({ length: PIC_STAMP_COUNT }, (_, i) => [String(i), 6]));
+  w.bgs = Array.from({ length: CARD_BG_COUNT }, (_, i) => i + 1);
 }
 
 function loadWalletRaw(): Wallet {
@@ -127,6 +147,10 @@ function loadWalletRaw(): Wallet {
       // 天井が50回から30回に変わったので、それより多く数えていた分は30回目の手前でそろえる
       pity: Math.min(PITY_LIMIT - 1, num(w.pity)),
       urPity: Math.min(UR_PITY_LIMIT - 1, num(w.urPity)),
+      stamps: w.stamps && typeof w.stamps === 'object' ? Object.fromEntries(Object.entries(w.stamps).filter(([k, v]) => /^\d+$/.test(k) && (v === 4 || v === 5 || v === 6))) : {},
+      bgs: Array.isArray(w.bgs) ? w.bgs.filter((n): n is number => Number.isInteger(n) && n > 0) : [],
+      ipity: Math.min(PITY_LIMIT - 1, num(w.ipity)),
+      iurPity: Math.min(UR_PITY_LIMIT - 1, num(w.iurPity)),
     };
   } catch {
     return fresh();

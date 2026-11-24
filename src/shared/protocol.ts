@@ -124,7 +124,7 @@ export type ClientMsg =
   /** ロビーの「準備OK」 */
   | { t: 'ready'; on: boolean }
   /** 定型文のスタンプ（STAMPS の番号） */
-  | { t: 'stamp'; id: number; pic?: 1 }
+  | { t: 'stamp'; id: number; pic?: 1; tier?: number }
   /** ホストが、ホストの役目をほかの人（slot）に譲る */
   | { t: 'host'; slot: number }
   /** ホストが、チームをおまかせで分ける（赤・青に同じ人数ずつ） */
@@ -157,7 +157,7 @@ export type ServerMsg =
   /** ほかの人のお知らせ（抜けた・通信が切れた・戻ってきた） */
   | { t: 'notice'; msg: string }
   /** だれかが送ったスタンプ */
-  | { t: 'stamp'; slot: number; name: string; id: number; pic?: 1 }
+  | { t: 'stamp'; slot: number; name: string; id: number; pic?: 1; tier?: number }
   /** 乱入アイテムが落とされた（n = 落とした人、kind = 種類）。used = この試合でもう落とした人（端末のボタンを消すため） */
   | { t: 'dropped'; n: string; kind: number; used: string[] }
   /** 勝敗予想の一覧（n = 予想した人の名前、p = 勝つと思う選手の slot） */

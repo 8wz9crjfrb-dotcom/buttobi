@@ -1,11 +1,12 @@
 // アプリ全体の流れ：画面の切り替え、CPU戦、オンライン戦
 
-import './testEnv';
+import { IS_TEST } from './testEnv';
 import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, RANDOM_CHAR, getCharacter, HIDDEN_CHARS, PREVIEW, PREVIEW_KEY, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
-import { picStamp, PIC_STAMPS, setStampPortrait } from './stamps';
+import { picStamp, PIC_STAMPS, setStampPortrait, tierName } from './stamps';
 import { cardBgAttrs, CARD_BG_GROUPS, CARD_BGS } from './cardBgs';
+import { ITEM_COST, ITEM_DUP_REFUND, itemCounts, ownsBg, pullItems, stampTier, type ItemPull } from './items';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
@@ -40,7 +41,7 @@ import { GameRenderer } from './renderer';
 import { applyUiSettings, loadSettings, saveSettings, type Settings } from './settings';
 import { applyTouchLayout, currentButtonPositions } from './touchLayout';
 import { checkTitles, MOVED_TITLES, RENAMED_TITLES, gachaBadge, markGachaSeen, markRecordsSeen, recordsBadge, HORDE_CPU_LEVEL, HORDE_LEVEL_STEP, hordeReward, loadProgress, MISSION_BONUS, MISSION_REWARD, missionGoal, missionText, recordMatch, refreshMissions, saveProgress, TITLES, TITLE_GROUPS, type MatchStats } from './progress';
-import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, UR_PITY_LIMIT, UR_RATE, urAvailable, WIN_DAILY_CAP, type PullResult } from './wallet';
+import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIMIT, pullGacha, recordWin, saveWallet, SSR_RATE, UR_PITY_LIMIT, UR_RATE, urAvailable, WIN_DAILY_CAP, testGrantAll, type PullResult } from './wallet';
 
 /** UR のカード・衣装ボタンの上に舞うキラキラの粒（中身は styles.css の .ur-sp） */
 const URSP = '<i class="ur-sp" aria-hidden="true"></i>';
@@ -91,7 +92,7 @@ const pauseBtn = document.getElementById('pause-btn')!;
 const toastEl = document.getElementById('toast')!;
 
 const renderer = new GameRenderer(canvas);
-setStampPortrait((charId, face) => renderer.portrait(charId, undefined, face));
+setStampPortrait((charId, face, job) => renderer.portrait(charId, undefined, face, job));
 renderer.setQuality(settings.quality);
 const hud = new Hud();
 const input = new InputManager();
@@ -641,7 +642,8 @@ function myProfile(): Profile {
     title,
     comment: p?.comment ?? 0,
     color: p?.color ?? 0,
-    bg: p?.bg ?? 0,
+    // 持っていない背景（引き継ぎ前など）は付けない
+    bg: p?.bg && ownsBg(wallet, p.bg) ? p.bg : 0,
     wins: progress.totals.wins,
     horde: progress.hordeBest?.kos ?? 0,
     costumes: ownedCostumeCount(),
@@ -964,12 +966,14 @@ function openDm(code: string): void {
 
 function sendDm(k: 'p' | 's', i: number): void {
   if (fightingNow() || !dmCode) return;
+  // 持っていないスタンプは送れない
+  if (k === 's' && !stampTier(wallet, i)) return;
   const now = Date.now();
   if (now - dmLastSend < DM_COOLDOWN_MS) return;
   dmLastSend = now;
   // 「ルーム作ったよ！」は、いま入っているルームの「参加する」ボタンを付ける
   const room = k === 'p' && i === DM_ROOM_PHRASE && lobby && net.slot >= 0 ? lobby.code : undefined;
-  social.sendDm(dmCode, k, i, room);
+  social.sendDm(dmCode, k, i, room, k === 's' ? stampTier(wallet, i) : undefined);
   sfx.click();
   // 1秒は押せない（押せるようになるまで薄くする）
   const el = document.getElementById('dm');
@@ -994,7 +998,7 @@ function renderDm(): void {
     : list.length
       ? list
           .map(
-            (m) => `<div class="dm-row ${m.me ? 'me' : ''}"><div class="dm-bubble ${m.k === 's' ? 'pic' : ''}">${m.k === 'p' ? esc(DM_PHRASES[m.i] ?? '') : picStamp(m.i)}${
+            (m) => `<div class="dm-row ${m.me ? 'me' : ''}"><div class="dm-bubble ${m.k === 's' ? 'pic' : ''}">${m.k === 'p' ? esc(DM_PHRASES[m.i] ?? '') : picStamp(m.i, m.t ?? 4)}${
               m.r && !m.me && !inRoom ? `<button type="button" class="btn small primary dm-join" data-dmjoin="${m.r}">ルーム ${m.r} に参加する</button>` : m.r ? `<small class="dm-room">ルーム ${m.r}</small>` : ''
             }</div><small class="dm-time">${hm(m.at)}</small></div>`,
           )
@@ -1004,7 +1008,7 @@ function renderDm(): void {
   const phrases = DM_GROUPS.map(
     (g) => `<div class="dm-group"><span>${g.name}</span><div class="dm-chips">${g.ids.map((i) => `<button type="button" class="stamp-btn" data-dmsend="p:${i}" ${cool}>${esc(DM_PHRASES[i])}</button>`).join('')}</div></div>`,
   ).join('');
-  const stamps = `<div class="pic-grid">${PIC_STAMPS.map((_, i) => `<button type="button" class="pic-btn" data-dmsend="s:${i}" ${cool}>${picStamp(i)}</button>`).join('')}</div>`;
+  const stamps = `<div class="pic-grid">${ownedStampButtons('dmsend', cool)}</div>${stampMoreNote()}`;
   const keepY = el.querySelector<HTMLElement>('.dm-pad')?.scrollTop ?? 0;
   el.innerHTML = `<div class="modal-box dm-box">
       <div class="dm-head">${friendFace(f.name, f.prof)}<div class="grow"><b>${esc(f.name)}</b><small>${f.room ? (f.room.match ? '対戦中' : 'ルーム公開中') : f.online ? 'オンライン' : 'オフライン'}</small></div><button class="btn small" data-close>閉じる</button></div>
@@ -1072,11 +1076,11 @@ function showProfileEdit(): void {
            <div class="pe-chips">${PROFILE_COMMENTS.map((t, i) => chip('cm', i, esc(t), i === draft.comment)).join('')}</div>
            <div class="opt-label">カードの色</div>
            <div class="pe-chips">${PROFILE_COLORS.map(([a, b], i) => `<button type="button" class="pe-color ${i === draft.color ? 'on' : ''}" data-color="${i}" style="background:linear-gradient(135deg,${a},${b})" aria-label="色${i + 1}"></button>`).join('')}</div>
-           <div class="opt-label">カードの背景 <small class="muted">（テスト版：すべて選べます。本番ではガチャの景品の予定）</small></div>
+           <div class="opt-label">カードの背景 <small class="muted">（スタンプ＆背景ガチャで集めた背景から）</small></div>
            <div class="pe-chips"><button type="button" class="pe-bg none ${draft.bg === 0 ? 'on' : ''}" data-bg="0"><span>なし（色だけ）</span></button></div>
-           ${CARD_BG_GROUPS.map(
+           ${CARD_BG_GROUPS.filter((g) => CARD_BGS.some((d, i) => d.group === g.id && ownsBg(wallet, i + 1))).map(
              (g) =>
-               `<div class="pe-bg-group">${g.name}</div><div class="pe-chips">${CARD_BGS.map((d, i) => (d.group === g.id ? `<button type="button" class="pe-bg ${draft.bg === i + 1 ? 'on' : ''} ${cardBgAttrs(i + 1).cls}" data-bg="${i + 1}" style="${cardBgAttrs(i + 1).style}"><span>${esc(d.name)}</span></button>` : '')).join('')}</div>`,
+               `<div class="pe-bg-group">${g.name}</div><div class="pe-chips">${CARD_BGS.map((d, i) => (d.group === g.id && ownsBg(wallet, i + 1) ? `<button type="button" class="pe-bg ${draft.bg === i + 1 ? 'on' : ''} ${cardBgAttrs(i + 1).cls}" data-bg="${i + 1}" style="${cardBgAttrs(i + 1).style}"><span>${esc(d.name)}</span></button>` : '')).join('')}</div>`,
            ).join('')}
          </div>
        </div>
@@ -2450,8 +2454,9 @@ function sendRoomStamp(id: number, pic: boolean): void {
   if (fightingNow() || net.spectating || net.slot < 0) return;
   const now = Date.now();
   if (now - roomStampAt < ROOM_STAMP_MS) return;
+  if (pic && !stampTier(wallet, id)) return;
   roomStampAt = now;
-  net.stamp(id, pic);
+  net.stamp(id, pic, pic ? stampTier(wallet, id) : 4);
   sfx.click();
   // 連打しすぎないよう、少しの間押せなくする
   const all = () => document.querySelectorAll<HTMLButtonElement>('[data-stamp], [data-pstamp]');
@@ -2462,6 +2467,19 @@ function bindStampBar(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>('[data-stamp]').forEach((b) => b.addEventListener('click', () => sendRoomStamp(Number(b.dataset.stamp), false)));
   root.querySelector('[data-picopen]')?.addEventListener('click', () => openPicPalette());
 }
+/** 持っている絵スタンプのボタン（持っているレア度で表示） */
+function ownedStampButtons(attr: 'dmsend' | 'pstamp', extra = ''): string {
+  return PIC_STAMPS.map((_, i) => {
+    const t = stampTier(wallet, i);
+    return t ? `<button type="button" class="pic-btn" data-${attr}="${attr === 'dmsend' ? `s:${i}` : i}" ${extra}>${picStamp(i, t)}</button>` : '';
+  }).join('');
+}
+/** まだ持っていないスタンプがあるときの案内 */
+function stampMoreNote(): string {
+  const n = PIC_STAMPS.filter((_, i) => !stampTier(wallet, i)).length;
+  return n ? `<p class="muted small-note">ほかに ${n} 種類のスタンプがあります（ガチャの「スタンプ＆背景ガチャ」で出ます）。</p>` : '';
+}
+
 /** ルームで送る絵スタンプを選ぶ */
 function openPicPalette(withText = false): void {
   document.getElementById('pic-pal')?.remove();
@@ -2471,7 +2489,7 @@ function openPicPalette(withText = false): void {
   el.innerHTML = `<div class="modal-box pic-pal-box">
       <h3>スタンプを送る</h3>
       <div class="modal-body">
-        <div class="pic-grid">${PIC_STAMPS.map((_, i) => `<button type="button" class="pic-btn" data-pstamp="${i}">${picStamp(i)}</button>`).join('')}</div>
+        <div class="pic-grid">${ownedStampButtons('pstamp')}</div>${stampMoreNote()}
         ${withText ? `<div class="dm-chips pal-text">${STAMPS.map((t, i) => `<button type="button" class="stamp-btn" data-ptext="${i}">${t}</button>`).join('')}</div>` : ''}
       </div>
       <div class="footer"><button class="btn" data-close>閉じる</button></div>
@@ -3397,6 +3415,148 @@ function showRecords(tab: 'missions' | 'records' | 'titles'): void {
 
 // ---------------------------------------------------------------------------
 // 着せ替えガチャ
+// ---------------------------------------------------------------------------
+// スタンプ＆背景ガチャ（衣装ガチャとは別。天井も別）
+function gachaTabs(on: 'cos' | 'item'): string {
+  return `<div class="seg gacha-tabs" data-seg="gtab"><button type="button" data-v="cos" class="${on === 'cos' ? 'on' : ''}">着せ替えガチャ</button><button type="button" data-v="item" class="${on === 'item' ? 'on' : ''}">スタンプ＆背景ガチャ</button></div>`;
+}
+function bindGachaTabs(root: HTMLElement): void {
+  bindSeg(root, 'gtab', (v) => (v === 'item' ? showItemGacha() : showGacha()));
+}
+
+/** 背景の小さな見本 */
+function bgSwatch(bg: number): string {
+  const a = cardBgAttrs(bg);
+  return `<span class="bg-swatch ${a.cls}" style="${a.style}"></span>`;
+}
+
+/** 引いたものの名前と種類 */
+function itemLabel(r: { kind: 's' | 'b'; id: number }): { name: string; kind: string } {
+  return r.kind === 's' ? { name: `「${PIC_STAMPS[r.id]?.text ?? ''}」`, kind: 'スタンプ' } : { name: CARD_BGS[r.id - 1]?.name ?? '', kind: 'カード背景' };
+}
+
+function showItemGacha(): void {
+  const c = itemCounts(wallet);
+  const left = PITY_LIMIT - (wallet.ipity ?? 0);
+  const urLeft = UR_PITY_LIMIT - (wallet.iurPity ?? 0);
+  // 見本：UR のスタンプと背景をいくつか
+  const sample = `<div class="ig-sample">${picStamp(15, 6)}${picStamp(4, 5)}${picStamp(7, 4)}<span class="ig-bgs">${bgSwatch(30)}${bgSwatch(24)}${bgSwatch(5)}</span></div>`;
+  showScreen(
+    `<div class="row" style="justify-content:space-between">${gachaTabs('item')}${coinBadge()}</div>
+     <div class="gacha-hero">
+       ${sample}
+       <div class="gacha-info">
+         <div>絵スタンプ${PIC_STAMPS.length}種と、名刺カードの背景${CARD_BGS.length}種が出ます。</div>
+         <div>スタンプは同じ言葉でも <b class="rr5">SSR</b>（金の縁）→ <b class="rr6">UR</b>（虹色に光って動く）にアップグレード！</div>
+         <div>出る確率：<b class="rr6">UR ${Math.round(UR_RATE * 100)}%</b>／<b class="rr5">SSR ${Math.round(SSR_RATE * 100)}%</b>／<b class="rr4">SR ${Math.round((1 - SSR_RATE - UR_RATE) * 100)}%</b>（スタンプと背景は半々）</div>
+         <div>天井：<b class="rr6">UR</b> 確定まで あと <b>${urLeft}</b> 回・<b class="rr5">SSR</b> 確定まで あと <b>${left}</b> 回（着せ替えガチャとは別に数えます）</div>
+         <div class="muted">持っているもの（スタンプは同じか下のレア度）が出たら、コインに変わります（SR ${ITEM_DUP_REFUND[4]}・SSR ${ITEM_DUP_REFUND[5]}・UR ${ITEM_DUP_REFUND[6]}）。</div>
+         <div class="muted">集めたもの：スタンプ ${c.stamps} / ${PIC_STAMPS.length}・背景 ${c.bgs} / ${CARD_BGS.length}（「了解！」「ありがとう！」「ごめん！」「GG！」は最初から持っています）</div>
+       </div>
+     </div>
+     <div class="footer">
+       <button class="btn" id="back">もどる</button>
+       <div class="row" style="gap:8px">
+         ${IS_TEST ? '<button class="btn small" id="t-all">テスト：全部持つ</button><button class="btn small" id="t-none">テスト：スタンプと背景を空に</button>' : ''}
+         <button class="btn" id="ilist">一覧</button>
+         <button class="btn primary" id="ione" ${wallet.coins < ITEM_COST.one ? 'disabled' : ''}>1回 <small>${ITEM_COST.one}</small></button>
+         <button class="btn primary" id="iten" ${wallet.coins < ITEM_COST.ten ? 'disabled' : ''}>10回 <small>${ITEM_COST.ten}</small></button>
+       </div>
+     </div>`,
+    'overlay',
+    (root) => {
+      root.querySelector('#back')!.addEventListener('click', () => showMenu());
+      bindGachaTabs(root);
+      root.querySelector('#ilist')!.addEventListener('click', () => showItemList('s'));
+      // テスト版だけ：持ち物を切り替えて、NEW・アップグレードの演出を確かめられるようにする
+      root.querySelector('#t-all')?.addEventListener('click', () => {
+        testGrantAll(wallet);
+        saveWallet(wallet);
+        toast('テスト：全部持っている状態にしました');
+        showItemGacha();
+      });
+      root.querySelector('#t-none')?.addEventListener('click', () => {
+        wallet.stamps = {};
+        wallet.bgs = [];
+        saveWallet(wallet);
+        toast('テスト：スタンプ（最初の4つ以外）と背景を空にしました');
+        showItemGacha();
+      });
+      root.querySelector('#ione')!.addEventListener('click', () => pullItemsAndOpen(1));
+      root.querySelector('#iten')!.addEventListener('click', () => pullItemsAndOpen(10));
+    },
+  );
+}
+
+function pullItemsAndOpen(n: 1 | 10): void {
+  const res = pullItems(wallet, n);
+  if (!res) return void toast('コインが足りません');
+  saveWallet(wallet);
+  playGachaOpening(
+    res,
+    (i) => {
+      const r = res[i];
+      const l = itemLabel(r);
+      return `<b>${rarityName(r.rarity)}</b><div class="gx-item">${r.kind === 's' ? picStamp(r.id, r.rarity) : bgSwatch(r.id)}</div><div class="n">${esc(l.name)}</div><div class="c">${l.kind}</div>${r.dup ? '' : r.up ? '<i class="new up">UP</i>' : '<i class="new">NEW</i>'}${r.rarity === 6 ? URSP : ''}`;
+    },
+    () => showItemResult(res),
+  );
+}
+
+function showItemResult(res: ItemPull[]): void {
+  const again: 1 | 10 = res.length > 1 ? 10 : 1;
+  const againCost = again === 10 ? ITEM_COST.ten : ITEM_COST.one;
+  const cards = res
+    .map((r) => {
+      const l = itemLabel(r);
+      const tag = r.dup ? `<div class="gd">+${r.refund}コイン</div>` : r.up ? `<div class="gnew up">${tierName(r.rarity)}にアップ！</div>` : '<div class="gnew">NEW</div>';
+      return `<div class="gcard ic r${r.rarity}"><b>${rarityName(r.rarity)}</b><div class="ic-art">${r.kind === 's' ? picStamp(r.id, r.rarity) : bgSwatch(r.id)}</div><div class="gn">${esc(l.name)}</div><div class="gc">${l.kind}</div>${tag}${r.rarity === 6 ? URSP : ''}</div>`;
+    })
+    .join('');
+  showScreen(
+    `<div class="row" style="justify-content:space-between"><h2>ガチャの結果</h2>${coinBadge()}</div>
+     <div class="gcards ic-cards ${res.length > 1 ? 'ten' : ''}">${cards}</div>
+     <p class="muted small-note">スタンプは DM・オンラインの待機画面と結果画面で、背景はプロフィールの編集で使えます。</p>
+     <div class="footer">
+       <button class="btn" id="back">もどる</button>
+       <button class="btn primary" id="again" ${wallet.coins < againCost ? 'disabled' : ''}>もう一度${again === 10 ? '10回' : '1回'} <small>${againCost}</small></button>
+     </div>`,
+    'overlay',
+    (root) => {
+      root.querySelector('#back')!.addEventListener('click', showItemGacha);
+      root.querySelector('#again')!.addEventListener('click', () => pullItemsAndOpen(again));
+    },
+  );
+}
+
+/** 一覧：スタンプ（持っているレア度で表示）と背景（持っていないものは ？） */
+function showItemList(tab: 's' | 'b'): void {
+  const c = itemCounts(wallet);
+  const body =
+    tab === 's'
+      ? `<div class="pic-grid">${PIC_STAMPS.map((s, i) => {
+          const t = stampTier(wallet, i);
+          return t ? `<div class="il-item">${picStamp(i, t)}</div>` : `<div class="il-item locked"><span class="il-q">？</span><small>${esc(s.text)}</small></div>`;
+        }).join('')}</div>`
+      : CARD_BG_GROUPS.map(
+          (g) =>
+            `<div class="pe-bg-group">${g.name}</div><div class="pe-chips">${CARD_BGS.map((d, i) =>
+              d.group !== g.id ? '' : ownsBg(wallet, i + 1) ? `<span class="pe-bg ${cardBgAttrs(i + 1).cls}" style="${cardBgAttrs(i + 1).style}"><span>${esc(d.name)}</span></span>` : `<span class="pe-bg locked"><span>？？？</span></span>`,
+            ).join('')}</div>`,
+        ).join('');
+  showScreen(
+    `<div class="row" style="justify-content:space-between"><h2>スタンプ・背景の一覧</h2>${coinBadge()}</div>
+     <div class="seg" data-seg="itab"><button type="button" data-v="s" class="${tab === 's' ? 'on' : ''}">スタンプ ${c.stamps}/${PIC_STAMPS.length}</button><button type="button" data-v="b" class="${tab === 'b' ? 'on' : ''}">背景 ${c.bgs}/${CARD_BGS.length}</button></div>
+     <div class="il-body">${body}</div>
+     <div class="footer"><button class="btn" id="back">もどる</button></div>`,
+    'overlay',
+    (root) => {
+      bindSeg(root, 'itab', (v) => showItemList(v === 'b' ? 'b' : 's'));
+      root.querySelector('#back')!.addEventListener('click', showItemGacha);
+    },
+  );
+}
+
 function showGacha(): void {
   // 赤い点：ガチャ画面を開いたので消す
   markGachaSeen(progress, wallet);
@@ -3405,7 +3565,7 @@ function showGacha(): void {
   const ur = urAvailable();
   const urLeft = UR_PITY_LIMIT - wallet.urPity;
   showScreen(
-    `<div class="row" style="justify-content:space-between"><h2>着せ替えガチャ</h2>${coinBadge()}</div>
+    `<div class="row" style="justify-content:space-between">${gachaTabs('cos')}${coinBadge()}</div>
      <div class="gacha-hero">
        <div class="capsule big"><div class="cap-top"></div><div class="cap-bottom"></div></div>
        <div class="gacha-info">
@@ -3428,6 +3588,7 @@ function showGacha(): void {
     'overlay',
     (root) => {
       root.querySelector('#back')!.addEventListener('click', () => showMenu());
+      bindGachaTabs(root);
       root.querySelector('#list')!.addEventListener('click', () => showCollection(settings.charId));
       root.querySelector('#lineup')!.addEventListener('click', showLineup);
       root.querySelector('#one')!.addEventListener('click', () => pullAndOpen(1));
@@ -3442,7 +3603,7 @@ function showGacha(): void {
  * 開く瞬間に光って星と紙吹雪が飛び散る → 出た衣装のカード（10連は1枚ずつめくれる）→ 結果画面。
  * どこでもタップすると結果まで飛ばせる。
  */
-function playGachaOpening(res: PullResult[]): void {
+function playGachaOpening(res: { rarity: number }[], cardFront: (i: number) => string, done: () => void): void {
   const best = Math.max(...res.map((r) => r.rarity));
   const ssr = best >= 5;
   const ur = best >= 6;
@@ -3474,7 +3635,7 @@ function playGachaOpening(res: PullResult[]): void {
     if (phase === 'done') return;
     phase = 'done';
     cancel();
-    showGachaResult(res, 0);
+    done();
   };
   const flipOne = () => {
     const i = flipped++;
@@ -3494,12 +3655,7 @@ function playGachaOpening(res: PullResult[]): void {
   };
   const reveal = () => {
     stage.classList.add('reveal');
-    box.innerHTML = res
-      .map((r) => {
-        const c = COSTUMES.find((x) => x.id === r.id)!;
-        return `<div class="gx-card r${r.rarity}"><div class="in"><div class="back"></div><div class="front"><b>${rarityName(r.rarity)}</b><div class="n">${c.name}</div><div class="c">${getCharacter(c.charId).name}</div>${r.dup ? '' : '<i class="new">NEW</i>'}${r.rarity === 6 ? URSP : ''}</div></div></div>`;
-      })
-      .join('');
+    box.innerHTML = res.map((r, i) => `<div class="gx-card r${r.rarity}"><div class="in"><div class="back"></div><div class="front">${cardFront(i)}</div></div></div>`).join('');
     // まず裏のまま並べて見せてから、1枚ずつゆっくりめくる
     flipRest(ten ? 260 : 0, ten ? 600 : 700);
   };
@@ -3588,7 +3744,15 @@ function pullAndOpen(n: 1 | 10): void {
     setTimeout(() => toast(titles.map((t) => `称号「${t.name}」を手に入れた！ +${t.coins}`).join(' / '), 4000), 2500);
   }
   saveWallet(wallet);
-  playGachaOpening(res);
+  playGachaOpening(
+    res,
+    (i) => {
+      const r = res[i];
+      const c = COSTUMES.find((x) => x.id === r.id)!;
+      return `<b>${rarityName(r.rarity)}</b><div class="n">${c.name}</div><div class="c">${getCharacter(c.charId).name}</div>${r.dup ? '' : '<i class="new">NEW</i>'}${r.rarity === 6 ? URSP : ''}`;
+    },
+    () => showGachaResult(res, 0),
+  );
 }
 
 function showGachaResult(res: PullResult[], index: number): void {
@@ -4415,8 +4579,8 @@ const net = new NetClient({
   onNotice(msg) {
     toast(msg, 4000);
   },
-  onStamp(slot, name, id, pic) {
-    if (pic) showStamp(slot, name, '', picStamp(id));
+  onStamp(slot, name, id, pic, tier) {
+    if (pic) showStamp(slot, name, '', picStamp(id, tier));
     else showStamp(slot, name, STAMPS[id] ?? '');
   },
   onRoulette(stageId) {

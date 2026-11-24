@@ -64,7 +64,7 @@ export interface Profile {
 }
 
 /** カードの背景の数（絵は端末側の cardBgs.ts） */
-export const CARD_BG_COUNT = 22;
+export const CARD_BG_COUNT = 32;
 
 const int = (v: unknown, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v)) || 0));
 /** 受け取ったプロフィールを安全な形にそろえる（キャラが分からなければ null） */
@@ -130,13 +130,15 @@ export const DM_COOLDOWN_MS = 1000;
 /** 1 人のフレンドとの間で残しておく DM の数（古いものから消す） */
 export const DM_KEEP = 50;
 /** 絵スタンプの数（番号は 0〜） */
-export const PIC_STAMP_COUNT = 16;
+export const PIC_STAMP_COUNT = 18;
 
-/** DM 1通。k = 'p'（定型文）/ 's'（絵スタンプ）、i = 番号、r = 付けたルームコード、at = 送った時刻（ms） */
+/** DM 1通。k = 'p'（定型文）/ 's'（絵スタンプ）、i = 番号、t = スタンプのレア度、r = 付けたルームコード、at = 送った時刻（ms） */
 export interface DmMsg {
   me: boolean;
   k: 'p' | 's';
   i: number;
+  /** 絵スタンプのレア度（5 SSR・6 UR。なしは SR） */
+  t?: number;
   r?: string;
   at: number;
 }
@@ -160,7 +162,7 @@ export type SocialClientMsg =
   /** DM：フレンドとのやり取りを開く（届いた分を既読にして、最近のやり取りをもらう） */
   | { t: 'dmOpen'; code: string }
   /** DM を送る（r = 「ルーム作ったよ！」に付けるルームコード） */
-  | { t: 'dmSend'; code: string; k: 'p' | 's'; i: number; r?: string }
+  | { t: 'dmSend'; code: string; k: 'p' | 's'; i: number; r?: string; tier?: number }
 
 /** サーバー → 端末 */
 export type SocialServerMsg =

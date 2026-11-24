@@ -55,6 +55,7 @@ interface StoredDm {
   s: string;
   k: 'p' | 's';
   i: number;
+  t?: number;
   r?: string;
   at: number;
 }
@@ -299,7 +300,7 @@ export class Social extends DurableObject {
         if (!oid || !other || !me.friends.includes(oid)) return err('フレンドにだけ送れます');
         const key = dmKey(id, oid);
         let list = (await this.ctx.storage.get<StoredDm[]>(key)) ?? [];
-        const view = (forId: string): DmMsg[] => list.map((m) => ({ me: m.s === forId, k: m.k, i: m.i, ...(m.r ? { r: m.r } : {}), at: m.at }));
+        const view = (forId: string): DmMsg[] => list.map((m) => ({ me: m.s === forId, k: m.k, i: m.i, ...(m.t ? { t: m.t } : {}), ...(m.r ? { r: m.r } : {}), at: m.at }));
         if (msg.t === 'dmSend') {
           const k = msg.k === 's' ? 's' : 'p';
           const i = Number(msg.i) | 0;
@@ -309,14 +310,16 @@ export class Social extends DurableObject {
           if (now - (this.lastDm.get(id) ?? 0) < DM_COOLDOWN_MS - 150) return;
           this.lastDm.set(id, now);
           const r = k === 'p' && i === DM_ROOM_PHRASE && isRoomCode(String(msg.r ?? '')) ? String(msg.r) : undefined;
-          const m: StoredDm = { s: id, k, i, ...(r ? { r } : {}), at: now };
+          // スタンプのレア度（SSR・UR）。持っているかはサーバーでは分からないので、形だけそろえる
+          const tier = k === 's' && (msg.tier === 5 || msg.tier === 6) ? msg.tier : undefined;
+          const m: StoredDm = { s: id, k, i, ...(tier ? { t: tier } : {}), ...(r ? { r } : {}), at: now };
           list = [...list, m].slice(-DM_KEEP);
           await this.ctx.storage.put(key, list);
           other.un = { ...(other.un ?? {}), [id]: Math.min(99, (other.un?.[id] ?? 0) + 1) };
           await this.save(oid, other);
           // 相手のつながっている端末に届ける
           const online = this.sockets();
-          for (const ows of online.get(oid) ?? []) this.send(ows, { t: 'dmNew', code: me.code, name: me.name, m: { me: false, k, i, ...(r ? { r } : {}), at: now } });
+          for (const ows of online.get(oid) ?? []) this.send(ows, { t: 'dmNew', code: me.code, name: me.name, m: { me: false, k, i, ...(tier ? { t: tier } : {}), ...(r ? { r } : {}), at: now } });
           await this.push([oid]);
         } else if (me.un?.[oid]) {
           // 開いた：既読にする

@@ -16,6 +16,8 @@ interface PicStampDef {
   color: string;
   /** 重ねる絵（viewBox 0 0 100 100 の SVG の中身） */
   deco: string;
+  /** 3B の職業（0 美容師・1 バンドマン・2 バーテンダー） */
+  job?: number;
 }
 
 const W = 'stroke="#fff" stroke-width="3" stroke-linejoin="round"';
@@ -51,25 +53,42 @@ export const PIC_STAMPS: PicStampDef[] = [
   // 11 がんばれ！：トレーナーと炎
   { text: 'がんばれ！', chars: ['trainer'], face: ['angry', 'open'], color: '#ff5a2a', deco: `<path d="M82 4C90 14 96 20 94 30C92 38 86 42 82 42C76 42 70 38 70 30C70 24 74 20 76 16C78 22 80 24 82 24C82 16 80 10 82 4Z" fill="#ffb02e" ${W}/><path d="M82 24C86 28 88 32 86 36C84 39 80 39 78 36C77 33 79 30 82 24Z" fill="#fff4a8"/>` },
   // 12 おつかれ！：3Bがグラスで乾杯
-  { text: 'おつかれ！', chars: ['threeb'], face: ['happy', 'smile'], color: '#b05cff', deco: `<path d="M68 10H80L78 28H70Z" fill="#ffd84a" ${W} transform="rotate(-14 74 20)"/><path d="M84 10H96L94 28H86Z" fill="#ffd84a" ${W} transform="rotate(14 90 20)"/>${SPARK(82, 4, 5, '#fff')}` },
+  { text: 'おつかれ！', chars: ['threeb'], job: 2, face: ['happy', 'smile'], color: '#b05cff', deco: `<path d="M68 10H80L78 28H70Z" fill="#ffd84a" ${W} transform="rotate(-14 74 20)"/><path d="M84 10H96L94 28H86Z" fill="#ffd84a" ${W} transform="rotate(14 90 20)"/>${SPARK(82, 4, 5, '#fff')}` },
   // 13 ちょっと待って…：メンヘラが涙目
   { text: 'ちょっと待って…', chars: ['menhera'], face: ['panic', 'open'], color: '#ff7eb6', deco: `${DROP(78, 24, 8)}${HEART(90, 12, 6, '#ffd1e3')}` },
   // 14 おやすみ：メンヘラと月と Zzz
   { text: 'おやすみ', chars: ['menhera'], face: ['closed', 'line'], color: '#3a3f7a', deco: `<path d="M90 8A14 14 0 1 0 96 32A11 11 0 1 1 90 8Z" fill="#ffe27a" ${W}/><text x="14" y="26" font-size="16" font-weight="900" fill="#fff">Z</text><text x="4" y="40" font-size="11" font-weight="900" fill="#fff">z</text>` },
   // 15 GG！：みんなでいい試合
   { text: 'GG！', chars: ['guard', 'streamer', 'courier', 'menhera'], face: ['happy', 'open'], color: '#1b1f3b', deco: `${SPARK(10, 12, 7)}${SPARK(90, 12, 7)}${SPARK(50, 6, 5, '#fff')}` },
+  // 16 いい感じ！：3B（美容師）がハサミできらり
+  { text: 'いい感じ！', chars: ['threeb'], job: 0, face: ['smug', 'smile'], color: '#2fb5c8', deco: `<g stroke='#fff' stroke-width='2.5' fill='#c8ccd8'><circle cx='74' cy='30' r='6'/><circle cx='90' cy='30' r='6'/><path d='M77 25L94 6M87 25L70 6' stroke='#c8ccd8' stroke-width='5' stroke-linecap='round'/></g>${SPARK(20, 18, 8)}${SPARK(96, 46, 5, '#fff')}` },
+  // 17 最高！：3B（バンドマン）と音符
+  { text: '最高！', chars: ['threeb'], job: 1, face: ['happy', 'open'], color: '#e0364f', deco: `<g fill='#fff' ${W}><path d='M74 30V8L94 4V26' fill='none' stroke='#fff' stroke-width='4'/><ellipse cx='70' cy='31' rx='6' ry='5'/><ellipse cx='90' cy='27' rx='6' ry='5'/></g><g fill='#ffd84a'><path d='M14 34V16L24 14' fill='none' stroke='#ffd84a' stroke-width='3'/><ellipse cx='11' cy='35' rx='4' ry='3.4'/></g>` },
 ];
 
+/** 最初から全員が持っているスタンプ（了解！・ありがとう！・ごめん！・GG！）。ほかはガチャで集める */
+export const FREE_STAMPS = [0, 4, 6, 15];
+
 /** 似顔絵を描く関数（main.ts で renderer.portrait をつなぐ） */
-let portraitOf: (charId: string, face: Face) => string = () => '';
-export function setStampPortrait(fn: (charId: string, face: Face) => string): void {
+let portraitOf: (charId: string, face: Face, job?: number) => string = () => '';
+export function setStampPortrait(fn: (charId: string, face: Face, job?: number) => string): void {
   portraitOf = fn;
 }
 
-/** 絵スタンプの HTML（DM の吹き出し・送るボタン・待機画面の表示で使う） */
-export function picStamp(i: number): string {
+/**
+ * 絵スタンプの HTML（DM の吹き出し・送るボタン・待機画面の表示で使う）。
+ * tier = レア度（4 SR・5 SSR・6 UR）。同じ言葉でも、SSR は金の縁ときらめき、UR は虹色に光って動く
+ */
+export function picStamp(i: number, tier = 4): string {
   const s = PIC_STAMPS[i];
   if (!s) return '';
-  const faces = s.chars.map((c) => `<img alt="" src="${portraitOf(c, s.face)}"/>`).join('');
-  return `<span class="pic-stamp ${s.chars.length > 1 ? 'group' : ''}" style="--sc:${s.color}"><span class="ps-faces">${faces}</span><svg class="ps-deco" viewBox="0 0 100 100" aria-hidden="true">${s.deco}</svg><b class="${[...s.text].length >= 7 ? 'long' : ''}">${s.text}</b></span>`;
+  const faces = s.chars.map((c) => `<img alt="" src="${portraitOf(c, s.face, s.job)}"/>`).join('');
+  const t = tier >= 6 ? 6 : tier >= 5 ? 5 : 4;
+  const shine = t >= 5 ? `<svg class="ps-shine" viewBox="0 0 100 100" aria-hidden="true"><path d="M12 6l2 5 5 2-5 2-2 5-2-5-5-2 5-2z M88 64l1.6 4 4 1.6-4 1.6-1.6 4-1.6-4-4-1.6 4-1.6z" fill="${t >= 6 ? '#fff' : '#fff3b0'}"/></svg>` : '';
+  return `<span class="pic-stamp t${t} ${s.chars.length > 1 ? 'group' : ''}" style="--sc:${s.color}">${t >= 5 ? `<i class="ps-rank">${t >= 6 ? 'UR' : 'SSR'}</i>` : ''}${shine}<span class="ps-faces">${faces}</span><svg class="ps-deco" viewBox="0 0 100 100" aria-hidden="true">${s.deco}</svg><b class="${[...s.text].length >= 7 ? 'long' : ''}">${s.text}</b></span>`;
+}
+
+/** レア度の名前 */
+export function tierName(t: number): string {
+  return t >= 6 ? 'UR' : t >= 5 ? 'SSR' : 'SR';
 }

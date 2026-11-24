@@ -539,8 +539,8 @@ export class GameRenderer {
 
   private portraits = new Map<string, string>();
   /** HUD用の顔アイコン（キャラの顔を正面から描いた小さな画像。衣装ごとに使い回す） */
-  portrait(charId: string, costumeId?: string, face?: [FaceKind, FaceMouth]): string {
-    const key = `${charId}/${costumeId ?? ''}${face ? `/${face.join('-')}` : ''}`;
+  portrait(charId: string, costumeId?: string, face?: [FaceKind, FaceMouth], job?: number): string {
+    const key = `${charId}/${costumeId ?? ''}${face ? `/${face.join('-')}` : ''}${job !== undefined ? `/j${job}` : ''}`;
     const hit = this.portraits.get(key);
     if (hit) return hit;
     const scene = new THREE.Scene();
@@ -553,6 +553,8 @@ export class GameRenderer {
     model.previewTurn = 0.25;
     model.showMarker = false;
     if (face) model.forceFace = face;
+    // 3B：職業（美容師・バンドマン・バーテンダー）を決めて描く
+    if (job !== undefined) model.previewJob = job;
     scene.add(model.root);
     const fake: ViewFighter = {
       slot: 0, x: 0, y: 0, facing: 1, state: 'idle', stateTime: 0, move: null, moveFrame: 0,

@@ -579,7 +579,8 @@ export class Room extends DurableObject<Env> {
       if (now - (this.lastStamp.get(slot) ?? 0) < 850) return;
       this.lastStamp.set(slot, now);
       const name = this.lobby.humans.find((h) => h.slot === slot)?.name;
-      if (name) this.broadcast({ t: 'stamp', slot, name, id, ...(pic ? { pic: 1 as const } : {}) });
+      const tier = pic && (msg.tier === 5 || msg.tier === 6) ? msg.tier : undefined;
+      if (name) this.broadcast({ t: 'stamp', slot, name, id, ...(pic ? { pic: 1 as const } : {}), ...(tier ? { tier } : {}) });
       return;
     }
 

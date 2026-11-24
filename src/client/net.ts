@@ -25,7 +25,7 @@ export interface NetHandlers {
   /** ほかの人のお知らせ（抜けた・通信が切れた・戻ってきた） */
   onNotice(msg: string): void;
   /** だれかが送ったスタンプ */
-  onStamp(slot: number, name: string, id: number, pic: boolean): void;
+  onStamp(slot: number, name: string, id: number, pic: boolean, tier: number): void;
   /** 勝敗予想の一覧が変わった */
   onPredicts(list: { n: string; p: number }[]): void;
   /** ステージおまかせのルーレット */
@@ -268,7 +268,7 @@ export class NetClient {
         this.handlers.onNotice(m.msg);
         break;
       case 'stamp':
-        this.handlers.onStamp(m.slot, m.name, m.id, !!m.pic);
+        this.handlers.onStamp(m.slot, m.name, m.id, !!m.pic, m.tier ?? 4);
         break;
       case 'roulette':
         this.handlers.onRoulette(String(m.stageId));
@@ -391,8 +391,8 @@ export class NetClient {
 
   /** 定型文のスタンプを送る */
   /** 定型文（pic = 絵スタンプ）を送る */
-  stamp(id: number, pic = false): void {
-    this.send({ t: 'stamp', id, ...(pic ? { pic: 1 as const } : {}) });
+  stamp(id: number, pic = false, tier = 4): void {
+    this.send({ t: 'stamp', id, ...(pic ? { pic: 1 as const } : {}), ...(pic && tier >= 5 ? { tier } : {}) });
   }
 
   /** チームをおまかせで分ける（ホストだけ） */
