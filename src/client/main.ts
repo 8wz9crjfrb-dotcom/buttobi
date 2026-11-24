@@ -5,6 +5,7 @@ import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, RANDOM_CHAR, getCharacter, HIDDEN_CHARS, PREVIEW, PREVIEW_KEY, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { picStamp, PIC_STAMPS, setStampPortrait } from './stamps';
+import { cardBgAttrs, CARD_BG_GROUPS, CARD_BGS } from './cardBgs';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
@@ -640,6 +641,7 @@ function myProfile(): Profile {
     title,
     comment: p?.comment ?? 0,
     color: p?.color ?? 0,
+    bg: p?.bg ?? 0,
     wins: progress.totals.wins,
     horde: progress.hordeBest?.kos ?? 0,
     costumes: ownedCostumeCount(),
@@ -695,7 +697,8 @@ function profileCard(name: string, code: string, p: Profile | undefined, togethe
     // 衣装（ガチャで集める衣装）と称号は、持っている数 / 全部の数
     group(lbl('コレクション', '収集'), v(`${p.costumes}<span class="pc-of">/${GACHA_COSTUMES.length}</span>`, '衣装'), v(`${p.tc ?? 0}<span class="pc-of">/${TITLES.length}</span>`, '称号')),
   ].join('');
-  return `<div class="pcard ${cos.rarity >= 6 ? 'ur' : ''}" style="--c1:${c1};--c2:${c2}">
+  const bg = cardBgAttrs(p.bg);
+  return `<div class="pcard ${cos.rarity >= 6 ? 'ur' : ''} ${bg.cls}" style="--c1:${c1};--c2:${c2};${bg.style}">
     <div class="pc-pic" data-char="${p.charId}" data-cos="${esc(p.costume)}"><img alt="" src="${renderer.fullBody(p.charId, p.costume)}"/></div>
     <div class="pc-r">
       ${nm}
@@ -1047,7 +1050,7 @@ function openTitlePicker(current: string, onPick: (title: string) => void): void
 
 function showProfileEdit(): void {
   const cur = myProfile();
-  const draft = { charId: cur.charId, costume: cur.costume, title: cur.title, comment: cur.comment, color: cur.color };
+  const draft = { charId: cur.charId, costume: cur.costume, title: cur.title, comment: cur.comment, color: cur.color, bg: cur.bg ?? 0 };
   const titleNames = progress.titles.map((id) => TITLES.find((t) => t.id === id)?.name ?? '').filter(Boolean);
   let scroll = 0;
   const draw = () => {
@@ -1069,6 +1072,12 @@ function showProfileEdit(): void {
            <div class="pe-chips">${PROFILE_COMMENTS.map((t, i) => chip('cm', i, esc(t), i === draft.comment)).join('')}</div>
            <div class="opt-label">カードの色</div>
            <div class="pe-chips">${PROFILE_COLORS.map(([a, b], i) => `<button type="button" class="pe-color ${i === draft.color ? 'on' : ''}" data-color="${i}" style="background:linear-gradient(135deg,${a},${b})" aria-label="色${i + 1}"></button>`).join('')}</div>
+           <div class="opt-label">カードの背景 <small class="muted">（テスト版：すべて選べます。本番ではガチャの景品の予定）</small></div>
+           <div class="pe-chips"><button type="button" class="pe-bg none ${draft.bg === 0 ? 'on' : ''}" data-bg="0"><span>なし（色だけ）</span></button></div>
+           ${CARD_BG_GROUPS.map(
+             (g) =>
+               `<div class="pe-bg-group">${g.name}</div><div class="pe-chips">${CARD_BGS.map((d, i) => (d.group === g.id ? `<button type="button" class="pe-bg ${draft.bg === i + 1 ? 'on' : ''} ${cardBgAttrs(i + 1).cls}" data-bg="${i + 1}" style="${cardBgAttrs(i + 1).style}"><span>${esc(d.name)}</span></button>` : '')).join('')}</div>`,
+           ).join('')}
          </div>
        </div>
        <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="save">保存する</button></div>`,
@@ -1102,6 +1111,7 @@ function showProfileEdit(): void {
         });
         on('[data-cm]', (b) => (draft.comment = Number(b.dataset.cm)));
         on('[data-color]', (b) => (draft.color = Number(b.dataset.color)));
+        on('[data-bg]', (b) => (draft.bg = Number(b.dataset.bg)));
         root.querySelector('#back')!.addEventListener('click', () => showFriends());
         root.querySelector('#save')!.addEventListener('click', () => {
           settings.profile = { ...draft };

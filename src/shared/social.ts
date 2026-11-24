@@ -59,7 +59,12 @@ export interface Profile {
   t2?: number;
   /** 持っている称号の数 */
   tc?: number;
+  /** カードの背景（0 = なし＝色だけ。1〜CARD_BG_COUNT） */
+  bg?: number;
 }
+
+/** カードの背景の数（絵は端末側の cardBgs.ts） */
+export const CARD_BG_COUNT = 22;
 
 const int = (v: unknown, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v)) || 0));
 /** 受け取ったプロフィールを安全な形にそろえる（キャラが分からなければ null） */
@@ -84,6 +89,7 @@ export function sanitizeProfile(raw: unknown, charIds: string[]): Profile | null
     t3: int(r.t3, 99999),
     t2: int(r.t2, 99999),
     tc: int(r.tc, 9999),
+    bg: int(r.bg, CARD_BG_COUNT),
   };
 }
 

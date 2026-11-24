@@ -24,7 +24,7 @@ export interface Settings {
   cpuCount: number;
   cpuLevel: number;
   /** プロフィール（お気に入りのキャラ・衣装、見せる称号、ひとこと、カードの色）。未設定なら今のキャラ */
-  profile?: { charId: string; costume: string; title: string; comment: number; color: number };
+  profile?: { charId: string; costume: string; title: string; comment: number; color: number; bg?: number };
   /** CPU戦の相手のキャラ（CPU1〜5の順。'random' = 毎試合ランダム） */
   cpuChars: string[];
   stageId: string;
