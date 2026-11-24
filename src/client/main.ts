@@ -3428,6 +3428,31 @@ function bindGachaTabs(root: HTMLElement): void {
   bindSeg(root, 'gtab', (v) => (v === 'item' ? showItemGacha() : showGacha()));
 }
 
+/** 着せ替えガチャの見本：SSR と UR の衣装を1着ずつ、ランダムに切り替えて見せる */
+function startCostumeShowcase(root: HTMLElement): void {
+  const pool = (r: number) => GACHA_COSTUMES.filter((c) => c.rarity === r);
+  const last: Record<number, string> = {};
+  const fill = () => {
+    root.querySelectorAll<HTMLElement>('.gs-slot').forEach((el) => {
+      const r = Number(el.dataset.r);
+      const list = pool(r).filter((c) => c.id !== last[r]);
+      if (!list.length) return el.remove();
+      const c = list[Math.floor(Math.random() * list.length)];
+      last[r] = c.id;
+      el.classList.remove('in');
+      void el.offsetWidth;
+      el.innerHTML = `<img alt="" src="${renderer.fullBody(c.charId, c.id)}"/><b class="rr${r}">${rarityName(r)}</b><span>${esc(c.name)}</span><small>${esc(getCharacter(c.charId).name)}</small>${r === 6 ? URSP : ''}`;
+      el.classList.add('in');
+    });
+  };
+  fill();
+  const timer = window.setInterval(() => {
+    // 画面を離れたら止める
+    if (!root.isConnected) return clearInterval(timer);
+    fill();
+  }, 2600);
+}
+
 /** 背景の小さな見本 */
 function bgSwatch(bg: number): string {
   const a = cardBgAttrs(bg);
@@ -3443,11 +3468,13 @@ function showItemGacha(): void {
   const c = itemCounts(wallet);
   const left = PITY_LIMIT - (wallet.ipity ?? 0);
   const urLeft = UR_PITY_LIMIT - (wallet.iurPity ?? 0);
-  // 見本：UR のスタンプと背景をいくつか
-  const sample = `<div class="ig-sample">${picStamp(15, 6)}${picStamp(4, 5)}${picStamp(7, 4)}<span class="ig-bgs">${bgSwatch(30)}${bgSwatch(24)}${bgSwatch(5)}</span></div>`;
+  // 見本：スタンプ（いろいろなレア度）と背景が、2段で横に流れていく
+  const st = PIC_STAMPS.map((_, i) => picStamp(i, [4, 5, 6][(i * 7) % 3])).join('');
+  const bgs = CARD_BGS.map((_, i) => bgSwatch(i + 1)).join('');
+  const sample = `<div class="ig-marquee"><div class="ig-track st">${st}${st}</div><div class="ig-track bg">${bgs}${bgs}</div></div>`;
   showScreen(
     `<div class="row" style="justify-content:space-between">${gachaTabs('item')}${coinBadge()}</div>
-     <div class="gacha-hero">
+     <div class="gacha-hero item">
        ${sample}
        <div class="gacha-info">
          <div>絵スタンプ${PIC_STAMPS.length}種と、名刺カードの背景${CARD_BGS.length}種が出ます。</div>
@@ -3571,8 +3598,8 @@ function showGacha(): void {
   const urLeft = UR_PITY_LIMIT - wallet.urPity;
   showScreen(
     `<div class="row" style="justify-content:space-between">${gachaTabs('cos')}${coinBadge()}</div>
-     <div class="gacha-hero">
-       <div class="capsule big"><div class="cap-top"></div><div class="cap-bottom"></div></div>
+     <div class="gacha-hero cos">
+       <div class="gs-show"><div class="gs-slot" data-r="5"></div><div class="gs-slot" data-r="6"></div></div>
        <div class="gacha-info">
          <div>全${COSTUMES.filter((c) => c.rarity >= 4).length}着。SSR・UR はエフェクト付き！</div>
          <div>出る確率：${ur ? `<b class="rr6">UR ${Math.round(UR_RATE * 100)}%</b>／` : ''}<b class="rr5">SSR ${Math.round(SSR_RATE * 100)}%</b>／<b class="rr4">SR ${Math.round((1 - SSR_RATE - (ur ? UR_RATE : 0)) * 100)}%</b></div>
@@ -3594,6 +3621,7 @@ function showGacha(): void {
     (root) => {
       root.querySelector('#back')!.addEventListener('click', () => showMenu());
       bindGachaTabs(root);
+      startCostumeShowcase(root);
       root.querySelector('#list')!.addEventListener('click', () => showCollection(settings.charId));
       root.querySelector('#lineup')!.addEventListener('click', showLineup);
       root.querySelector('#one')!.addEventListener('click', () => pullAndOpen(1));

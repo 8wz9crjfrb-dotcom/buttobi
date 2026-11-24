@@ -5702,13 +5702,26 @@ table.rec td:first-child {
   50% { opacity: 1; transform: translate(4%, -6%); }
   100% { opacity: 0.4; transform: translate(-3%, -2%); }
 }
-/* UR：共通の印は「光がカードを斜めに横切る」（衣装 UR のカードの縁とは別の見せ方） */
-.pcard.bg-r6::after,
+/* UR：共通の印は「光が斜めに横切る」。カードでは、キャラの絵の白い枠の中だけを光らせる（衣装 UR のカードの縁とは別） */
+.pcard.bg-r6::after {
+  display: none;
+}
+.pcard.bg-r6 .pc-pic {
+  position: relative;
+}
+.pcard.bg-r6 .pc-pic::after,
 .pe-bg.bg-r6::after {
+  content: '';
   display: block;
-  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.5) 47%, rgba(255, 240, 190, 0.7) 50%, rgba(255, 255, 255, 0.5) 53%, transparent 62%) 0 0 / 300% 100% no-repeat;
-  animation: fx-ur-sweep 4.5s ease-in-out infinite;
-  z-index: 1;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* キャラの3D表示（canvas）より手前 */
+  z-index: 5;
+  background: linear-gradient(115deg, transparent 36%, rgba(255, 255, 255, 0.5) 46%, rgba(255, 244, 200, 0.8) 50%, rgba(255, 255, 255, 0.5) 54%, transparent 64%) 0 0 / 300% 100% no-repeat;
+  mix-blend-mode: screen;
+  animation: fx-ur-sweep 3.6s ease-in-out infinite;
 }
 @keyframes fx-ur-sweep {
   0% { background-position: 120% 0; }
@@ -5742,10 +5755,8 @@ table.rec td:first-child {
 @media (prefers-reduced-motion: reduce) {
   .pcard[class*='fx-']::before,
   .pe-bg[class*='fx-']::before,
-  .pcard.bg-r6::after,
-  .pe-bg.bg-r6::after,
-  .pcard.bg-r6,
-  .pe-bg.bg-r6 {
+  .pcard.bg-r6 .pc-pic::after,
+  .pe-bg.bg-r6::after {
     animation: none;
   }
 }
@@ -6090,4 +6101,132 @@ table.rec td:first-child {
 }
 .il-tiers {
   gap: 2px 10px;
+}
+
+
+/* ---------- ガチャ画面の見本（どちらのガチャか一目で分かるように） ---------- */
+/* 着せ替えガチャ：SSR と UR の衣装を1着ずつ、切り替えて見せる */
+.gs-show {
+  flex: none;
+  display: flex;
+  gap: 10px;
+}
+.gs-slot {
+  position: relative;
+  width: 118px;
+  height: 172px;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 6px;
+  text-align: center;
+  background: radial-gradient(circle at 50% 40%, rgba(255, 210, 63, 0.35), rgba(10, 12, 30, 0.7));
+  border: 2px solid #ffd23f;
+}
+.gs-slot[data-r='6'] {
+  border-color: transparent;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.28), rgba(10, 12, 30, 0.75)) padding-box,
+    linear-gradient(90deg, #ff4d4d, #ffd24d, #4dff88, #4dc3ff, #c34dff, #ff4d4d) border-box;
+}
+.gs-slot img {
+  position: absolute;
+  inset: 0 0 34px 0;
+  width: 100%;
+  height: calc(100% - 34px);
+  object-fit: contain;
+}
+.gs-slot b,
+.gs-slot span,
+.gs-slot small {
+  position: relative;
+  z-index: 1;
+  line-height: 1.2;
+}
+.gs-slot b {
+  font-size: 12px;
+  font-weight: 900;
+}
+.gs-slot span {
+  font-size: 12px;
+  font-weight: 800;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+.gs-slot small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.gs-slot.in {
+  animation: gs-in 0.45s ease-out;
+}
+@keyframes gs-in {
+  from { opacity: 0; transform: scale(0.92) translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+/* スタンプ＆背景ガチャ：スタンプと背景が2段で横に流れる */
+.ig-marquee {
+  flex: none;
+  width: min(330px, 40vw);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+  -webkit-mask: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  mask: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+}
+.ig-track {
+  display: flex;
+  gap: 8px;
+  width: max-content;
+  animation: ig-flow 40s linear infinite;
+}
+.ig-track.bg {
+  animation-duration: 60s;
+  animation-direction: reverse;
+}
+.ig-track .bg-swatch {
+  flex: none;
+  width: 104px;
+  height: 62px;
+}
+.ig-track .pic-stamp {
+  flex: none;
+}
+@keyframes ig-flow {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ig-track,
+  .gs-slot.in {
+    animation: none;
+  }
+}
+
+/* 複数キャラのスタンプ（GG！）は、枠の幅に合わせて顔を小さく並べる（小さい表示でも見切れない） */
+.pic-stamp.group .ps-faces {
+  width: 100%;
+  align-items: flex-end;
+}
+.pic-stamp.group .ps-faces img {
+  width: 30% !important;
+  height: auto !important;
+  aspect-ratio: 1;
+  margin: 0 -2% !important;
+}
+
+/* 小窓（DM など）は、iPhone のノッチや角の丸みにかからないよう、安全な範囲の内側に出す */
+.modal {
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  box-sizing: border-box;
+}
+.dm-box {
+  max-width: calc(100vw - var(--safe-l) - var(--safe-r) - 16px);
 }
