@@ -4,6 +4,7 @@
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
 import { ABSORB, ALARM, RECOMMEND, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
+import { BALL_DRAG, BALL_GRAVITY, ballStats, THROW, throwVelocity } from './ballThrow';
 import { platformAt, stageFor, WIDE_PLAYERS, type StageDef } from './stages';
 
 /** 大人数（WIDE_PLAYERS 人以上）の試合のふっとびの倍率 */
@@ -129,7 +130,7 @@ const SNAPSHOT_KEYS = [
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
   'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'warpSlow', 'moveAim',
   'leashT', 'leashBy', 'leashDmg', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'dereCd', 'floatT', 'heavyT',
-  'alarmT', 'alarmUsed', 'jobCdN',
+  'alarmT', 'alarmUsed', 'jobCdN', 'ballRaw', 'ballAimX', 'ballAimY', 'ballAiming', 'stealCd', 'ballSafe',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -214,6 +215,16 @@ export class Fighter {
   lockFree = 0;
   /** 玉入れ：今出している技が、もうボールに当たった */
   ballHit = false;
+  /** 玉入れ：前のフレームのボタン（攻撃ボタンを玉入れの操作に読みかえる前） */
+  ballRaw = 0;
+  /** 玉入れ：狙っている向きと強さ（「投げる」を押している間） */
+  ballAimX = 0;
+  ballAimY = 0;
+  ballAiming = false;
+  /** 玉入れ：奪いに失敗したあと、次に奪えるまで */
+  stealCd = 0;
+  /** 玉入れ：拾った・奪った直後は奪われない */
+  ballSafe = 0;
   /** 金庫まもり：今の技がもう金庫に当たった（1つの技で1回だけ） */
   vaultHit = false;
   /** 金庫まもり：相手の金庫に与えたダメージ */
@@ -418,7 +429,7 @@ export const AREA = {
 /** 玉入れの数値 */
 export const BALL = {
   r: 0.45,
-  gravity: 15,
+  gravity: BALL_GRAVITY,
   bounce: 0.55,
   /** 打ったときの速さ：基本 + 技のダメージ・ふっとばしに比例。上限あり */
   kickBase: 7,
@@ -969,7 +980,8 @@ export class Sim {
   }
 
   // ---------------------------------------------------------------- 玉入れ
-  ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1 };
+  /** holder = 持っている人（-1 = だれも持っていない）、noCatch / noCatchT = 投げた人がすぐ取り直せないように */
+  ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1, holder: -1, noCatch: -1, noCatchT: 0 };
   /** 飛び道具でボールを最後に押した時刻（slot ごと） */
   private ballShotAt = new Map<number, number>();
   ballScore: [number, number] = [0, 0];
@@ -981,7 +993,7 @@ export class Sim {
   /** ボールをステージの中央の上に出す（timer フレーム後に出てくる） */
   private resetBall(timer = 0): void {
     const m = this.stage.main;
-    this.ball = { x: (m.x1 + m.x2) / 2, y: m.top + 4.5, vx: 0, vy: 0, on: timer === 0, timer, last: -1 };
+    this.ball = { x: (m.x1 + m.x2) / 2, y: m.top + 4.5, vx: 0, vy: 0, on: timer === 0, timer, last: -1, holder: -1, noCatch: -1, noCatchT: 0 };
   }
 
   private kickBall(vx: number, vy: number, by: number): void {
@@ -1002,62 +1014,37 @@ export class Sim {
       return;
     }
     const r = BALL.r;
-    // 攻撃が当たると、技の向き・強さでふっとぶ
-    for (const a of this.fighters) {
-      if (a.state !== 'attack' || !a.move || a.ballHit || a.hitlag > 0) continue;
-      const md = this.moveDef(a);
-      if (md.hitboxes.length === 0) continue;
-      const t = moveTiming(md, a);
-      if (a.moveFrame < t.s || a.moveFrame >= t.s + t.a) continue;
-      const s = a.def.scale;
-      for (const hb of md.hitboxes) {
-        const cx = a.x + hb.x * a.facing * s;
-        const cy = a.y + hb.y * s;
-        const reach = hb.r * s + r + BALL.hitPad;
-        // オンライン：打った人の画面に映っていた（少し前の）ボールの位置に当たっていても当たり
-        if (Math.hypot(cx - b.x, cy - b.y) > reach && !this.ballPastNear(a, cx, cy, reach)) continue;
-        a.ballHit = true;
-        // 真横・真下に近い技は、少し上向きに飛ばす（床を転がるだけにならないように）
-        let deg = md.angle <= 10 && md.angle >= -10 ? 30 : md.angle < -10 ? 20 : md.angle;
-        // ねらい：スティックを斜め上に入れて打つと山なり（かごに入れやすい）、斜め下で低く速く
-        //（真上・真下に入れると上攻撃・下攻撃になるので、斜めでも効くようにする）
-        // 技を出したときの向きで決める（当たる瞬間にスティックを離していても効く）
-        const aim = Math.abs(a.input.my) > 0.3 ? a.input.my : a.moveAim;
-        if (aim > 0.3) deg = Math.max(deg, BALL.lobAngle);
-        else if (aim < -0.3) deg = Math.min(deg, BALL.lowAngle);
-        const ang = (deg * Math.PI) / 180;
-        const sp = Math.max(BALL.kickMin, (BALL.kickBase + md.dmg * BALL.kickDmg + md.base * BALL.kickKb) * a.def.dmgMul);
-        this.kickBall(Math.cos(ang) * sp * a.facing, Math.sin(ang) * sp, a.slot);
-        this.events.push({ k: 'kick', x: b.x, y: b.y, p: sp });
-        break;
+    if (b.noCatchT > 0) b.noCatchT--;
+    // 持っている人がいる：ボールはその人の頭の上についていく。倒れた・ひるんだら落とす
+    if (b.holder >= 0) {
+      const h = this.fighter(b.holder);
+      if (!h || !h.alive || h.out || h.state === 'hitstun' || h.state === 'grabbed') {
+        this.dropBall(h);
+      } else {
+        b.x = h.x + h.facing * 0.15;
+        b.y = h.y + h.h + r * 0.6;
+        b.vx = 0;
+        b.vy = 0;
+        return;
       }
     }
-    // 飛び道具が当たると、進む向きに少しだけ押される（連射で遠くから運べないように：
-    // 勢いを上書きせず少し足すだけ。同じ人の飛び道具で押せるのは約1秒に1回まで）
-    for (const p of this.projectiles) {
-      if (Math.hypot(p.x - b.x, p.y - b.y) > r + 0.35) continue;
-      if (p.ballHit) continue;
-      p.ballHit = true;
-      if (this.frame - (this.ballShotAt.get(p.owner) ?? -9999) < BALL.shotCd) continue;
-      this.ballShotAt.set(p.owner, this.frame);
-      const dir = Math.sign(p.vx || 1);
-      const vx = Math.max(-BALL.shotMax, Math.min(BALL.shotMax, b.vx + dir * BALL.shotPush));
-      this.kickBall(vx, Math.max(b.vy, BALL.shotLift), p.owner);
-    }
-    // 体で押す（ドリブル）
+    // だれも持っていない：触れた人が拾う（投げた直後の本人は少しの間拾えない）
     for (const f of this.fighters) {
-      if (!f.alive || f.state === 'hitstun') continue;
-      const dx = b.x - f.x;
-      if (Math.abs(dx) < f.hw + r && b.y - r < f.y + f.h && b.y + r > f.y && Math.abs(b.vx) < Math.abs(f.vx) + 1) {
-        b.vx = f.vx * 1.15 + Math.sign(dx || f.facing) * 1.2;
-        b.last = f.slot;
-      }
+      if (!f.alive || f.out || f.state === 'hitstun' || f.state === 'dead') continue;
+      if (b.noCatchT > 0 && f.slot === b.noCatch) continue;
+      if (b.noCatchT > THROW.noCatch - THROW.noCatchAll && b.noCatch >= 0 && b.last === b.noCatch) continue;
+      if (!circleHitsBox(b.x, b.y, r + 0.1, f)) continue;
+      b.holder = f.slot;
+      b.last = f.slot;
+      f.ballSafe = THROW.safe;
+      this.events.push({ k: 'catch', x: b.x, y: b.y, s: f.slot });
+      return;
     }
     // 動き：重力・空気抵抗
     const px = b.x;
     const py = b.y;
     b.vy -= BALL.gravity * DT;
-    b.vx *= 0.997;
+    b.vx *= BALL_DRAG;
     b.x += b.vx * DT;
     b.y += b.vy * DT;
     const m = this.stage.main;
@@ -1086,8 +1073,26 @@ export class Sim {
     if (b.y > this.stage.blast.top - 1.5 && b.vy > 0) b.vy = -b.vy * 0.5;
     // ゴール：相手チームのかごに（上から）入ったら点
     ballBaskets(this.stage).forEach((g, k) => {
-      // 玉入れらしく、上から落ちてきて入ったときだけ数える
-      if (!b.on || b.vy >= 0 || b.x < g.x1 || b.x > g.x2 || b.y < g.y1 || b.y > g.y2) return;
+      if (!b.on) return;
+      const inside = b.x >= g.x1 && b.x <= g.x2 && b.y >= g.y1 && b.y <= g.y2;
+      // 真上から入ったときだけ点：かごの口（上のふち）を、口の内側で上から下へ通りぬけた
+      const fromTop = b.vy < 0 && py > g.y2 && b.y <= g.y2 && px >= g.x1 && px <= g.x2 && b.x >= g.x1 && b.x <= g.x2;
+      if (!fromTop) {
+        // 横や下から当たったら、かごの外へはね返す（点にはならない）
+        if (inside || (b.x >= g.x1 && b.x <= g.x2 && b.y >= g.y1 && b.y <= g.y2)) {
+          if (px < g.x1) {
+            b.x = g.x1 - 0.01;
+            b.vx = -Math.abs(b.vx) * 0.5;
+          } else if (px > g.x2) {
+            b.x = g.x2 + 0.01;
+            b.vx = Math.abs(b.vx) * 0.5;
+          } else if (py < g.y1) {
+            b.y = g.y1 - 0.01;
+            b.vy = -Math.abs(b.vy) * 0.5;
+          }
+        }
+        return;
+      }
       const team = 1 - k;
       this.ballScore[team]++;
       const by = this.fighter(b.last);
@@ -1104,6 +1109,85 @@ export class Sim {
     }
   }
 
+  /** 持っている人がボールを落とす（その場で少し浮く） */
+  private dropBall(h: Fighter | undefined): void {
+    const b = this.ball;
+    b.holder = -1;
+    b.vx = (h?.facing ?? 1) * -1.5;
+    b.vy = 4;
+    if (h) {
+      b.noCatch = h.slot;
+      b.noCatchT = THROW.noCatch;
+    }
+  }
+
+  /**
+   * 玉入れの操作：A =「奪う」、B =「投げる」（押している間に狙いを決め、離すと投げる）。攻撃・必殺技は出ない。
+   * inp は読みかえる前の入力。返り値は、ふつうの操作として使う入力（A・B を消し、狙っている間は動かない）
+   */
+  private ballActions(f: Fighter, inp: InputState): InputState {
+    const raw = inp.buttons;
+    const prev = f.ballRaw;
+    f.ballRaw = raw;
+    if (f.stealCd > 0) f.stealCd--;
+    if (f.ballSafe > 0) f.ballSafe--;
+    const b = this.ball;
+    const out: InputState = { mx: inp.mx, my: inp.my, buttons: raw & ~(BTN_A | BTN_B) };
+    if (!f.alive || f.out || f.state === 'hitstun' || f.state === 'grabbed' || !b.on) {
+      f.ballAiming = false;
+      return out;
+    }
+    const holding = b.holder === f.slot;
+    // 投げる：押している間は止まって狙い、離したら投げる
+    if (holding && raw & BTN_B) {
+      f.ballAiming = true;
+      if (Math.hypot(inp.mx, inp.my) >= 0.12) {
+        f.ballAimX = inp.mx;
+        f.ballAimY = inp.my;
+      }
+      return { mx: 0, my: 0, buttons: out.buttons & ~BTN_JUMP };
+    }
+    if (f.ballAiming) {
+      f.ballAiming = false;
+      const len = Math.hypot(f.ballAimX, f.ballAimY);
+      if (holding && len >= THROW.deadZone) {
+        const v = throwVelocity(f.def.id, f.ballAimX, f.ballAimY);
+        b.holder = -1;
+        b.vx = v.vx;
+        b.vy = v.vy;
+        b.last = f.slot;
+        b.noCatch = f.slot;
+        b.noCatchT = THROW.noCatch;
+        if (Math.abs(v.vx) > 0.3) f.facing = v.vx > 0 ? 1 : -1;
+        this.events.push({ k: 'kick', x: b.x, y: b.y, p: Math.hypot(v.vx, v.vy) });
+      }
+      f.ballAimX = 0;
+      f.ballAimY = 0;
+    }
+    // 奪う：持っている相手が近くにいれば奪える（ガードで構えている相手・奪われた直後の相手からは奪えない）
+    if (raw & BTN_A && !(prev & BTN_A) && !holding && f.stealCd <= 0) {
+      const h = b.holder >= 0 ? this.fighter(b.holder) : undefined;
+      const st = ballStats(f.def.id);
+      const reachX = THROW.stealX + (st.steal - 3) * THROW.perSteal;
+      // 相手の方を向いて、手の届く所にいるときだけ奪える
+      const facing = h && (Math.sign(h.x - f.x) === f.facing || Math.abs(h.x - f.x) < 0.3);
+      const near = h && h.team !== f.team && facing && Math.abs(h.x - f.x) <= reachX + h.hw && Math.abs(h.y + h.h / 2 - (f.y + f.h / 2)) <= THROW.stealY;
+      if (h && near && h.state !== 'shield' && h.ballSafe <= 0) {
+        b.holder = f.slot;
+        b.last = f.slot;
+        f.ballSafe = THROW.safe;
+        h.ballAiming = false;
+        h.stealCd = THROW.stolenCd;
+        this.events.push({ k: 'steal', x: b.x, y: b.y, s: f.slot, a: h.slot });
+      } else {
+        // 空振り：少しの間は奪えない
+        f.stealCd = THROW.stealMiss;
+        this.events.push({ k: 'whiff', x: f.x + f.facing * 0.8, y: f.y + f.h * 0.6, s: f.slot });
+      }
+    }
+    return out;
+  }
+
   /** 巻き戻し：打った人の画面に映っていた（少し前の）ボールの位置のどこかに届いていたか */
   private ballPastNear(a: Fighter, cx: number, cy: number, reach: number): boolean {
     const lag = Math.min(LAG_COMP_MAX, this.lagComp.get(a.slot) ?? 0);
@@ -1118,7 +1202,7 @@ export class Sim {
   private ballHist: { x: number; y: number }[] = [];
 
   private ballView(): BallView {
-    return { x: this.ball.x, y: this.ball.y, vx: this.ball.vx, on: this.ball.on, score: [...this.ballScore] as [number, number], target: this.ballTarget };
+    return { x: this.ball.x, y: this.ball.y, vx: this.ball.vx, on: this.ball.on, score: [...this.ballScore] as [number, number], target: this.ballTarget, holder: this.ball.holder };
   }
 
   // ---------------------------------------------------------------- エリアバトル
@@ -1284,7 +1368,8 @@ export class Sim {
   private friendly(from: number, v: Fighter): boolean {
     if (from < 0 || from === v.slot) return false;
     // 玉入れで「相手への攻撃：当たらない」なら、だれの攻撃もほかの人に当たらない（ボールにだけ当たる）
-    if (this.setup.rules.mode === 'ball' && this.setup.rules.pvp === false) return true;
+    // 玉入れは攻撃がない（アイテムなどもほかの人には当たらない）
+    if (this.setup.rules.mode === 'ball') return true;
     if (this.setup.rules.friendlyFire) return false;
     const a = this.fighter(from);
     return !!a && a.team === v.team;
@@ -1386,6 +1471,8 @@ export class Sim {
   private readInput(f: Fighter, inp: InputState): void {
     // 通知爆撃：左右の操作が逆になる
     if (f.confused > 0) inp = { ...inp, mx: -inp.mx };
+    // 玉入れ：攻撃ボタンを「奪う」「投げる」に読みかえる（攻撃・必殺技は出ない）
+    if (this.setup.rules.mode === 'ball' && !this.solo) inp = this.ballActions(f, inp);
     f.input = inp;
     // 「はじき」の判定：中央付近から FLICK_WINDOW フレーム以内に大きく倒したら、はじいたとみなす。
     // 指で操作する仮想スティックは倒し切るまで数フレームかかるため、1フレームでの判定にはしない。
@@ -1652,6 +1739,8 @@ export class Sim {
     if (f.def.id === 'courier') m *= 1 + Math.min(0.25, f.runTime / 240);
     // デレモード（メンヘラ）：少し速い
     if (f.dere > 0) m *= MENHERA.dereSpeed;
+    // 玉入れ：ボールを持っている間は少し遅い（キャラの「速さ」で変わる）
+    if (this.setup.rules.mode === 'ball' && this.ball.holder === f.slot) m *= THROW.holdSpeed + (ballStats(f.def.id).speed - 3) * THROW.perSpeed;
     return m;
   }
 

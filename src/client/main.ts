@@ -4,6 +4,7 @@ import { IS_TEST } from './testEnv';
 import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, RANDOM_CHAR, getCharacter, HIDDEN_CHARS, PREVIEW, PREVIEW_KEY, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
+import { THROW, throwPath, throwVelocity, ballStats } from '../shared/ballThrow';
 import { FREE_STAMPS, picStamp, PIC_STAMPS, setStampPortrait, tierName } from './stamps';
 import { cardBgAttrs, CARD_BG_GROUPS, CARD_BGS } from './cardBgs';
 import { ITEM_COST, ITEM_DUP_REFUND, itemCounts, ownsBg, pullItems, stampTier, type ItemPull } from './items';
@@ -12,7 +13,7 @@ import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
 import { RANDOM_STAGE, resolveStage, STAGES, getStage, stageFor } from '../shared/stages';
-import { BTN_JUMP, BTN_SHIELD, DEFAULT_HP, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
+import { BTN_B, BTN_JUMP, BTN_SHIELD, DEFAULT_HP, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
 import { championMark, chatMark, diceMark, eyeMark, ICONS, iconTile, predictMark, rewardMark } from './icons';
@@ -269,8 +270,37 @@ class NetSession implements Session {
 
 function readInput(): InputState {
   const inp = input.sample();
-  if (!settings.tapJump && inp.my > 0.69) inp.my = 0.69; // スティック上でジャンプしない設定
+  // スティック上でジャンプしない設定（玉入れで「投げる」を押して狙っている間は、上向きにも狙えるようにそのまま）
+  if (!settings.tapJump && inp.my > 0.69 && !(input.slingMode && inp.buttons & BTN_B)) inp.my = 0.69;
   return inp;
+}
+
+/** 玉入れ：自分がボールを持って「投げる」を押している間、投げたときの道筋を薄い点線で出す */
+function updateThrowGuide(s: Session, v: ViewState): void {
+  const b = v.ball;
+  const me = s.mySlot !== null ? v.fighters.find((f) => f.slot === s.mySlot) : undefined;
+  const inp = b && me && b.holder === me.slot && !v.ended ? readInput() : null;
+  if (!b || !me || !inp || !(inp.buttons & BTN_B) || Math.hypot(inp.mx, inp.my) < THROW.deadZone) return renderer.setThrowGuide(null);
+  const charId = s.setup.players.find((p) => p.slot === me.slot)?.charId ?? 'hacker';
+  const vel = throwVelocity(charId, inp.mx, inp.my);
+  // ステージの床より下に落ちるまで（最長約2.5秒）
+  const top = stageFor(s.setup.stageId, s.setup.players.length, false).main.top;
+  const pts = [{ x: b.x, y: b.y }, ...throwPath(b.x, b.y, vel.vx, vel.vy, 150, 1)];
+  const end = pts.findIndex((p, i) => i > 0 && p.y < top);
+  renderer.setThrowGuide(end > 0 ? pts.slice(0, end + 1) : pts);
+}
+
+/** 玉入れのときは、ボタンの名前を「奪う」「投げる」「構える」に変え、「投げる」を引っ張って狙えるようにする */
+function setPadMode(ball: boolean): void {
+  input.slingMode = ball;
+  touchEl.classList.toggle('ball-mode', ball);
+  const label = (id: string, text: string) => {
+    const sm = document.querySelector<HTMLElement>(`#${id} small`);
+    if (sm) sm.textContent = text;
+  };
+  label('btn-a', ball ? '奪う' : '攻撃');
+  label('btn-b', ball ? '投げる' : '必殺');
+  label('btn-shield', ball ? '構える' : 'ガード');
 }
 
 let session: Session | null = null;
@@ -321,6 +351,8 @@ function startSession(s: Session): void {
     hideDrop();
   }
   renderWatch();
+  setPadMode(s.kind !== 'demo' && s.setup.rules.mode === 'ball' && !s.setup.rules.horde);
+  renderer.setThrowGuide(null);
   lastView = null;
   renderer.setMatch(s.setup, stageFor(s.setup.stageId, s.setup.players.length, !!s.setup.rules.horde));
   input.reset();
@@ -454,6 +486,7 @@ function loop(t: number): void {
         music.setPinch(!lastView.ended && (timePinch || stockPinch));
       }
       autoQ.tick(dt);
+      updateThrowGuide(session, lastView);
       if (session instanceof LocalSession && session.training) combo.update(lastView, events, dt);
       if (tutorial && session instanceof LocalSession) updateTutorial(session, lastView, events, dt);
     }
@@ -531,6 +564,11 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'coin' && (e.s === mySlot || e.v > 1)) sfx.beep(true);
     else if (e.k === 'cdrop') sfx.poof();
     else if (e.k === 'kick') sfx.kick(e.p);
+    else if (e.k === 'catch') sfx.click();
+    else if (e.k === 'steal') {
+      sfx.swap();
+      if (settings.vibration && e.a === mySlot) vibrate(40);
+    } else if (e.k === 'whiff') sfx.shield();
     else if (e.k === 'goal') sfx.goal();
     else if (e.k === 'flash') sfx.shutter();
     else if (e.k === 'teleport') sfx.warp();
@@ -1302,6 +1340,13 @@ function charDetail(id: string): string {
     <div class="cd-hint">技を長押ししても説明が出ます</div>`;
 }
 
+/** 玉入れの性能（投げる力・足の速さ・奪う力を、5つの丸で） */
+function ballStatsHtml(charId: string): string {
+  const st = ballStats(charId);
+  const dots = (n: number) => `<span class="bs-dots">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
+  return `<div class="ball-stats"><span class="tag">玉入れの性能</span><span class="bs-row">投げる力${dots(st.throw)}</span><span class="bs-row">足の速さ${dots(st.speed)}</span><span class="bs-row">奪う力${dots(st.steal)}</span></div>`;
+}
+
 /** 技の一覧（4つの必殺技・特性・共通の技の説明）を、今の画面の上に重ねて出す。閉じると元の画面に戻る */
 function openMoveList(charId: string): void {
   const c = getCharacter(charId);
@@ -1316,6 +1361,7 @@ function openMoveList(charId: string): void {
         <div class="cd-trait"><span class="tag">特性</span><b>${c.trait.name}</b>：${c.trait.desc}</div>
         ${row('B', n.n, d?.n ?? '')}${row('横B', n.s, d?.s ?? '')}${row('下B', n.d, d?.d ?? '')}${row('上B', n.u, d?.u ?? '')}
         ${row('共通', '溜め攻撃（A長押し）', CHARGE_DESC)}${row('共通', 'つかみ（ガード＋A）', GRAB_DESC)}
+        ${ballStatsHtml(charId)}
       </div>
       <div class="footer"><button class="btn primary" data-close>閉じる</button></div>
     </div>`;
@@ -1607,7 +1653,7 @@ function ruleText(r: MatchRules): string {
         : r.mode === 'area'
           ? `エリアバトル（${shape}）${r.timeLimit / 60}分`
           : r.mode === 'ball'
-            ? `玉入れ（${r.goals ?? 5}点先取・相手への攻撃${r.pvp === false ? 'なし' : 'あり'}）${r.timeLimit / 60}分`
+            ? `玉入れ（${r.goals ?? 5}点先取）${r.timeLimit / 60}分`
             : r.mode === 'crown'
               ? `王冠うばい（${r.crownGoal ?? 30}秒持ったら勝ち）${r.timeLimit / 60}分`
               : r.mode === 'vault'
@@ -1626,7 +1672,7 @@ const MODE_INFO: Record<MatchRules['mode'], { name: string; desc: string; player
   time: { name: 'タイム', desc: '時間内に何度でも復活。撃墜した数から落ちた数を引いた点が多い人の勝ち（同点なら%が低いほう）', players: '2〜4人' },
   stamina: { name: '体力制', desc: '%のかわりにHPで戦う。HPが0になるとその場で撃墜。ふっとびは小さめで、削り合いになる', players: '2〜4人' },
   area: { name: 'エリアバトル', desc: 'エリアに自分（チーム）だけが立っている間ゲージがたまる。先に満タンにするか、時間切れで多い人の勝ち', players: '3〜4人' },
-  ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを攻撃でふっとばして相手のかごに入れる。斜め上＋攻撃で山なり、斜め下＋攻撃で低く速く打てる。チームはタップで選ぶ', players: '2人・4人' },
+  ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを相手のかごに真上から投げ入れる。攻撃はできない。ボールに触れると拾う。「投げる」を押したまま引っ張って狙い、離すと投げる（薄い線が道筋）。「奪う」で近くの相手からボールを奪える。「構える」の間は奪われない。キャラごとに投げる力・足の速さ・奪う力がちがう。チームはタップで選ぶ', players: '2人・4人' },
   crown: { name: '王冠うばい', desc: '最初に相手を倒した人が王冠を手に入れ、持っている間だけ時間がたまる。持っている人に攻撃を当て続け、合計20%のダメージで奪える（王冠の上に残りの耐久が出る）。決めた時間だけ持つか、時間切れで一番長く持っていた人の勝ち', players: '3〜4人' },
   vault: { name: '金庫まもり', desc: '赤・青の2チームで自分の金庫を守り、相手の金庫を攻撃で壊す（飛び道具も当たる）。先に壊すか、時間切れで多く壊したチームの勝ち。チームはタップで選ぶ', players: '2人・4人' },
   bounty: { name: '賞金首', desc: '撃墜で1点、自分で落ちると1点減る。点が一番多い人（2点以上）は賞金首になり、倒すと3点。時間切れで点が一番多い人の勝ち', players: '3人以上（3人でも楽しめる）' },
@@ -1648,7 +1694,6 @@ function ruleControls(rules: MatchRules): string {
     <div class="opt" data-show="vault">時間 ${seg('vtime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="ball">先取点 ${seg('goals', [[3, '3点'], [5, '5点'], [7, '7点']], rules.goals ?? 5)}</div>
     <div class="opt" data-show="ball">時間 ${seg('btime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
-    <div class="opt" data-show="ball">相手への攻撃 ${seg('pvp', [['on', '当たる'], ['off', '当たらない']], rules.pvp === false ? 'off' : 'on')}</div>
     <div class="opt" data-show="area">エリア ${seg('area', [['move', '移動1つ'], ['fix2', '固定2つ'], ['random', 'おまかせ']], rules.area ?? 'move')}</div>
     <div class="opt" data-show="area">時間 ${seg('atime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="stock stamina">残機 ${seg('stocks', [[1, '1'], [2, '2'], [3, '3'], [5, '5']], rules.stocks)}</div>
@@ -1743,10 +1788,6 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
   }
   bindSeg(root, 'goals', (v) => {
     rules.goals = Number(v);
-    onChange();
-  });
-  bindSeg(root, 'pvp', (v) => {
-    rules.pvp = v === 'on';
     onChange();
   });
   bindSeg(root, 'area', (v) => {
@@ -4401,6 +4442,7 @@ function showMoveList(charId: string, back: () => void): void {
     `<h2>技表：${c.name}</h2>
      <div class="movelist">
        <div class="ml-trait"><span class="tag">特性</span><b>${c.trait.name}</b>：${c.trait.desc}</div>
+       ${ballStatsHtml(c.id)}
        <div class="ml-head">必殺技</div>
        ${sp.map(([k, n, t]) => `<div class="ml-sp"><span class="key">${k}</span><b>${n}</b><div>${t}</div></div>`).join('')}
        <div class="ml-head">通常技（ダメージは溜め・強化なしの値）</div>

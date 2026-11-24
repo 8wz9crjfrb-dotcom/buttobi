@@ -226,6 +226,10 @@ export type GameEvent =
   | { k: 'sudden' }
   /** エリア・王冠の延長戦が始まった */
   | { k: 'overtime' }
+  /** 玉入れ：ボールを拾った・奪った（a = 奪われた人）・奪いに失敗した */
+  | { k: 'catch'; x: number; y: number; s: number }
+  | { k: 'steal'; x: number; y: number; s: number; a: number }
+  | { k: 'whiff'; x: number; y: number; s: number }
   /** 鬼電（メンヘラ）の着信音が鳴った・泣き落とし */
   | { k: 'ring'; x: number; y: number; s: number }
   | { k: 'cry'; x: number; y: number; s: number }
@@ -398,6 +402,8 @@ export interface BallView {
   score: [number, number];
   /** 先に何点で勝ちか */
   target: number;
+  /** 持っている人（-1 = だれも持っていない） */
+  holder?: number;
 }
 
 /** エリア（床の上の、縦に長い範囲） */

@@ -3,6 +3,8 @@
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type InputState } from '../shared/types';
 
 const STICK_RADIUS = 56;
+/** 玉入れ：「投げる」をこれだけ引っ張ると、いちばん強い */
+const SLING_RADIUS = 110;
 
 export class InputManager {
   private stickId: number | null = null;
@@ -16,6 +18,15 @@ export class InputManager {
   gamepadConnected = false;
   /** ボタン配置の編集中（ボタンを押しても入力にしない） */
   editing = false;
+  /**
+   * 玉入れ：「投げる」ボタン（B）を押したまま指をずらすと、パチンコのように反対向きへ狙う。
+   * ずらした長さ（SLING_RADIUS で最大）が強さ。押している間はスティックの代わりにこの狙いを送る
+   */
+  slingMode = false;
+  private slingId: number | null = null;
+  private slingOrigin = { x: 0, y: 0 };
+  /** 今の狙い（向きと強さ。0〜1）。null なら狙っていない */
+  sling: { x: number; y: number } | null = null;
 
   private base: HTMLElement;
   private knob: HTMLElement;
@@ -81,8 +92,26 @@ export class InputManager {
         this.touchButtons.set(e.pointerId, bit);
         this.latched |= bit;
         el.classList.add('down');
+        if (this.slingMode && bit === BTN_B) {
+          this.slingId = e.pointerId;
+          this.slingOrigin = { x: e.clientX, y: e.clientY };
+          this.sling = { x: 0, y: 0 };
+        }
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (e.pointerId !== this.slingId) return;
+        e.preventDefault();
+        // 引っ張った向きの反対へ投げる（パチンコ）。画面の上下は逆なので y はそのまま
+        const dx = (this.slingOrigin.x - e.clientX) / SLING_RADIUS;
+        const dy = (e.clientY - this.slingOrigin.y) / SLING_RADIUS;
+        const len = Math.hypot(dx, dy);
+        this.sling = len > 1 ? { x: dx / len, y: dy / len } : { x: dx, y: dy };
       });
       const up = (e: PointerEvent) => {
+        if (e.pointerId === this.slingId) {
+          this.slingId = null;
+          this.sling = null;
+        }
         if (!this.touchButtons.has(e.pointerId)) return;
         this.touchButtons.delete(e.pointerId);
         if (![...this.touchButtons.values()].includes(bit)) el.classList.remove('down');
@@ -96,6 +125,10 @@ export class InputManager {
     // 押しっぱなしの取り残しを防ぐ：指を離した知らせがボタンに届かなかった場合（別の指が触れた・画面が書きかわった等）でも、
     // 画面のどこかで離した知らせを受けたら、その指の押下をすべて解除する
     const release = (e: PointerEvent) => {
+      if (e.pointerId === this.slingId) {
+        this.slingId = null;
+        this.sling = null;
+      }
       if (this.touchButtons.delete(e.pointerId)) this.syncPadClasses();
       if (e.pointerId === this.stickId) end(e);
     };
@@ -206,6 +239,11 @@ export class InputManager {
       if (gp.buttons[1]?.pressed) buttons |= BTN_B;
       if (gp.buttons[4]?.pressed || gp.buttons[5]?.pressed || gp.buttons[6]?.pressed || gp.buttons[7]?.pressed) buttons |= BTN_SHIELD;
     }
+    // 玉入れ：「投げる」を指で押したまま引っ張っている間は、その狙いをスティックの代わりに送る
+    if (this.slingMode && this.sling && buttons & BTN_B) {
+      mx = this.sling.x;
+      my = this.sling.y;
+    }
     const newly = buttons & ~this.lastButtons;
     this.latched |= newly;
     this.lastButtons = buttons;
@@ -220,6 +258,8 @@ export class InputManager {
   }
 
   reset(): void {
+    this.slingId = null;
+    this.sling = null;
     this.stickId = null;
     this.stick = { x: 0, y: 0 };
     this.touchButtons.clear();

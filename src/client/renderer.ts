@@ -36,6 +36,19 @@ interface Particle {
 /** 衣装の文字（「三刀流！」など）を同じ人が続けて出せる間隔 */
 const HIT_TEXT_GAP_MS = 5000;
 
+/** 投げる道筋の点の数の上限 */
+const GUIDE_MAX = 160;
+
+/** 小さな正方形のキャンバスに描いたテクスチャ */
+function canvasTex(size: number, draw: (g: CanvasRenderingContext2D) => void): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d')!);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 export class GameRenderer {
   readonly renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -1485,7 +1498,7 @@ export class GameRenderer {
   }
 
   // ---------------------------------------------------------------- 玉入れ：ボールとかご
-  private ballObj: { root: THREE.Group; ball: THREE.Group; shadow: THREE.Mesh; spin: number } | null = null;
+  private ballObj: { root: THREE.Group; ball: THREE.Group; shadow: THREE.Mesh; spin: number; guide: THREE.Points } | null = null;
 
   private buildBall(stage: StageDef): void {
     const root = new THREE.Group();
@@ -1536,7 +1549,44 @@ export class GameRenderer {
       bottom.position.set(g.cx, g.y1 + 0.01, -0.1);
       root.add(bottom);
     });
-    this.ballObj = { root, ball, shadow, spin: 0 };
+    // 投げる道筋（「投げる」を押して狙っている間だけ、自分の画面に薄い点線で出す）
+    const guideGeo = new THREE.BufferGeometry();
+    guideGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(GUIDE_MAX * 3), 3));
+    // 丸い点を並べる（線は細くて見えにくいため）
+    const dotTex = canvasTex(32, (g) => {
+      // 明るい空の上でも見えるよう、黒いふちの付いた白い点
+      g.fillStyle = 'rgba(20, 22, 40, 0.85)';
+      g.beginPath();
+      g.arc(16, 16, 14, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.arc(16, 16, 9.5, 0, Math.PI * 2);
+      g.fill();
+    });
+    const guide = new THREE.Points(guideGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.55, map: dotTex, transparent: true, opacity: 0.8, depthWrite: false, depthTest: false, fog: false }));
+    guide.visible = false;
+    guide.frustumCulled = false;
+    guide.renderOrder = 5;
+    root.add(guide);
+    this.ballObj = { root, ball, shadow, spin: 0, guide };
+  }
+
+  /** 投げる道筋を出す（null で消す） */
+  setThrowGuide(points: { x: number; y: number }[] | null): void {
+    const g = this.ballObj?.guide;
+    if (!g) return;
+    if (!points || points.length < 2) {
+      g.visible = false;
+      return;
+    }
+    const pos = g.geometry.getAttribute('position') as THREE.BufferAttribute;
+    // 4フレームごとに1つの点（点と点のあいだを空けて、点線に見せる）
+    let n = 0;
+    for (let i = 0; i < points.length && n < GUIDE_MAX; i += 4) pos.setXYZ(n++, points[i].x, points[i].y, 0.3);
+    pos.needsUpdate = true;
+    g.geometry.setDrawRange(0, n);
+    g.visible = true;
   }
 
   private updateBall(view: ViewState, dt: number): void {

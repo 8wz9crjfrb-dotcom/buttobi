@@ -4,6 +4,7 @@ import { Rng } from './rng';
 import { THREEB_RULES, TRAINER } from './moves';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type AreaZone, type InputState } from './types';
 import { ballBaskets, type Fighter, type Sim } from './sim';
+import { lenForSpeed, speedToHit } from './ballThrow';
 
 /** CPUが狙う相手（選手、または分身） */
 interface Target {
@@ -35,7 +36,9 @@ export class CpuController {
       b = { hold: { mx: 0, my: 0, buttons: 0 }, holdFrames: 0, cooldown: 0, lastButtons: 0 };
       this.brains.set(f.slot, b);
     }
-    const out = this.avoidCooldown(sim, f, this.decide(sim, f, level, b), b);
+    // 玉入れは必殺技が出ない（Bは「投げる」）ので、待ち時間の確認はしない
+    const raw = this.decide(sim, f, level, b);
+    const out = sim.setup.rules.mode === 'ball' ? raw : this.avoidCooldown(sim, f, raw, b);
     // 同じボタンを連続で「押した」ことにするため、前フレームに押していたボタンは一度離す
     const fresh = out.buttons & ~b.lastButtons;
     const keepHeld = out.buttons & b.lastButtons & (BTN_SHIELD | BTN_A | BTN_JUMP | BTN_B);
@@ -48,6 +51,8 @@ export class CpuController {
     const lv = Math.max(1, Math.min(9, level));
     const m = sim.stage.main;
     if (!f.alive) return { mx: 0, my: 0, buttons: 0 };
+    // 玉入れ：拾う・奪う・狙って投げる（攻撃はしない）
+    if (sim.setup.rules.mode === 'ball') return this.ballPlay(sim, f, lv, b);
     // つかまれている：ボタンを連打してもがく（強いほど速い）
     if (f.state === 'grabbed') return this.rng.chance(0.1 + lv * 0.06) ? { mx: 0, my: 0, buttons: BTN_A } : { mx: 0, my: 0, buttons: 0 };
     // つかんでいる：何回かつかみ攻撃をしてから投げる
@@ -138,11 +143,6 @@ export class CpuController {
     // コイン集め：近くのコインを拾いに行く（相手がすぐそばにいれば戦う）
     if (sim.setup.rules.mode === 'coins') {
       const go = this.coinMove(sim, f, lv);
-      if (go) return go;
-    }
-    // 玉入れ：ボールの後ろに回って、かごまでの距離に合う技で打つ
-    if (sim.setup.rules.mode === 'ball') {
-      const go = this.ballMove(sim, f, lv);
       if (go) return go;
     }
 
@@ -411,47 +411,93 @@ export class CpuController {
     return null;
   }
 
-  private ballMove(sim: Sim, f: Fighter, lv: number): InputState | null {
-    const b = sim.ball;
-    const t = this.target(sim, f);
-    const near = t && Math.abs(t.x - f.x) < 1.6 && Math.abs(t.y - f.y) < 1.5;
-    // 近くの相手とは、ときどき戦う（強いCPUほどボールを優先する。攻撃が当たらないルールなら戦わない）
-    if (near && sim.setup.rules.pvp !== false && this.rng.chance(0.5 - lv * 0.04)) return null;
-    if (!b.on) {
-      const cx = (sim.stage.main.x1 + sim.stage.main.x2) / 2;
-      return Math.abs(cx - f.x) > 1.5 ? { mx: Math.sign(cx - f.x), my: 0, buttons: 0 } : null;
-    }
-    const g = ballBaskets(sim.stage)[1 - (f.team % 2)];
-    const toGoal = Math.sign(g.cx - b.x) || 1;
-    const dg = Math.abs(g.cx - b.x);
+  /** 玉入れ（投げる玉入れ）の動き */
+  private ballPlay(sim: Sim, f: Fighter, lv: number, b: Brain): InputState {
     const m = sim.stage.main;
-    // 運ぶ向き：近すぎるならかごから離す、遠すぎるならかごへ近づける、ちょうどよければ打つ
-    const shot = dg >= 4 && dg <= 6.5 ? 'jab' : dg >= 7.5 && dg <= 12 ? 'tilt' : null;
-    const push = shot ? 0 : dg < 4 ? -toGoal : toGoal;
-    // 立つ場所：打つならボールのかごと反対側、運ぶなら運ぶ向きと反対側
-    const side = shot ? -toGoal : -push;
-    const px = b.x + side * 0.75;
-    const dx = px - f.x;
-    const ballLow = b.y < f.y + 1.3 && b.y > f.y - 0.5;
-    // ボールが高い所にある：落ちてくる所の下で待つ
-    if (!ballLow && b.y > f.y + 1.3) return { mx: Math.abs(b.x - f.x) > 0.6 ? Math.sign(b.x - f.x) : 0, my: 0, buttons: 0 };
-    // ボールが下の床にある（足場の上にいる）：降りる
-    if (b.y < f.y - 0.6 && f.grounded && f.groundRef >= 0) return { mx: Math.sign(b.x - f.x) * 0.5, my: -1, buttons: 0 };
-    // ボールの反対側にいるときは、ボールを飛び越えて回り込む
-    if (Math.sign(b.x - f.x) === side && Math.abs(b.x - f.x) < 1.6) {
-      return f.grounded ? { mx: -side, my: 0, buttons: BTN_JUMP } : { mx: -side, my: 0, buttons: 0 };
+    const ball = sim.ball;
+    const idle: InputState = { mx: 0, my: 0, buttons: 0 };
+    // 狙っている途中（Bを押し続けている）
+    if (b.holdFrames > 0) {
+      b.holdFrames--;
+      if (ball.holder !== f.slot) {
+        b.holdFrames = 0;
+        return idle;
+      }
+      return b.hold;
     }
-    if (Math.abs(dx) > 0.35) {
-      // 台の端から落ちないように
-      if ((f.x + Math.sign(dx) * 0.8 < m.x1 + 0.3 || f.x + Math.sign(dx) * 0.8 > m.x2 - 0.3) && f.grounded) return { mx: 0, my: 0, buttons: 0 };
-      return { mx: Math.sign(dx), my: 0, buttons: 0 };
+    // 台の外にいる：台へ戻る（ジャンプ）
+    if (f.x < m.x1 - 0.1 || f.x > m.x2 + 0.1) {
+      const toward = f.x < (m.x1 + m.x2) / 2 ? 1 : -1;
+      return f.vy < 1 && f.jumpsLeft > 0 && f.y < m.top + 1 ? { mx: toward, my: 0, buttons: BTN_JUMP } : { mx: toward, my: 0, buttons: 0 };
     }
-    if (!shot) return { mx: push, my: 0, buttons: 0 };
-    const want = -side;
-    if (f.facing !== want) return { mx: want * 0.4, my: 0, buttons: 0 };
-    // 弱いCPUは、ときどき打つ技をまちがえる
-    const k = this.rng.chance(0.25 - lv * 0.025) ? (shot === 'jab' ? 'tilt' : 'jab') : shot;
-    return k === 'jab' ? { mx: 0, my: 0, buttons: BTN_A } : { mx: want * 0.6, my: 0, buttons: BTN_A };
+    const walk = (tx: number, speed = 1): InputState => {
+      const dx = tx - f.x;
+      if (Math.abs(dx) < 0.3) return idle;
+      const nx = f.x + Math.sign(dx) * 0.8;
+      if (f.grounded && (nx < m.x1 + 0.3 || nx > m.x2 - 0.3)) return idle;
+      return { mx: Math.sign(dx) * speed, my: 0, buttons: 0 };
+    };
+    if (!ball.on) return walk((m.x1 + m.x2) / 2);
+    const g = ballBaskets(sim.stage)[1 - (f.team % 2)];
+    const toGoal = Math.sign(g.cx - (m.x1 + m.x2) / 2) || 1;
+    const holder = ball.holder >= 0 ? sim.fighter(ball.holder) : undefined;
+    // 自分が持っている：かごから少し離れた所まで運び、狙って投げる
+    if (holder === f) {
+      const foe = sim.fighters.find((o) => o.alive && !o.out && !sim.sameTeam(o, f) && Math.abs(o.x - f.x) < 1.7 && Math.abs(o.y - f.y) < 1.6);
+      // 近くに相手：強いCPUほど、ガードで構えて奪われないようにする
+      if (foe && f.grounded && this.rng.chance(0.012 * lv)) {
+        b.hold = { mx: 0, my: 0, buttons: BTN_SHIELD };
+        b.holdFrames = 12 + Math.round(this.rng.range(0, 14));
+        return b.hold;
+      }
+      const dist = 4.5 + (this.rng.next() < 0.5 ? 0 : 1.5);
+      const spot = g.cx - toGoal * dist;
+      if (Math.abs(f.x - spot) > 0.9 || !f.grounded) return walk(spot);
+      // 狙う：角度を決めて、かごの口のまん中に上から落ちる速さを計算する（弱いCPUほどずれる）
+      const deg = 58 + this.rng.range(0, 10);
+      const bx = ball.x;
+      const by = ball.y;
+      const sp = speedToHit(f.def.id, bx, by, deg, g.cx, g.y2 + 0.05);
+      if (sp === null) return walk(g.cx - toGoal * 3.5);
+      const err = 0.04 + (10 - lv) * 0.03;
+      const s2 = sp * (1 + this.rng.range(-err, err));
+      const a2 = ((deg + this.rng.range(-err * 60, err * 60)) * Math.PI) / 180;
+      const len = lenForSpeed(f.def.id, s2);
+      const dir = Math.sign(g.cx - bx) || 1;
+      b.hold = { mx: Math.cos(a2) * len * dir, my: Math.sin(a2) * len, buttons: BTN_B };
+      b.holdFrames = 10 + Math.round(this.rng.range(0, 30 - lv * 2));
+      return b.hold;
+    }
+    // 自分たちのかご（守る側）
+    const mine = ballBaskets(sim.stage)[f.team % 2];
+    const toMine = Math.sign(mine.cx - (m.x1 + m.x2) / 2) || 1;
+    // 守る：相手が投げたボールが自分たちのかごへ飛んでくる。かごの前で待って、上を通るときにジャンプで取る
+    if (!holder && ball.last >= 0) {
+      const thrower = sim.fighter(ball.last);
+      const incoming = thrower && !sim.sameTeam(thrower, f) && Math.sign(ball.vx) === toMine && Math.abs(mine.cx - ball.x) < 9;
+      if (incoming && this.rng.chance(0.25 + lv * 0.07)) {
+        const dx = ball.x - f.x;
+        if (Math.abs(dx) < 1.6 && ball.y > f.y + 1.6 && ball.y < f.y + 5 && f.grounded) return { mx: Math.sign(dx) * 0.5, my: 0, buttons: BTN_JUMP };
+        return walk(mine.cx - toMine * 1.6);
+      }
+    }
+    // 相手が持っている：追いかけて奪う。もう1人の味方が追っていれば、かごの前を守る
+    if (holder && !sim.sameTeam(holder, f)) {
+      const dx = holder.x - f.x;
+      const mate = sim.fighters.find((o) => o !== f && o.alive && !o.out && sim.sameTeam(o, f));
+      if (mate && Math.abs(mate.x - holder.x) < Math.abs(f.x - holder.x)) return walk(mine.cx - toMine * 1.8);
+      const close = Math.abs(dx) < 1.4 && Math.abs(holder.y - f.y) < 1.6;
+      if (close && f.stealCd <= 0 && this.rng.chance(0.08 + lv * 0.03)) return { mx: 0, my: 0, buttons: BTN_A };
+      if (holder.y > f.y + 1.8 && Math.abs(dx) < 2.5 && f.grounded) return { mx: Math.sign(dx), my: 0, buttons: BTN_JUMP };
+      return walk(holder.x);
+    }
+    // 味方が持っている：かごの手前で待つ（パスを受ける・こぼれ球を拾う）
+    if (holder) return walk(g.cx - toGoal * 3);
+    // だれも持っていない：ボールを拾いに行く（高い所なら落ちてくる所でジャンプ）
+    const dx = ball.x - f.x;
+    if (ball.y > f.y + 1.7 && Math.abs(dx) < 1.2 && f.grounded && ball.vy < 2) return { mx: Math.sign(dx) * 0.4, my: 0, buttons: BTN_JUMP };
+    if (ball.y < f.y - 0.6 && f.grounded && f.groundRef >= 0) return { mx: Math.sign(dx) * 0.5, my: -1, buttons: 0 };
+    return walk(ball.x);
   }
 
   /** エリアバトルの動き。null なら、ふつうに戦う */

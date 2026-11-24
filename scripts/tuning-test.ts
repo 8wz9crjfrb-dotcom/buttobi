@@ -373,23 +373,21 @@ function gimmickSim(stageId: string, a = 'guard', b = 'thief'): Sim {
   check('巻き戻しなし：走って離れる相手には弱攻撃が当たらない', !swing(0));
   check('巻き戻しあり（約0.1秒）：画面で見えていた位置に当たる', swing(6));
 }
-// ---- 玉入れ：スティック上で山なり、下で低く速く
+// ---- 玉入れ：「投げる」を押したまま狙った角度・強さで飛ぶ（引っ張るほど強い）
 {
-  const kick = (my: number) => {
+  const toss = (mx: number, my: number) => {
     const sim = new Sim({ players: [{ slot: 0, name: 'a', charId: 'guard', cpu: false, cpuLevel: 1 }, { slot: 1, name: 'b', charId: 'thief', cpu: false, cpuLevel: 1 }], stageId: 'plain', rules: { mode: 'ball', stocks: 3, timeLimit: 180 }, seed: 1 });
-    while (sim.frame <= COUNTDOWN_FRAMES + 120) sim.step(new Map());
-    const a = sim.fighters[0];
-    const ball = (sim as unknown as { ball: { x: number; y: number; vx: number; vy: number; on: boolean } }).ball;
-    a.x = ball.x - 0.9;
-    a.facing = 1;
+    while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
     sim.fighters[1].x = 30;
-    // 斜めに入れて攻撃（my = 0 なら真横）
-    const mx = my ? 0.8 : 0.8;
-    for (let i = 0; i < 20; i++) sim.step(new Map([[0, i === 0 ? { mx, my, buttons: BTN_A } : { mx: 0, my: 0, buttons: 0 }]]));
-    return Math.atan2(ball.vy, ball.vx) * (180 / Math.PI);
+    sim.fighters[0].x = sim.ball.x;
+    for (let i = 0; i < 120; i++) sim.step(new Map());
+    for (let i = 0; i < 10; i++) sim.step(new Map([[0, { mx, my, buttons: BTN_B }]]));
+    sim.step(new Map([[0, { mx: 0, my: 0, buttons: 0 }]]));
+    return { deg: Math.atan2(sim.ball.vy, sim.ball.vx) * (180 / Math.PI), sp: Math.hypot(sim.ball.vx, sim.ball.vy) };
   };
-  const flat = kick(0), lob = kick(0.45), low = kick(-0.45);
-  check('玉入れ：斜め上＋攻撃で山なり、斜め下＋攻撃で低く飛ぶ', lob > flat + 10 && low < flat, `ふつう${flat.toFixed(0)}° / 上${lob.toFixed(0)}° / 下${low.toFixed(0)}°`);
+  const low = toss(0.9, 0.3), high = toss(0.4, 0.9), weak = toss(0.3, 0.3), strong = toss(0.7, 0.7);
+  check('玉入れ：狙った角度で飛ぶ（上に向けるほど山なり）', high.deg > low.deg + 30, `低め${low.deg.toFixed(0)}° / 高め${high.deg.toFixed(0)}°`);
+  check('玉入れ：引っ張るほど強く飛ぶ', strong.sp > weak.sp + 4, `弱${weak.sp.toFixed(1)} / 強${strong.sp.toFixed(1)}`);
 }
 // ---- ハッカー：キャッシュは置くのに時間がかかり、爆発したあとしばらく置き直せない。DDoS は撃ったあと約1秒撃てない
 {

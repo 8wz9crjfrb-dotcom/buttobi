@@ -3,6 +3,7 @@
 import { BOUNTY } from '../shared/moves';
 import { areaColor, ballTeamOf, getCharacter, playerColor, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { COUNTDOWN_FRAMES, respawnWait } from '../shared/sim';
+import { ballStats } from '../shared/ballThrow';
 import { clashMark } from './icons';
 import { buffSvg } from './buffIcons';
 import { DEFAULT_HP, isTwoTeam, FX_ARMOR, FX_ATK_DOWN, FX_ATK_UP, FX_SPD_DOWN, FX_SPD_UP, type GameEvent, type MatchSetup, type ViewState } from '../shared/types';
@@ -213,6 +214,18 @@ export class Hud {
       root.innerHTML = `<b class="r" style="--tc:${hex(TEAM_COLORS[0])}">0</b><span>-</span><b class="b" style="--tc:${hex(TEAM_COLORS[1])}">0</b><small>${setup.rules.goals ?? 5}点先取</small>`;
       this.el.appendChild(root);
       this.ball = { root, red: root.querySelector('.r')!, blue: root.querySelector('.b')!, last: '' };
+      // 試合の始まりに、自分のキャラの玉入れの性能を少しの間だけ出す
+      const mine = setup.players.find((p) => p.slot === myslot);
+      if (mine) {
+        const st = ballStats(mine.charId);
+        const dots = (n: number) => `<span class="bs-dots">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
+        const tip = document.createElement('div');
+        tip.className = 'hud-ballstats';
+        tip.innerHTML = `<div class="ball-stats"><span class="tag">あなたの玉入れの性能</span><span class="bs-row">投げる力${dots(st.throw)}</span><span class="bs-row">足の速さ${dots(st.speed)}</span><span class="bs-row">奪う力${dots(st.steal)}</span></div>`;
+        this.el.appendChild(tip);
+        setTimeout(() => tip.classList.add('gone'), 6000);
+        setTimeout(() => tip.remove(), 7000);
+      }
     }
     if (setup.rules.mode === 'area') {
       // タイマーの下に、ゲージを横に並べる（チーム戦はチームごと、個人戦は人ごと）

@@ -2,7 +2,7 @@
 import { Sim, COUNTDOWN_FRAMES, BALL, ballBaskets } from '../src/shared/sim';
 import { ballTeamOf, playerColor, TEAM_COLORS } from '../src/shared/characters';
 import { decodeState, encodeState } from '../src/shared/protocol';
-import { BTN_A, BTN_B, type InputState, type MatchRules, type PlayerSetup } from '../src/shared/types';
+import { BTN_A, BTN_B, BTN_SHIELD, type InputState, type MatchRules, type PlayerSetup } from '../src/shared/types';
 import { ballRun } from './ball-balance';
 
 let fail = 0;
@@ -19,10 +19,10 @@ function make(n = 2, rules: Partial<MatchRules> = {}): Sim {
   for (let i = 0; i < 120; i++) sim.step(new Map());
   return sim;
 }
-const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N) => {
+const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, p1: (i: number) => InputState = () => N) => {
   const goals: number[] = [];
   for (let i = 0; i < frames; i++) {
-    sim.step(new Map([[0, p0(i)]]));
+    sim.step(new Map([[0, p0(i)], [1, p1(i)]]));
     for (const e of sim.events) if (e.k === 'goal') goals.push(e.t);
   }
   return goals;
@@ -43,41 +43,86 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N) 
   check('チーム：味方には攻撃が当たらない', ff.fighters[2].damage === 0);
 }
 
-// ---- 相手への攻撃：当たらない
+// ---- 攻撃はできない（Aは「奪う」、Bは「投げる」）
 {
-  const hit = (pvp: boolean) => {
-    const sim = make(2, { pvp });
-    const a = sim.fighters[0];
-    const v = sim.fighters[1];
-    a.x = 3;
-    a.facing = 1;
-    v.x = 3.9;
-    sim.ball.x = -6;
-    run(sim, 25, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
-    return v.damage;
-  };
-  check('相手への攻撃「当たる」：相手にダメージが入る', hit(true) > 0);
-  check('相手への攻撃「当たらない」：相手にダメージが入らない', hit(false) === 0);
-  const sim = make(2, { pvp: false });
+  const sim = make(2);
   const a = sim.fighters[0];
-  a.x = sim.ball.x - 0.7;
+  const v = sim.fighters[1];
+  a.x = 3;
   a.facing = 1;
-  sim.fighters[1].x = -8;
-  run(sim, 6, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
-  check('相手への攻撃「当たらない」でも、ボールは打てる', sim.ball.vx > 3);
+  v.x = 3.9;
+  sim.ball.x = -6;
+  run(sim, 25, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : i === 30 ? { mx: 0, my: 0, buttons: BTN_B } : N));
+  check('攻撃できない：Aを押しても相手にダメージが入らない', v.damage === 0 && a.state !== 'attack');
 }
 
-// ---- ボールを打つ
+// ---- ボールを拾う・投げる・奪う
 {
   const sim = make();
-  check('ボール：最初はステージの中央の床の上', Math.abs(sim.ball.x) < 0.01 && Math.abs(sim.ball.y - (sim.stage.main.top + BALL.r)) < 0.1);
-  const a = sim.fighters[0];
-  a.x = sim.ball.x - 0.7;
+  check('ボール：最初はステージの中央の上から落ちてくる', Math.abs(sim.ball.x) < 0.01);
+  const [a, v] = sim.fighters;
+  v.x = -8;
+  a.x = sim.ball.x;
+  run(sim, 30);
+  check('拾う：ボールに触れると持つ', sim.ball.holder === 0);
+  // 持っている間は少し遅い
+  const sp = (s: Sim) => (s as unknown as { speedMul(f: unknown): number }).speedMul(a);
+  check('持っている間は少し足が遅い', sp(sim) < 1, sp(sim).toFixed(2));
+  // 「投げる」を押したまま右上へ狙い、離すと投げる（押している間は動かない）
+  const x0 = a.x;
+  run(sim, 15, () => ({ mx: 0.6, my: 0.6, buttons: BTN_B }));
+  check('投げる：押している間は動かず、ボールも持ったまま', Math.abs(a.x - x0) < 0.05 && sim.ball.holder === 0 && a.ballAiming);
+  run(sim, 2, () => N);
+  check('投げる：離すと狙った向き（右上）へ飛ぶ', sim.ball.holder === -1 && sim.ball.vx > 3 && sim.ball.vy > 3, `${sim.ball.vx.toFixed(1)},${sim.ball.vy.toFixed(1)}`);
+  check('投げる：投げた人を覚えている', sim.ball.last === 0);
+  // 少しだけ引っ張って離したら投げない
+  const s2 = make();
+  s2.fighters[1].x = -8;
+  s2.fighters[0].x = s2.ball.x;
+  run(s2, 30);
+  run(s2, 10, () => ({ mx: 0.1, my: 0.05, buttons: BTN_B }));
+  run(s2, 2, () => N);
+  check('投げる：ほとんど引っ張らずに離したら、投げずにやめる', s2.ball.holder === 0);
+}
+{
+  // 奪う：近くの相手（青）が持っているボールを、相手の方を向いて「奪う」で取れる
+  const sim = make();
+  const [a, v] = sim.fighters;
+  v.x = sim.ball.x;
+  a.x = -8;
+  run(sim, 30);
+  check('奪う：相手がボールを持つ', sim.ball.holder === 1);
+  run(sim, 70);
+  a.x = v.x - 1;
   a.facing = 1;
-  sim.fighters[1].x = -8;
-  run(sim, 6, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
-  check('ボール：攻撃が当たると、向いている方へ飛ぶ', sim.ball.vx > 3 && sim.ball.y > sim.stage.main.top + BALL.r, `速さ${sim.ball.vx.toFixed(1)}`);
-  check('ボール：打った人を覚えている', sim.ball.last === 0);
+  run(sim, 2, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
+  check('奪う：近くで「奪う」を押すと奪える', sim.ball.holder === 0);
+  // 奪った直後は奪い返せない
+  run(sim, 2, () => N, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
+  check('奪う：奪われた直後は、すぐには奪い返せない', sim.ball.holder === 0);
+}
+{
+  // 構えている相手からは奪えない。空振りすると少しの間は奪えない
+  const sim = make();
+  const [a, v] = sim.fighters;
+  v.x = sim.ball.x;
+  a.x = -8;
+  run(sim, 100);
+  a.x = v.x - 1;
+  a.facing = 1;
+  run(sim, 4, () => N, () => ({ mx: 0, my: 0, buttons: BTN_SHIELD }));
+  run(sim, 2, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N), () => ({ mx: 0, my: 0, buttons: BTN_SHIELD }));
+  check('奪う：「構える」の間は奪えない', sim.ball.holder === 1 && a.stealCd > 0);
+  // 後ろ向きでは奪えない
+  const s2 = make();
+  const [a2, v2] = s2.fighters;
+  v2.x = s2.ball.x;
+  a2.x = -8;
+  run(s2, 100);
+  a2.x = v2.x - 1;
+  a2.facing = -1;
+  run(s2, 2, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
+  check('奪う：相手に背中を向けていると奪えない', s2.ball.holder === 1);
 }
 
 // ---- ゴール：上から入ったときだけ点。点を取るのは、かごを守っていない側のチーム
@@ -101,6 +146,18 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N) 
   check('ゴール：入ったボールはしばらく消えて、中央から出し直す', !sim.ball.on);
   run(sim, BALL.respawn + 5);
   check('ゴール：出し直したボールは中央', sim.ball.on && Math.abs(sim.ball.x) < 1);
+}
+{
+  // 横から入っても点にならない（はね返る）
+  const sim = make();
+  const g = ballBaskets(sim.stage)[1];
+  sim.fighters.forEach((f) => (f.x = -8));
+  sim.ball.x = g.x1 - 0.6;
+  sim.ball.y = (g.y1 + g.y2) / 2;
+  sim.ball.vx = 8;
+  sim.ball.vy = 0;
+  run(sim, 20);
+  check('ゴール：横から入っても点にならない（真上からだけ）', sim.ballScore.join() === '0,0' && sim.ball.vx <= 0, `${sim.ballScore.join('-')} vx=${sim.ball.vx.toFixed(1)}`);
 }
 
 // ---- 勝ち負け
@@ -158,29 +215,5 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N) 
   }
   check('CPU：4人の試合で点が入る', goals >= 8, `4試合で${goals}点`);
   check('CPU：試合がきちんと終わる', ended === 4);
-}
-// ---- 飛び道具の連射だけでは点が入らない（押す力は弱く、同じ人が押せるのは約1秒に1回）
-{
-  let goals = 0;
-  for (let i = 0; i < 24; i++) {
-    const sim = new Sim({ players: [P(0, 'hacker'), P(1, 'trainer')], stageId: 'plain', rules: { mode: 'ball', stocks: 3, timeLimit: 60, goals: 99, items: false }, seed: i + 1 });
-    while (sim.frame <= COUNTDOWN_FRAMES + 120) sim.step(new Map());
-    const g = ballBaskets(sim.stage)[1];
-    const m = sim.stage.main;
-    const bx = g.cx - 1 - (i % 6);
-    Object.assign(sim.ball, { x: bx, y: m.top + BALL.r, vx: 0, vy: 0, on: true });
-    sim.fighters[1].x = m.x1 + 1;
-    const f = sim.fighters[0];
-    f.x = bx - 3 - (i % 4) * 0.8;
-    f.facing = 1;
-    let prev = 0;
-    for (let t = 0; t < 300 && sim.ballScore[0] === 0; t++) {
-      const buttons = !prev ? BTN_B : 0;
-      prev = buttons;
-      sim.step(new Map([[0, { mx: 0, my: 0, buttons }]]));
-    }
-    if (sim.ballScore[0] > 0) goals++;
-  }
-  check('飛び道具（ハッカーのB）を連打するだけでは、かごに入らない', goals === 0, `24回中${goals}回入った`);
 }
 process.exit(fail ? 1 : 0);
