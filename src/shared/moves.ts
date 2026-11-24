@@ -265,7 +265,7 @@ const SPECIALS: Record<string, Specials> = {
     sspecial: { startup: 6, active: 1, end: 12, hitboxes: [], dmg: 0, base: 0, growth: 0, angle: 0, air: true, special: 'rewind', cd: 360 },
     // キャッシュ：足元に罠を置く（1個まで）。触れると爆発
     // 置くのに少し時間がかかる。爆発したあと約2.5秒は置き直せない（cd は爆発したときから数える）
-    dspecial: { startup: 26, active: 1, end: 20, hitboxes: [], dmg: 10, base: 8, growth: 13, angle: 80, air: true, special: 'trap', cd: 150 },
+    dspecial: { startup: 26, active: 1, end: 20, hitboxes: [], dmg: 10, base: 8, growth: 11, angle: 80, air: true, special: 'trap', cd: 150 },
     // ポップアップ広告：足元に窓を出し、足場にして上昇
     uspecial: {
       startup: 4,

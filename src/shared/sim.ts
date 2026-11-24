@@ -2037,7 +2037,10 @@ export class Sim {
     this.events.push({ k: 'hit', x: v.x, y: v.y + v.h, p: c.dmg, s: v.slot, a: o.slot });
   }
 
-  /** 赤い糸：つないだ人から一定の距離より遠くへは行けない（離れる向きの勢いは消える） */
+  /**
+   * 赤い糸：つないだ人から横に一定の距離より遠くへは行けない（離れる向きの横の勢いは消える）。
+   * 上下は止めない（斜めの距離で引き戻すと、台の端の下などで落ちられず、空中にぶら下がったまま動けなくなるため）
+   */
   private applyLeash(f: Fighter): void {
     if (f.leashT <= 0 || f.state === 'grabbed' || f.state === 'ledge') return;
     const o = this.fighter(f.leashBy);
@@ -2045,19 +2048,11 @@ export class Sim {
     // メンヘラがステージの外（台の真上ではない所）にいる間は、糸はゆるむ（相手を場外へ引きずり込めない）
     if (o.x < this.stage.main.x1 || o.x > this.stage.main.x2) return;
     const dx = f.x - o.x;
-    const dy = f.y - o.y;
-    const d = Math.hypot(dx, dy);
     const len = MENHERA.leashLen;
-    if (d <= len || d < 0.001) return;
-    const nx = dx / d;
-    const ny = dy / d;
-    f.x = o.x + nx * len;
-    f.y = o.y + ny * len;
-    const out = f.vx * nx + f.vy * ny;
-    if (out > 0) {
-      f.vx -= out * nx;
-      f.vy -= out * ny;
-    }
+    if (Math.abs(dx) <= len) return;
+    const side = dx > 0 ? 1 : -1;
+    f.x = o.x + side * len;
+    if (f.vx * side > 0) f.vx = 0;
   }
 
   /** 泣き落とし：周りの相手を「気まずい」状態にする（攻撃力ダウン）。ガードで防げる */
