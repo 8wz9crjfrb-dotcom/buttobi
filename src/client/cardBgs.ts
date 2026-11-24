@@ -180,7 +180,7 @@ export const CARD_BGS: CardBgDef[] = [
     name: 'ハサミとギターとグラス（3B）',
     group: 'char',
     rarity: 4,
-    bg: `${svg(150, 70, `<g stroke='#fff' stroke-width='2' fill='none' opacity='.35'><circle cx='14' cy='50' r='5'/><circle cx='28' cy='50' r='5'/><path d='M17 46L34 22M25 46L10 22'/><g transform='rotate(-40 76 40)'><path d='M70 30c-6 0-8 5-6 9 1 2 1 3-1 5-4 4-2 12 6 12h2c8 0 10-8 6-12-2-2-2-3-1-5 2-4 0-9-6-9z'/><circle cx='71' cy='45' r='2.6'/><path d='M71 30V10'/><path d='M68 10h6v-5h-6z'/><path d='M69.5 30V48M72.5 30V48' stroke-width='.7'/></g><path d='M118 20h20l-4 16h-12z'/><path d='M128 36v14M121 50h14'/></g>`)}, linear-gradient(140deg, #8a4dff, #2a1040)`,
+    bg: `${svg(150, 70, `<g stroke='#fff' stroke-width='2' fill='none' opacity='.35'><circle cx='14' cy='50' r='5'/><circle cx='28' cy='50' r='5'/><path d='M17 46L34 22M25 46L10 22'/><g transform='rotate(-38 75 38)'><path d='M64 40c-2-4 0-8 3-7 2 1 3 1 4 0 1-2 3-3 5-1 1 1 0 3-1 4-1 2 0 3 2 4 3 2 3 8-1 11-3 2-9 3-12 0-3-2-3-6-1-8 1-1 1-2 1-3z'/><path d='M70 40h6M70 44h6' stroke-width='1.6'/><path d='M70.5 48.5h5'/><path d='M72 33V9M74 33V9' stroke-width='1.2'/><path d='M71 13h4M71 17h4M71 21h4M71 25h4M71 29h4' stroke-width='.6'/><path d='M70.5 9l1-6h4l1 6z'/><path d='M70.5 4h-2M70.5 6.5h-2M70.5 9h-2M76.5 4h2M76.5 6.5h2M76.5 9h2' stroke-width='1.2'/></g><path d='M118 20h20l-4 16h-12z'/><path d='M128 36v14M121 50h14'/></g>`)}, linear-gradient(140deg, #8a4dff, #2a1040)`,
   },
   {
     name: '赤い糸とハート（メンヘラ）',
