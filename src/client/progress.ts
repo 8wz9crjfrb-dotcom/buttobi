@@ -144,6 +144,21 @@ export const TITLE_GROUPS: { name: string; match: (id: string) => boolean }[] = 
   { name: 'キャラマスター', match: (id) => id.startsWith('master-') },
 ];
 
+/** キャラで300勝の称号（キャラにちなんだ名前。衣装・ほかの称号・技の名前と重ならないもの） */
+const MASTER300: Record<string, string> = {
+  guard: '最後の防衛線',
+  hacker: '管理者権限',
+  thief: '盗めぬものなし',
+  streamer: '殿堂入り配信者',
+  dopa: 'おすすめ欄の支配者',
+  gacha: '排出率の支配者',
+  courier: '伝説の配達王',
+  ai: '全知のモデル',
+  trainer: '筋肉の伝道師',
+  threeb: '夜の帝王',
+  menhera: '運命の赤い糸',
+};
+
 export const TITLES: TitleDef[] = [
   { id: 'win1', name: 'はじめての勝利', cond: '1回勝つ', coins: 50, check: (p) => p.totals.wins >= 1 },
   { id: 'win10', name: '駆け出しファイター', cond: '通算10勝', coins: 100, check: (p) => p.totals.wins >= 10 },
@@ -211,6 +226,7 @@ export const TITLES: TitleDef[] = [
         [10, `${c.name}マスター`, 100, ''],
         [50, `${c.name}の達人`, 300, '-50'],
         [100, `${c.name}の伝説`, 600, '-100'],
+        [300, MASTER300[c.id] ?? `${c.name}の神`, 1000, '-300'],
       ] as const
     ).map(([wins, name, coins, suffix]) => ({
       id: `master-${c.id}${suffix}`,
