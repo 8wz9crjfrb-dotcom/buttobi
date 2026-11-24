@@ -28,3 +28,22 @@ class_name = "Social"
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["Social"]
+
+# ---------------------------------------------------------------
+# テスト用サーバー（本番の前に新機能を試す）。test ブランチに push すると、
+# 「wrangler deploy --env test」で buttobi-server-test という別の Worker に出す。
+# データ（ルーム・フレンド・DM）は本番とは別。Durable Objects の設定は環境ごとに書く必要がある
+[env.test]
+name = "buttobi-server-test"
+
+[[env.test.durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[env.test.durable_objects.bindings]]
+name = "TRANSFERS"
+class_name = "TransferBox"
+
+[[env.test.durable_objects.bindings]]
+name = "SOCIAL"
+class_name = "Social"

@@ -80,7 +80,8 @@ export function vibrate(ms: number): void {
 }
 
 export function registerServiceWorker(): void {
-  if (!('serviceWorker' in navigator) || !import.meta.env.PROD) return;
+  // テスト版は登録しない（本番の保存ファイルと混ざらないように）
+  if (!('serviceWorker' in navigator) || !import.meta.env.PROD || import.meta.env.VITE_TEST === '1') return;
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {
       /* 登録できなくても遊べる */

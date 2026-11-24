@@ -8,9 +8,10 @@
 # 登録していない間は、更新の手順を飛ばす（失敗にはしない）。
 name: Deploy server to Cloudflare
 
+# test ブランチに push したときは、テスト用サーバー（buttobi-server-test）に出す
 on:
   push:
-    branches: [main]
+    branches: [main, test]
     paths:
       - 'server/**'
       - 'src/shared/**'
@@ -21,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: server
+  group: server-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -54,7 +55,8 @@ jobs:
           TOKEN="$(printf '%s' "$RAW_TOKEN" | tr -d '[:space:]' | sed -e 's/^[Bb]earer//')"
           ACCOUNT="$(printf '%s' "$RAW_ACCOUNT" | tr -d '[:space:]')"
           echo "トークンの文字数: ${#TOKEN} / アカウントIDの文字数: ${#ACCOUNT}"
-          CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT" npx wrangler deploy
+          if [ "${GITHUB_REF_NAME}" = "test" ]; then ENVARG="--env test"; else ENVARG=""; fi
+          CLOUDFLARE_API_TOKEN="$TOKEN" CLOUDFLARE_ACCOUNT_ID="$ACCOUNT" npx wrangler deploy $ENVARG
       - name: Skip (secrets not set)
         if: env.HAS_TOKEN != 'true'
         run: echo "CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID が未登録のため、サーバーの更新は行いませんでした。"

@@ -1,9 +1,11 @@
-# main ブランチに push すると、ゲームをビルドして GitHub Pages に公開する
+# main ブランチに push すると、ゲームをビルドして GitHub Pages に公開する。
+# test ブランチがあれば、それも作って /test/ に置く（本番の前に新機能を試すテスト版。テスト用サーバーにつなぐ）。
+# Pages は全体を1つとして公開するので、どちらに push しても両方を作り直す
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, test]
   workflow_dispatch:
 
 permissions:
@@ -20,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: main
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -31,6 +35,29 @@ jobs:
           # リポジトリの Settings → Secrets and variables → Actions → Variables に
           # VITE_SERVER_URL（例: wss://buttobi-server.xxxx.workers.dev）を登録しておく
           VITE_SERVER_URL: ${{ vars.VITE_SERVER_URL }}
+      # テスト版（test ブランチ）。失敗しても本番の公開は止めない
+      - name: Check test branch
+        id: testbranch
+        run: |
+          if git ls-remote --exit-code --heads origin test >/dev/null; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v7
+        if: steps.testbranch.outputs.exists == 'true'
+        with:
+          ref: test
+          path: testsrc
+      - name: Build test version
+        if: steps.testbranch.outputs.exists == 'true'
+        continue-on-error: true
+        working-directory: testsrc
+        env:
+          VITE_TEST: '1'
+          VITE_SERVER_URL: wss://buttobi-server-test.8wz9crjfrb.workers.dev
+        run: |
+          npm ci
+          npm test
+          npm run build
+          rm -rf ../dist/test
+          cp -r dist ../dist/test
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
