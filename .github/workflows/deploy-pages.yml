@@ -12,13 +12,25 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
+  # Pages へ公開できるのは main ブランチの実行だけ（環境の保護設定）。
+  # test に push したときは、main の公開をもう一度動かす（そこで test も作り直して /test/ に置く）
+  relay:
+    if: github.ref_name == 'test'
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh workflow run deploy-pages.yml --ref main --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   build:
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -64,6 +76,7 @@ jobs:
           path: dist
 
   deploy:
+    if: github.ref_name == 'main'
     needs: build
     runs-on: ubuntu-latest
     environment:
