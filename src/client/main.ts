@@ -2446,8 +2446,8 @@ function stampBar(): string {
 const ROOM_STAMP_MS = 1000;
 let roomStampAt = 0;
 function sendRoomStamp(id: number, pic: boolean): void {
-  // 戦っている最中は送れない
-  if (fightingNow()) return;
+  // 戦っている最中・観戦中は送れない
+  if (fightingNow() || net.spectating || net.slot < 0) return;
   const now = Date.now();
   if (now - roomStampAt < ROOM_STAMP_MS) return;
   roomStampAt = now;
@@ -2462,7 +2462,7 @@ function bindStampBar(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>('[data-stamp]').forEach((b) => b.addEventListener('click', () => sendRoomStamp(Number(b.dataset.stamp), false)));
   root.querySelector('[data-picopen]')?.addEventListener('click', () => openPicPalette());
 }
-/** ルームで送る絵スタンプを選ぶ（観戦中は定型文もここから） */
+/** ルームで送る絵スタンプを選ぶ */
 function openPicPalette(withText = false): void {
   document.getElementById('pic-pal')?.remove();
   const el = document.createElement('div');
@@ -2587,17 +2587,7 @@ watchEl.addEventListener('click', () => {
   renderWatch();
 });
 
-// 観戦中（試合を見ているとき）：右下にスタンプのボタン
-const specStampEl = document.createElement('button');
-specStampEl.type = 'button';
-specStampEl.id = 'spec-stamp';
-specStampEl.className = 'hidden';
-specStampEl.innerHTML = `${chatMark()}スタンプ`;
-specStampEl.addEventListener('click', () => openPicPalette(true));
-document.getElementById('app')!.appendChild(specStampEl);
-
 function renderWatch(): void {
-  specStampEl.classList.toggle('hidden', !(session?.kind === 'net' && net.slot < 0 && net.spectating && !resultsShown));
   const setup = session?.kind === 'net' && !resultsShown && lobby?.inMatch ? session.setup : null;
   const watchers = lobby?.watchers ?? [];
   const votes = setup ? predicts.filter((x) => setup.players.some((p) => p.slot === x.p)) : [];
@@ -3033,7 +3023,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
      ${reward}
      ${online && lobby?.tourOn ? '<div data-tour></div>' : ''}
      <div class="results">${rows}</div>
-     ${online ? stampBar() : ''}
+     ${online && net.slot >= 0 ? stampBar() : ''}
      ${online ? '<div class="again-count muted" data-again></div>' : ''}
      <div class="footer">
        <button class="btn" id="menu">メニューへ</button>
@@ -4625,7 +4615,7 @@ function showLobby(): void {
        ${isHost && !l.inMatch && !tourOn && l.rules.teams && l.players.length >= 2 ? '<button class="btn small" id="auto-team">チームをおまかせで分ける</button>' : ''}
        ${l.spectators ? `<span class="muted">観戦 ${l.spectators}人</span>` : ''}
      </div>
-     ${stampBar()}
+     ${net.spectating ? '' : stampBar()}
      ${hostControls}
      <div class="footer">
        <button class="btn" id="leave">抜ける</button>

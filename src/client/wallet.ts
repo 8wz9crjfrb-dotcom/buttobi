@@ -99,6 +99,16 @@ function fresh(): Wallet {
 }
 
 export function loadWallet(): Wallet {
+  const w = loadWalletRaw();
+  // テスト版：すぐに全部を確かめられるよう、ガチャの衣装を全部持っていて、コインもたっぷりある
+  if (import.meta.env.VITE_TEST === '1') {
+    w.owned = [...new Set([...w.owned, ...GACHA_COSTUMES.map((c) => c.id)])];
+    w.coins = Math.max(w.coins, 100000);
+  }
+  return w;
+}
+
+function loadWalletRaw(): Wallet {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return fresh();

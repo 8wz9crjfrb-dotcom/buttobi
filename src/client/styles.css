@@ -5321,8 +5321,7 @@ table.rec td:first-child {
 
 /* ---------- DM（フレンドへのメッセージ）と絵スタンプ ---------- */
 .dm-open-btn .chat-mark,
-.stamp-btn .chat-mark,
-#spec-stamp .chat-mark {
+.stamp-btn .chat-mark {
   width: 15px;
   height: 14px;
   vertical-align: -2px;
@@ -5564,23 +5563,7 @@ table.rec td:first-child {
   background: rgba(255, 216, 74, 0.18);
   border-color: rgba(255, 216, 74, 0.6);
 }
-#spec-stamp {
-  position: absolute;
-  right: calc(16px + var(--safe-r));
-  bottom: calc(16px + var(--safe-b));
-  z-index: 55;
-  padding: 8px 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(10, 12, 30, 0.75);
-  color: #fff;
-  font: inherit;
-  font-weight: 800;
-  font-size: 13px;
-}
-#spec-stamp.hidden {
-  display: none;
-}
+
 /* 横持ちのスマホ（高さが低い）：やり取りを左、送るボタンを右に並べる */
 @media (max-height: 520px) {
   .dm-box {

@@ -568,18 +568,17 @@ export class Room extends DurableObject<Env> {
       return;
     }
 
-    if (msg.t === 'stamp' && this.lobby && (slot >= 0 || slot === SPECTATOR)) {
-      // 定型文・絵スタンプ（観戦している人も送れる）。送りすぎないよう、1人1秒に1回まで
+    if (msg.t === 'stamp' && this.lobby && slot >= 0) {
+      // 定型文・絵スタンプ（観戦している人は送れない）。送りすぎないよう、1人1秒に1回まで
       const pic = msg.pic ? 1 : 0;
       const id = Number(msg.id) | 0;
       if (id < 0 || id >= (pic ? PIC_STAMP_COUNT : STAMPS.length)) return;
       // 戦っている最中の人からは受け付けない
       if (slot >= 0 && this.sim && this.setup?.players.some((p) => p.slot === slot)) return;
-      const key = slot >= 0 ? slot : 1000 + (att?.sid ?? 0);
       const now = Date.now();
-      if (now - (this.lastStamp.get(key) ?? 0) < 850) return;
-      this.lastStamp.set(key, now);
-      const name = slot >= 0 ? this.lobby.humans.find((h) => h.slot === slot)?.name : `${(att as Attachment | null)?.name ?? '観戦'}（観戦）`;
+      if (now - (this.lastStamp.get(slot) ?? 0) < 850) return;
+      this.lastStamp.set(slot, now);
+      const name = this.lobby.humans.find((h) => h.slot === slot)?.name;
       if (name) this.broadcast({ t: 'stamp', slot, name, id, ...(pic ? { pic: 1 as const } : {}) });
       return;
     }

@@ -296,6 +296,13 @@ function fresh(): Progress {
 }
 
 export function loadProgress(): Progress {
+  const p = loadProgressRaw();
+  // テスト版：称号も全部持っている（コインはもらわない）
+  if (import.meta.env.VITE_TEST === '1') p.titles = [...new Set([...p.titles, ...TITLES.map((t) => t.id)])];
+  return p;
+}
+
+function loadProgressRaw(): Progress {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return fresh();
