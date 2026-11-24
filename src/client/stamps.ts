@@ -1,4 +1,4 @@
-// 絵スタンプ（DM・オンラインの待機画面・結果画面・観戦中に送れる）。
+// スタンプ（DM・オンラインの待機画面・結果画面・観戦中に送れる）。
 // キャラの似顔絵（3D から描いた顔。表情を指定）に、記号や小物の絵と、会話で使えるひとことを重ねる。
 // 番号で送るので、並びを変えない・新しいものは最後に足す（数は PIC_STAMP_COUNT と合わせる）
 
@@ -76,7 +76,7 @@ export function setStampPortrait(fn: (charId: string, face: Face, job?: number) 
 }
 
 /**
- * 絵スタンプの HTML（DM の吹き出し・送るボタン・待機画面の表示で使う）。
+ * スタンプの HTML（DM の吹き出し・送るボタン・待機画面の表示で使う）。
  * tier = レア度（4 SR・5 SSR・6 UR）。同じ言葉でも、SSR は金の縁ときらめき、UR は虹色に光って動く
  */
 export function picStamp(i: number, tier = 4): string {

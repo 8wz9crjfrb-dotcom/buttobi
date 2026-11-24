@@ -107,7 +107,7 @@ export interface FriendInfo {
 }
 
 // ---------------------------------------------------------------- DM（フレンドどうしのメッセージ）
-// 自由な文は送れない。定型文（DM_PHRASES）か絵スタンプ（番号）だけ。送れるのは 1 秒に 1 回まで
+// 自由な文は送れない。定型文（DM_PHRASES）かスタンプ（番号）だけ。送れるのは 1 秒に 1 回まで
 /** DM の定型文（種類ごと）。番号で送るので、並びを変えない・新しいものは最後に足す */
 export const DM_PHRASES = [
   'おはよう！', 'こんにちは！', 'こんばんは！', 'ひさしぶり！',
@@ -129,15 +129,15 @@ export const DM_ROOM_PHRASE = 6;
 export const DM_COOLDOWN_MS = 1000;
 /** 1 人のフレンドとの間で残しておく DM の数（古いものから消す） */
 export const DM_KEEP = 50;
-/** 絵スタンプの数（番号は 0〜） */
+/** スタンプの数（番号は 0〜） */
 export const PIC_STAMP_COUNT = 18;
 
-/** DM 1通。k = 'p'（定型文）/ 's'（絵スタンプ）、i = 番号、t = スタンプのレア度、r = 付けたルームコード、at = 送った時刻（ms） */
+/** DM 1通。k = 'p'（定型文）/ 's'（スタンプ）、i = 番号、t = スタンプのレア度、r = 付けたルームコード、at = 送った時刻（ms） */
 export interface DmMsg {
   me: boolean;
   k: 'p' | 's';
   i: number;
-  /** 絵スタンプのレア度（5 SSR・6 UR。なしは SR） */
+  /** スタンプのレア度（5 SSR・6 UR。なしは SR） */
   t?: number;
   r?: string;
   at: number;

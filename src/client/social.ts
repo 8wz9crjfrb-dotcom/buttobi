@@ -192,7 +192,7 @@ export class SocialClient {
   openDm(code: string): void {
     this.send({ t: 'dmOpen', code });
   }
-  /** DM を送る（k = 'p' 定型文 / 's' 絵スタンプ、r = 付けるルームコード） */
+  /** DM を送る（k = 'p' 定型文 / 's' スタンプ、r = 付けるルームコード） */
   sendDm(code: string, k: 'p' | 's', i: number, r?: string, tier?: number): void {
     this.send({ t: 'dmSend', code, k, i, ...(r ? { r } : {}), ...(tier && tier >= 5 ? { tier } : {}) });
   }

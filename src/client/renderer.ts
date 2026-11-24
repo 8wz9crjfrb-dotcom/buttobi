@@ -564,7 +564,7 @@ export class GameRenderer {
     const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
     let hy = 1.62 * def.scale;
     if (face) {
-      // 絵スタンプ：キャラごとに頭の高さが違うので、頭の位置を測って顔を真ん中に写す
+      // スタンプ：キャラごとに頭の高さが違うので、頭の位置を測って顔を真ん中に写す
       model.root.updateMatrixWorld(true);
       hy = model.head.getWorldPosition(new THREE.Vector3()).y + 0.34 * def.scale;
     }

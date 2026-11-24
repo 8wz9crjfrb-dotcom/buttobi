@@ -871,7 +871,7 @@ function showFriends(): void {
 }
 
 // ---------------------------------------------------------------------------
-// DM：フレンドに定型文・絵スタンプを送る（自由な文は送れない）。戦っている最中は開けない
+// DM：フレンドに定型文・スタンプを送る（自由な文は送れない）。戦っている最中は開けない
 let dmCode = '';
 let dmTab: 'p' | 's' = 'p';
 let dmLastSend = 0;
@@ -2460,9 +2460,9 @@ function openGiveHost(list: { slot: number; name: string; charId: string }[]): v
 }
 
 function stampBar(): string {
-  return `<div class="stamp-bar"><button type="button" class="stamp-btn pic-open" data-picopen>${chatMark()}絵スタンプ</button>${STAMPS.map((t, i) => `<button type="button" class="stamp-btn" data-stamp="${i}">${t}</button>`).join('')}</div>`;
+  return `<div class="stamp-bar"><button type="button" class="stamp-btn pic-open" data-picopen>${chatMark()}スタンプ</button>${STAMPS.map((t, i) => `<button type="button" class="stamp-btn" data-stamp="${i}">${t}</button>`).join('')}</div>`;
 }
-/** 定型文・絵スタンプを送れる間隔（サーバーも1秒に1回まで） */
+/** 定型文・スタンプを送れる間隔（サーバーも1秒に1回まで） */
 const ROOM_STAMP_MS = 1000;
 let roomStampAt = 0;
 function sendRoomStamp(id: number, pic: boolean): void {
@@ -2483,7 +2483,7 @@ function bindStampBar(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>('[data-stamp]').forEach((b) => b.addEventListener('click', () => sendRoomStamp(Number(b.dataset.stamp), false)));
   root.querySelector('[data-picopen]')?.addEventListener('click', () => openPicPalette());
 }
-/** 持っている絵スタンプのボタン（持っているレア度で表示） */
+/** 持っているスタンプのボタン（持っているレア度で表示） */
 function ownedStampButtons(attr: 'dmsend' | 'pstamp', extra = ''): string {
   return PIC_STAMPS.map((_, i) => {
     const t = stampTier(wallet, i);
@@ -2496,7 +2496,7 @@ function stampMoreNote(): string {
   return n ? `<p class="muted small-note">ほかに ${n} 種類のスタンプがあります（ガチャの「スタンプ＆背景ガチャ」で出ます）。</p>` : '';
 }
 
-/** ルームで送る絵スタンプを選ぶ */
+/** ルームで送るスタンプを選ぶ */
 function openPicPalette(withText = false): void {
   document.getElementById('pic-pal')?.remove();
   const el = document.createElement('div');
@@ -3512,7 +3512,7 @@ function showItemGacha(): void {
      <div class="gacha-hero item">
        ${sample}
        <div class="gacha-info">
-         <div>絵スタンプ${PIC_STAMPS.length}種と、名刺カードの背景${CARD_BGS.length}種が出ます。</div>
+         <div>スタンプ${PIC_STAMPS.length}種と、名刺カードの背景${CARD_BGS.length}種が出ます。</div>
          <div>スタンプは同じ言葉でも <b class="rr5">SSR</b>（金の縁）→ <b class="rr6">UR</b>（虹色に光って動く）にアップグレード！</div>
          <div>出る確率：<b class="rr6">UR ${Math.round(UR_RATE * 100)}%</b>／<b class="rr5">SSR ${Math.round(SSR_RATE * 100)}%</b>／<b class="rr4">SR ${Math.round((1 - SSR_RATE - UR_RATE) * 100)}%</b>（スタンプと背景は半々）</div>
          <div>天井：<b class="rr6">UR</b> 確定まで あと <b>${urLeft}</b> 回・<b class="rr5">SSR</b> 確定まで あと <b>${left}</b> 回（着せ替えガチャとは別に数えます）</div>

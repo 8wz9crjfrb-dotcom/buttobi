@@ -5319,7 +5319,7 @@ table.rec td:first-child {
   margin-right: 4px;
 }
 
-/* ---------- DM（フレンドへのメッセージ）と絵スタンプ ---------- */
+/* ---------- DM（フレンドへのメッセージ）とスタンプ ---------- */
 .dm-open-btn .chat-mark,
 .stamp-btn .chat-mark {
   width: 15px;
@@ -5488,7 +5488,7 @@ table.rec td:first-child {
   width: min(420px, 92vw);
 }
 
-/* 絵スタンプ：似顔絵＋重ねる絵＋ひとこと */
+/* スタンプ：似顔絵＋重ねる絵＋ひとこと */
 .pic-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
@@ -5829,7 +5829,7 @@ table.rec td:first-child {
   color: var(--muted);
 }
 
-/* ---------- 絵スタンプのレア度（同じ言葉でも、SSR は金の縁ときらめき、UR は虹色に光って動く） ---------- */
+/* ---------- スタンプのレア度（同じ言葉でも、SSR は金の縁ときらめき、UR は虹色に光って動く） ---------- */
 .pic-stamp .ps-rank {
   position: absolute;
   top: 2px;

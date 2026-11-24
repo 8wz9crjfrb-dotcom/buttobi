@@ -390,7 +390,7 @@ export class NetClient {
   }
 
   /** 定型文のスタンプを送る */
-  /** 定型文（pic = 絵スタンプ）を送る */
+  /** 定型文（pic = スタンプ）を送る */
   stamp(id: number, pic = false, tier = 4): void {
     this.send({ t: 'stamp', id, ...(pic ? { pic: 1 as const } : {}), ...(pic && tier >= 5 ? { tier } : {}) });
   }

@@ -455,7 +455,7 @@ export type FaceMouth = 'line' | 'open' | 'smile';
 export class FighterModel {
   /** いま見えていない（倒れた・登場前・透明化）。頭の上のマークもこれに合わせて隠す */
   hiddenNow = false;
-  /** 表情を決めて描く（絵スタンプの似顔絵用） */
+  /** 表情を決めて描く（スタンプの似顔絵用） */
   forceFace: [FaceKind, FaceMouth] | null = null;
   readonly root = new THREE.Group();
   private turnGroup = new THREE.Group();

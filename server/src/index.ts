@@ -569,7 +569,7 @@ export class Room extends DurableObject<Env> {
     }
 
     if (msg.t === 'stamp' && this.lobby && slot >= 0) {
-      // 定型文・絵スタンプ（観戦している人は送れない）。送りすぎないよう、1人1秒に1回まで
+      // 定型文・スタンプ（観戦している人は送れない）。送りすぎないよう、1人1秒に1回まで
       const pic = msg.pic ? 1 : 0;
       const id = Number(msg.id) | 0;
       if (id < 0 || id >= (pic ? PIC_STAMP_COUNT : STAMPS.length)) return;
