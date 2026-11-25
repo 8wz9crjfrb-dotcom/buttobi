@@ -12,7 +12,7 @@ import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds,
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { ballBaskets, COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
-import { RANDOM_STAGE, resolveStage, STAGES, getStage, stageFor } from '../shared/stages';
+import { RANDOM_STAGE, resolveStage, STAGES, getStage, stageForMatch } from '../shared/stages';
 import { BTN_B, BTN_JUMP, BTN_SHIELD, DEFAULT_HP, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
 import { Hud } from './hud';
@@ -282,7 +282,7 @@ function updateThrowGuide(s: Session, v: ViewState): void {
   const inp = b && me && b.holder === me.slot && !v.ended ? readInput() : null;
   if (!b || !me || !inp || !(inp.buttons & BTN_B)) return renderer.setThrowGuide(null);
   const charId = s.setup.players.find((p) => p.slot === me.slot)?.charId ?? 'hacker';
-  const stage = stageFor(s.setup.stageId, s.setup.players.length, false);
+  const stage = stageForMatch(s.setup.stageId, s.setup.players.length, s.setup.rules);
   let vel: { vx: number; vy: number };
   if (Math.hypot(inp.mx, inp.my) < THROW.deadZone) {
     // 引っ張っていない：離すと後ろの味方へパスする。その道筋を出す（味方がいなければ出さない）
@@ -367,7 +367,7 @@ function startSession(s: Session): void {
   setPadMode(s.kind !== 'demo' && s.setup.rules.mode === 'ball' && !s.setup.rules.horde);
   renderer.setThrowGuide(null);
   lastView = null;
-  renderer.setMatch(s.setup, stageFor(s.setup.stageId, s.setup.players.length, !!s.setup.rules.horde));
+  renderer.setMatch(s.setup, stageForMatch(s.setup.stageId, s.setup.players.length, s.setup.rules));
   input.reset();
   input.takePressed();
   music.play(s.kind === 'demo' ? 'menu' : (s.setup.stageId as TrackId));

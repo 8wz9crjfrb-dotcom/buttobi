@@ -342,6 +342,12 @@ export function stageFor(id: string, players: number, horde = false): StageDef {
   return s.wide && players >= WIDE_PLAYERS && !horde ? { ...s, ...s.wide } : s;
 }
 
+/** 試合で使うステージの形。玉入れでは、どのステージも上の足場（すり抜け床）をなくす（広さは人数で変わるのは同じ） */
+export function stageForMatch(id: string, players: number, rules: { mode?: string; horde?: unknown }): StageDef {
+  const s = stageFor(id, players, !!rules.horde);
+  return rules.mode === 'ball' && !rules.horde ? { ...s, platforms: [] } : s;
+}
+
 // ---- 狭いステージの、大人数用の広い形
 /** そらの台地・データセンター屋上：台を 18m → 25m に広げ、左右にすり抜け床を足す */
 const WIDE_PLAIN: StageDef['wide'] = {

@@ -1045,6 +1045,9 @@ export class GameRenderer {
   private effect(e: GameEvent, view: ViewState): void {
     if (e.k === 'kick') {
       this.spawn(this.ringGeo, 0xffffff, e.x, e.y, 0, 0, 0.3, 12, 0.05);
+      // 投げた人の頭の上に小さく「シュート！」「パス！」
+      const f = e.s !== undefined ? view.fighters.find((o) => o.slot === e.s) : undefined;
+      if (f) this.props.showText(e.pass ? 'パス！' : 'シュート！', e.pass ? '#7dffb0' : '#ffd84a', f.x, f.y + 2.7, false, 60);
       return;
     }
     if (e.k === 'goal') {

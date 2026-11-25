@@ -5,7 +5,7 @@ import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './charac
 import { ABSORB, ALARM, RECOMMEND, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
 import { BALL_DRAG, BALL_GRAVITY, ballStats, passVelocity, pickPassMate, THROW, throwVelocity, type PassMate } from './ballThrow';
-import { platformAt, stageFor, WIDE_PLAYERS, type StageDef } from './stages';
+import { platformAt, stageForMatch, WIDE_PLAYERS, type StageDef } from './stages';
 
 /** 大人数（WIDE_PLAYERS 人以上）の試合のふっとびの倍率 */
 const CROWD_KB = 1.1;
@@ -599,7 +599,7 @@ export class Sim {
     this.solo = onlySlot !== undefined;
     this.setup = setup;
     // 人数が多いときは、狭いステージは広い形で戦う
-    this.stage = stageFor(setup.stageId, setup.players.length, !!setup.rules.horde);
+    this.stage = stageForMatch(setup.stageId, setup.players.length, setup.rules);
     this.rng = new Rng(setup.seed ^ 0x5bd1e995);
     setup.players.forEach((p, i) => {
       if (onlySlot !== undefined && p.slot !== onlySlot) return;
@@ -1175,7 +1175,7 @@ export class Sim {
         b.noCatchT = THROW.noCatch;
         b.thrownTeam = f.team % 2;
         if (Math.abs(v.vx) > 0.3) f.facing = v.vx > 0 ? 1 : -1;
-        this.events.push({ k: 'kick', x: b.x, y: b.y, p: Math.hypot(v.vx, v.vy) });
+        this.events.push({ k: 'kick', x: b.x, y: b.y, p: Math.hypot(v.vx, v.vy), s: f.slot, pass: mate ? 1 : 0 });
       }
       f.ballAimX = 0;
       f.ballAimY = 0;

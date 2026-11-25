@@ -346,4 +346,13 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
     check('パス：後ろの味方が撃墜されて復活待ちのときは、何もしない', down && sim.ball.holder === a.slot);
   }
 }
+// ---- ステージ：玉入れでは上の足場をなくす（広さは人数で変わるのは同じ）
+{
+  const ids = ['plain', 'gacha', 'cyber', 'studio', 'gym', 'room'];
+  const mk = (id: string, n: number, mode: 'ball' | 'stock') => new Sim({ players: Array.from({ length: n }, (_, i) => P(i, 'hacker')), stageId: id, rules: { mode, stocks: 3, timeLimit: 120, goals: 3 }, seed: 1 }).stage;
+  check('ステージ：玉入れでは、どのステージも上の足場がない', ids.every((id) => mk(id, 2, 'ball').platforms.length === 0 && mk(id, 4, 'ball').platforms.length === 0));
+  check('ステージ：玉入れ以外では、足場はいつもどおり', ids.some((id) => mk(id, 2, 'stock').platforms.length > 0));
+  const w = (id: string, n: number, mode: 'ball' | 'stock') => mk(id, n, mode).main.x2 - mk(id, n, mode).main.x1;
+  check('ステージ：広さはストック制と同じ（4人以上で広くなる）', ids.every((id) => w(id, 2, 'ball') === w(id, 2, 'stock') && w(id, 4, 'ball') === w(id, 4, 'stock')) && w('plain', 4, 'ball') > w('plain', 2, 'ball'), `そらの台地 2人 ${w('plain', 2, 'ball')}m / 4人 ${w('plain', 4, 'ball')}m`);
+}
 process.exit(fail ? 1 : 0);
