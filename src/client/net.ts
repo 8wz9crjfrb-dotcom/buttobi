@@ -108,6 +108,8 @@ export class NetClient {
   private meCache: Record<string, unknown> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   rtt = 0;
+  /** ルームのサーバーの場所（データセンターの記号） */
+  where = '';
   /** 最後にサーバーから何か届いた時刻 */
   private lastPong = 0;
   slot = -1;
@@ -281,6 +283,7 @@ export class NetClient {
         break;
       case 'pong':
         this.rtt = performance.now() - m.c;
+        if (typeof m.w === 'string' && /^[A-Z]{3}$/.test(m.w)) this.where = m.w;
         break;
       case 'error':
         // つなぎ直しに失敗した（猶予が過ぎた等）：これ以上は試さない

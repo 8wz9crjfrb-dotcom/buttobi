@@ -477,7 +477,7 @@ function loop(t: number): void {
     if (session.kind !== 'demo' && lastView) {
       hud.update(lastView, events);
       updateCooldownUI(session.myFighter());
-      if (session.kind === 'net') hud.setNetInfo(net.connected ? `通信 ${Math.round(net.rtt)}ms` : '再接続中…');
+      if (session.kind === 'net') hud.setNetInfo(net.connected ? `通信 ${Math.round(net.rtt)}ms${net.where ? `（${coloName(net.where)}）` : ''}` : '再接続中…');
       playEvents(events, session.mySlot, lastView);
       // 残り10秒：1秒ごとに音（最後の3秒は高い音）
       {
@@ -531,6 +531,17 @@ let fpsFrames = 0;
 let fpsStart = performance.now();
 let fpsWorst = 0;
 let fpsPrev = performance.now();
+/** データセンターの記号を、分かりやすい地名に（知らない記号はそのまま） */
+const COLO_NAMES: Record<string, string> = {
+  NRT: '東京', HND: '東京', KIX: '大阪', ITM: '大阪', FUK: '福岡', OKA: '沖縄', CTS: '札幌',
+  ICN: 'ソウル', TPE: '台北', HKG: '香港', SIN: 'シンガポール', SYD: 'シドニー',
+  LAX: 'ロサンゼルス', SJC: 'サンノゼ', SFO: 'サンフランシスコ', SEA: 'シアトル', ORD: 'シカゴ', IAD: 'ワシントン', EWR: 'ニューヨーク', DFW: 'ダラス',
+  FRA: 'フランクフルト', AMS: 'アムステルダム', LHR: 'ロンドン', CDG: 'パリ',
+};
+function coloName(c: string): string {
+  return COLO_NAMES[c] ?? c;
+}
+
 function updateFps(t: number): void {
   const on = settings.showFps || fpsFromUrl;
   fpsEl.classList.toggle('hidden', !on);

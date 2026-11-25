@@ -162,7 +162,8 @@ export type ServerMsg =
   | { t: 'dropped'; n: string; kind: number; used: string[] }
   /** 勝敗予想の一覧（n = 予想した人の名前、p = 勝つと思う選手の slot） */
   | { t: 'predicts'; list: { n: string; p: number }[] }
-  | { t: 'pong'; c: number }
+  /** w = ルームのサーバーが動いている場所（Cloudflare のデータセンターの記号。例：NRT） */
+  | { t: 'pong'; c: number; w?: string }
   | { t: 'error'; code: 'full' | 'taken' | 'notfound' | 'inmatch' | 'version' | 'bad' | 'kicked'; msg: string };
 
 export interface EncodedState {
