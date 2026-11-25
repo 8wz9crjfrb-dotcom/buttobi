@@ -296,8 +296,8 @@ const SPECIALS: Record<string, Specials> = {
       air: true,
       special: 'shot',
       shots: [{ at: 0, kind: 'malware', x: 0.9, y: 1.0, vx: 11, vy: 0, life: 50, r: 0.32, dmg: 2, base: 2.5, growth: 1.5, angle: 30, poison: 180 }],
-      // 連射しすぎないよう、0.3秒の待ち時間
-      cd: 18,
+      // 連射しすぎないよう、0.5秒の待ち時間
+      cd: 30,
     },
     // スクショ：フラッシュとともに高速で突き抜ける
     sspecial: {
@@ -426,6 +426,8 @@ const SPECIALS: Record<string, Specials> = {
       angle: 38,
       air: true,
       special: 'gacha1', cd: 60,
+      // 殴りかかりながら、ほんの少し前へ突っ込む（約1.2m）
+      dashSpeed: 6,
       landLag: 10,
     },
     // 課金：自分のダメージ%が増える代わりに、しばらく攻撃力アップ

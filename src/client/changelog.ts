@@ -15,6 +15,15 @@ export const NEWS_LABEL: Record<NewsKind, string> = { new: '新機能', buff: '�
 // 数値を変えたときは「何から何に変わったか」（例：12% → 7%）を書く
 export const NEWS: NewsEntry[] = [
   {
+    id: '2026-11-25-1',
+    date: '2026/11/25',
+    title: 'データ泥棒とガチャ廃人の調整',
+    items: [
+      { kind: 'nerf', text: 'データ泥棒：マルウェア（B）の待ち時間 約0.3秒 → 約0.5秒' },
+      { kind: 'buff', text: 'ガチャ廃人：単発ガチャ（横B）が、少し前へ突っ込みながら殴りかかるように（約1.2m進む）' },
+    ],
+  },
+  {
     id: '2026-11-24-3',
     date: '2026/11/24',
     title: '大型アップデート！ DM・スタンプ・新ガチャ',

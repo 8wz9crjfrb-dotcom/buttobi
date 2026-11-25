@@ -2937,6 +2937,10 @@ export class Sim {
       // シザーラッシュ：切りながら少しずつ前へ（相手を逃がさない）
       f.vx = f.facing * 1.6;
       if (!f.grounded) f.vy = Math.max(f.vy, -1);
+    } else if (md.special === 'gacha1' && mf >= t.s - 4 && mf < t.s + t.a) {
+      // 単発ガチャ：殴りかかる直前から、ほんの少し前へ突っ込む（約1.2m）
+      f.vx = f.facing * (md.dashSpeed ?? 6);
+      if (!f.grounded) f.vy = Math.max(f.vy, -1);
     } else if ((md.special === 'dash' || md.special === 'scroll' || md.special === 'tackle' || md.special === 'slide') && active) {
       f.vx = f.facing * ((md.dashSpeed ?? 13) - (mf - t.s) * 0.4);
       if (!f.grounded) f.vy = Math.max(f.vy, -1);
