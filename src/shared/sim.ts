@@ -1114,7 +1114,7 @@ export class Sim {
     if (b.on && (b.y < bl.bottom || b.x < bl.left || b.x > bl.right)) {
       b.on = false;
       b.timer = BALL.respawn / 2;
-      // 投げて外し、だれにも取られないまま場外へ：投げたチームは、次に出てくるボールを約0.5秒さわれない
+      // 投げて外し、だれにも取られないまま場外へ：投げたチームは、次に出てくるボールを約1秒さわれない
       if (b.thrownTeam >= 0) {
         b.lockTeam = b.thrownTeam;
         b.lockT = THROW.missLock;

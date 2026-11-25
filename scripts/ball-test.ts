@@ -177,7 +177,7 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   check('点を取られたチームは、出てきたボールをすぐ取れる', s2.ball.holder === 1);
 }
 {
-  // 投げて外し、場外へ：投げたチーム（赤）は、次に出てくるボールを約0.5秒さわれない
+  // 投げて外し、場外へ：投げたチーム（赤）は、次に出てくるボールを約1秒さわれない
   const sim = make();
   const [a, v] = sim.fighters;
   v.x = 8;
@@ -193,11 +193,11 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   check('外し：投げたチームは取れない印が付く', sim.ball.lockTeam === 0 && sim.ball.lockT > 0);
   for (let i = 0; i < 300 && !sim.ball.on; i++) run(sim, 1);
   a.x = sim.ball.x;
-  run(sim, 20);
+  run(sim, 50);
   const v1 = sim.toView().ball!;
-  check('外し：出てきたボールを、投げたチームは約0.5秒さわれない（画面に「取れないチーム」が伝わる）', sim.ball.holder === -1 && v1.lock === 0);
+  check('外し：出てきたボールを、投げたチームは約1秒さわれない（画面に「取れないチーム」が伝わる）', sim.ball.holder === -1 && v1.lock === 0);
   run(sim, 25);
-  check('外し：約0.5秒たてば取れる', sim.ball.holder === 0 && sim.toView().ball!.lock === -1);
+  check('外し：約1秒たてば取れる', sim.ball.holder === 0 && sim.toView().ball!.lock === -1);
 }
 {
   // 横から入っても点にならない（はね返る）
