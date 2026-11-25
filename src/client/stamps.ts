@@ -79,13 +79,14 @@ export function setStampPortrait(fn: (charId: string, face: Face, job?: number) 
  * スタンプの HTML（DM の吹き出し・送るボタン・待機画面の表示で使う）。
  * tier = レア度（4 SR・5 SSR・6 UR）。同じ言葉でも、SSR は金の縁ときらめき、UR は虹色に光って動く
  */
-export function picStamp(i: number, tier = 4): string {
+/** rank = false なら左上の「SSR」「UR」の文字を出さない（チャットで送る・見るときは出さない） */
+export function picStamp(i: number, tier = 4, rank = true): string {
   const s = PIC_STAMPS[i];
   if (!s) return '';
   const faces = s.chars.map((c) => `<img alt="" src="${portraitOf(c, s.face, s.job)}"/>`).join('');
   const t = tier >= 6 ? 6 : tier >= 5 ? 5 : 4;
   const shine = t >= 5 ? `<svg class="ps-shine" viewBox="0 0 100 100" aria-hidden="true"><path d="M12 6l2 5 5 2-5 2-2 5-2-5-5-2 5-2z M88 64l1.6 4 4 1.6-4 1.6-1.6 4-1.6-4-4-1.6 4-1.6z" fill="${t >= 6 ? '#fff' : '#fff3b0'}"/></svg>` : '';
-  return `<span class="pic-stamp t${t} ${s.chars.length > 1 ? 'group' : ''}" style="--sc:${s.color}">${t >= 5 ? `<i class="ps-rank">${t >= 6 ? 'UR' : 'SSR'}</i>` : ''}${shine}<span class="ps-faces">${faces}</span><svg class="ps-deco" viewBox="0 0 100 100" aria-hidden="true">${s.deco}</svg><b class="${[...s.text].length >= 7 ? 'long' : ''}">${s.text}</b></span>`;
+  return `<span class="pic-stamp t${t} ${s.chars.length > 1 ? 'group' : ''}" style="--sc:${s.color}">${t >= 5 && rank ? `<i class="ps-rank">${t >= 6 ? 'UR' : 'SSR'}</i>` : ''}${shine}<span class="ps-faces">${faces}</span><svg class="ps-deco" viewBox="0 0 100 100" aria-hidden="true">${s.deco}</svg><b class="${[...s.text].length >= 7 ? 'long' : ''}">${s.text}</b></span>`;
 }
 
 /** レア度の名前 */
