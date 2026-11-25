@@ -1047,7 +1047,7 @@ function renderDm(): void {
     : list.length
       ? list
           .map(
-            (m) => `<div class="dm-row ${m.me ? 'me' : ''}"><div class="dm-bubble ${m.k === 's' ? 'pic' : ''}">${m.k === 'p' ? esc(DM_PHRASES[m.i] ?? '') : picStamp(m.i, m.t ?? 4)}${
+            (m) => `<div class="dm-row ${m.me ? 'me' : ''}"><div class="dm-bubble ${m.k === 's' ? 'pic' : ''}">${m.k === 'p' ? esc(DM_PHRASES[m.i] ?? '') : picStamp(m.i, m.t ?? 4, false)}${
               m.r && !m.me && !inRoom ? `<button type="button" class="btn small primary dm-join" data-dmjoin="${m.r}">ルーム ${m.r} に参加する</button>` : m.r ? `<small class="dm-room">ルーム ${m.r}</small>` : ''
             }</div><small class="dm-time">${hm(m.at)}</small></div>`,
           )
@@ -2551,7 +2551,7 @@ function bindStampBar(root: HTMLElement): void {
 function ownedStampButtons(attr: 'dmsend' | 'pstamp', extra = ''): string {
   return PIC_STAMPS.map((_, i) => {
     const t = stampTier(wallet, i);
-    return t ? `<button type="button" class="pic-btn" data-${attr}="${attr === 'dmsend' ? `s:${i}` : i}" ${extra}>${picStamp(i, t)}</button>` : '';
+    return t ? `<button type="button" class="pic-btn" data-${attr}="${attr === 'dmsend' ? `s:${i}` : i}" ${extra}>${picStamp(i, t, false)}</button>` : '';
   }).join('');
 }
 /** まだ持っていないスタンプがあるときの案内 */
@@ -4713,7 +4713,7 @@ const net = new NetClient({
     toast(msg, 4000);
   },
   onStamp(slot, name, id, pic, tier) {
-    if (pic) showStamp(slot, name, '', picStamp(id, tier));
+    if (pic) showStamp(slot, name, '', picStamp(id, tier, false));
     else showStamp(slot, name, STAMPS[id] ?? '');
   },
   onRoulette(stageId) {
