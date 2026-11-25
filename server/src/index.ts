@@ -88,7 +88,9 @@ export default {
     const m = url.pathname.match(/^\/room\/(\d{4})$/);
     if (m) {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('WebSocket only', { status: 426 });
-      const stub = env.ROOMS.get(env.ROOMS.idFromName(m[1]));
+      // ルームの置き場所は、最初に作られたときに決まり、あとから動かない。遊ぶ人はほぼ日本なので、北東アジアに置く
+      // （前の名前のままだと、以前に海外で作られたルームを使い続けてしまうので、名前に印を付けて作り直す）
+      const stub = env.ROOMS.get(env.ROOMS.idFromName('jp:' + m[1]), { locationHint: 'apac-ne' });
       return stub.fetch(req);
     }
     if (url.pathname === '/') {
