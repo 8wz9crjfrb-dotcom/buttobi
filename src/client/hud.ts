@@ -221,7 +221,7 @@ export class Hud {
         const dots = (n: number) => `<span class="bs-dots">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
         const tip = document.createElement('div');
         tip.className = 'hud-ballstats';
-        tip.innerHTML = `<div class="ball-stats"><span class="tag">あなたの玉入れの性能</span><span class="bs-row">投げる力${dots(st.throw)}</span><span class="bs-row">足の速さ${dots(st.speed)}</span><span class="bs-row">奪う力${dots(st.steal)}</span></div>`;
+        tip.innerHTML = `<div class="ball-stats"><span class="tag">あなたの玉入れの性能</span><span class="bs-row">投げる力${dots(st.throw)}</span><span class="bs-row">足の速さ${dots(st.speed)}</span><span class="bs-row">奪う力${dots(st.steal)}</span><span class="bs-row">ジャンプ力${dots(st.jump)}</span></div>`;
         this.el.appendChild(tip);
         setTimeout(() => tip.classList.add('gone'), 6000);
         setTimeout(() => tip.remove(), 7000);

@@ -2091,7 +2091,10 @@ export class Sim {
 
   /** ジャンプの高さの倍率（重い愛のハートで重いと低い） */
   private jumpMul(f: Fighter): number {
-    return f.heavyT > 0 ? MENHERA.heavy.jump : 1;
+    let m = f.heavyT > 0 ? MENHERA.heavy.jump : 1;
+    // 玉入れ：ジャンプの高さはキャラの「ジャンプ力」で決める（ふだんの高さではなく、みんな同じ基準から）
+    if (this.setup.rules.mode === 'ball' && !this.solo) m *= (THROW.jumpBase * (1 + (ballStats(f.def.id).jump - 3) * THROW.perJump)) / f.def.jumpV;
+    return m;
   }
 
   private updateHeart(at: number): void {

@@ -2,7 +2,7 @@
 import { Sim, COUNTDOWN_FRAMES, BALL, ballBaskets } from '../src/shared/sim';
 import { ballTeamOf, playerColor, TEAM_COLORS } from '../src/shared/characters';
 import { decodeState, encodeState } from '../src/shared/protocol';
-import { BTN_A, BTN_B, BTN_SHIELD, type InputState, type MatchRules, type PlayerSetup } from '../src/shared/types';
+import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type InputState, type MatchRules, type PlayerSetup } from '../src/shared/types';
 import { ballRun } from './ball-balance';
 
 let fail = 0;
@@ -267,5 +267,30 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   }
   check('CPU：4人の試合で点が入る', goals >= 8, `4試合で${goals}点`);
   check('CPU：試合がきちんと終わる', ended === 4);
+}
+// ---- ジャンプ力：重たいキャラ（トレーナー・ジャンプ力1）は、軽いキャラ（メンヘラ・ジャンプ力4）より低い
+{
+  const peak = (charId: string, mode: 'ball' | 'stock') => {
+    const sim = new Sim({ players: [P(0, charId), P(1, 'hacker')], stageId: 'plain', rules: { mode, stocks: 3, timeLimit: 120, goals: 5 }, seed: 1 });
+    while (sim.frame <= COUNTDOWN_FRAMES + 60) sim.step(new Map());
+    const f = sim.fighters[0];
+    f.x = -3;
+    sim.fighters[1].x = 6;
+    sim.ball.x = 8;
+    const y0 = f.y;
+    let top = y0;
+    for (let i = 0; i < 70; i++) {
+      sim.step(new Map([[0, { mx: 0, my: 0, buttons: i < 12 ? BTN_JUMP : 0 }]]));
+      top = Math.max(top, f.y);
+    }
+    return top - y0;
+  };
+  const heavy = peak('trainer', 'ball');
+  const light = peak('menhera', 'ball');
+  check('ジャンプ力：重たいキャラほど低く跳ぶ（玉入れ）', light > heavy * 1.3, `トレーナー ${heavy.toFixed(2)}m / メンヘラ ${light.toFixed(2)}m`);
+  // ほかのルールでは、いつものジャンプの高さ（トレーナーとメンヘラの差は小さい）
+  const h2 = peak('trainer', 'stock');
+  const l2 = peak('menhera', 'stock');
+  check('ジャンプ力：玉入れ以外のルールでは、いつもの高さのまま', l2 / h2 < 1.25 && Math.abs(h2 - heavy) > 0.3, `トレーナー ${h2.toFixed(2)}m / メンヘラ ${l2.toFixed(2)}m`);
 }
 process.exit(fail ? 1 : 0);

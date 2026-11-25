@@ -1,28 +1,29 @@
 // 玉入れ（投げる玉入れ）：キャラごとの性能と、投げたときの速さの計算（試合の計算・投げる道筋の表示・CPUで共通に使う）
 
-/** キャラごとの玉入れの性能（1〜5。3がふつう）。throw = 投げる力、speed = ボールを持って走る速さ、steal = 奪う力（届く距離） */
+/** キャラごとの玉入れの性能（1〜5。3がふつう）。throw = 投げる力、speed = ボールを持って走る速さ、steal = 奪う力（届く距離）、jump = ジャンプ力（重たいキャラほど低い） */
 export interface BallStats {
   throw: number;
   speed: number;
   steal: number;
+  jump: number;
 }
 
 export const BALL_STATS: Record<string, BallStats> = {
-  guard: { throw: 3, speed: 2, steal: 4 },
-  hacker: { throw: 3, speed: 3, steal: 3 },
-  thief: { throw: 2, speed: 4, steal: 5 },
-  streamer: { throw: 4, speed: 3, steal: 2 },
-  dopa: { throw: 2, speed: 5, steal: 3 },
-  gacha: { throw: 4, speed: 2, steal: 3 },
-  courier: { throw: 3, speed: 5, steal: 2 },
-  ai: { throw: 5, speed: 2, steal: 2 },
-  trainer: { throw: 5, speed: 1, steal: 4 },
-  threeb: { throw: 3, speed: 4, steal: 3 },
-  menhera: { throw: 2, speed: 3, steal: 5 },
+  guard: { throw: 3, speed: 2, steal: 4, jump: 2 },
+  hacker: { throw: 3, speed: 3, steal: 3, jump: 3 },
+  thief: { throw: 2, speed: 4, steal: 5, jump: 3 },
+  streamer: { throw: 4, speed: 3, steal: 2, jump: 3 },
+  dopa: { throw: 2, speed: 5, steal: 3, jump: 4 },
+  gacha: { throw: 4, speed: 2, steal: 3, jump: 2 },
+  courier: { throw: 3, speed: 5, steal: 2, jump: 3 },
+  ai: { throw: 5, speed: 2, steal: 2, jump: 3 },
+  trainer: { throw: 5, speed: 1, steal: 4, jump: 1 },
+  threeb: { throw: 3, speed: 4, steal: 3, jump: 3 },
+  menhera: { throw: 2, speed: 3, steal: 5, jump: 4 },
 };
 
 export function ballStats(charId: string): BallStats {
-  return BALL_STATS[charId] ?? { throw: 3, speed: 3, steal: 3 };
+  return BALL_STATS[charId] ?? { throw: 3, speed: 3, steal: 3, jump: 3 };
 }
 
 /** 玉入れの決まり */
@@ -38,6 +39,9 @@ export const THROW = {
   /** 奪える距離（横・縦。奪う力3のとき）と、1段階ごとの横の距離の差 */
   stealX: 1.3,
   stealY: 1.7,
+  /** ジャンプの速さ（ジャンプ力3のとき）と、1段階ごとの差 */
+  jumpBase: 13.2,
+  perJump: 0.07,
   perSteal: 0.15,
   /** 奪いに失敗したあと、次に奪えるまで（フレーム） */
   stealMiss: 45,

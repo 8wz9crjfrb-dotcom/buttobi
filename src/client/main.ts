@@ -1344,7 +1344,7 @@ function charDetail(id: string): string {
 function ballStatsHtml(charId: string): string {
   const st = ballStats(charId);
   const dots = (n: number) => `<span class="bs-dots">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
-  return `<div class="ball-stats"><span class="tag">玉入れの性能</span><span class="bs-row">投げる力${dots(st.throw)}</span><span class="bs-row">足の速さ${dots(st.speed)}</span><span class="bs-row">奪う力${dots(st.steal)}</span></div>`;
+  return `<div class="ball-stats"><span class="tag">玉入れの性能</span><span class="bs-row">投げる力${dots(st.throw)}</span><span class="bs-row">足の速さ${dots(st.speed)}</span><span class="bs-row">奪う力${dots(st.steal)}</span><span class="bs-row">ジャンプ力${dots(st.jump)}</span></div>`;
 }
 
 /** 技の一覧（4つの必殺技・特性・共通の技の説明）を、今の画面の上に重ねて出す。閉じると元の画面に戻る */

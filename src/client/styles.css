@@ -6354,9 +6354,22 @@ table.rec td:first-child {
 .hud-ballstats.gone {
   opacity: 0;
 }
+.bs-row {
+  white-space: nowrap;
+}
+/* キャラ選択では「玉入れの性能」の横に 2 列 × 2 行で並べる */
 .char-detail .ball-stats {
-  flex-wrap: nowrap;
-  gap: 4px 10px;
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: start;
+  gap: 4px 14px;
   font-size: 12px;
   margin: 4px 0;
+}
+.char-detail .ball-stats .tag {
+  grid-row: span 2;
+  white-space: nowrap;
+}
+.char-detail .ball-stats .bs-row {
+  justify-content: space-between;
 }
