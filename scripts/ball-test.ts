@@ -456,4 +456,10 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   const stole = sim.ball.holder === 0;
   check('奪う：成功したら、約1秒は次の「奪う」が使えない', stole && a.stealCd >= THROW.stealMiss - 3 && THROW.stealMiss === 60, `残り ${a.stealCd}`);
 }
+// ---- アイテム：玉入れでは出ない（ルールで「あり」になっていても）
+{
+  const sim = make(2, { items: true, itemRate: 'high' });
+  run(sim, 60 * 40);
+  check('アイテム：玉入れでは、アイテムは出ない', !sim.entities.some((e) => e.kind === 'item') && !sim.dropItem(0, 0));
+}
 process.exit(fail ? 1 : 0);

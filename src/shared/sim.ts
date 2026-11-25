@@ -2321,7 +2321,8 @@ export class Sim {
   }
 
   private updateItems(): void {
-    if (!this.setup.rules.items) return;
+    // 玉入れではアイテムは出ない
+    if (!this.setup.rules.items || this.setup.rules.mode === 'ball') return;
     const kinds = this.itemKinds();
     if (!kinds.length) return;
     const t = this.frame - COUNTDOWN_FRAMES;
@@ -2339,7 +2340,7 @@ export class Sim {
    * アイテムの「あり・なし」のルールに関係なく落とせる。落とせたら true
    */
   dropItem(kind: number, x: number): boolean {
-    if (this.finished || this.frame <= COUNTDOWN_FRAMES) return false;
+    if (this.finished || this.frame <= COUNTDOWN_FRAMES || this.setup.rules.mode === 'ball') return false;
     // ルールで出さないことにしたアイテムは落とせない
     if (!this.itemKinds().includes(kind)) return false;
     const m = this.stage.main;

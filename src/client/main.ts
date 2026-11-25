@@ -1692,7 +1692,7 @@ const MODE_INFO: Record<MatchRules['mode'], { name: string; desc: string; player
   time: { name: 'タイム', desc: '時間内に何度でも復活。撃墜した数から落ちた数を引いた点が多い人の勝ち（同点なら%が低いほう）', players: '2〜4人' },
   stamina: { name: '体力制', desc: '%のかわりにHPで戦う。HPが0になるとその場で撃墜。ふっとびは小さめで、削り合いになる', players: '2〜4人' },
   area: { name: 'エリアバトル', desc: 'エリアに自分（チーム）だけが立っている間ゲージがたまる。先に満タンにするか、時間切れで多い人の勝ち', players: '3〜4人' },
-  ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを相手のかごに真上から投げ入れる（かごのふちに当たるとはね返る）。床の「2P」の線より遠くから入れると2点。攻撃はできない。ボールに触れると拾う。「投げる」を押したまま引っ張って狙い、離すと投げる（薄い線が道筋）。引っ張らずに単押しすると、後ろにいる味方へパス。時間切れで同点なら、1点入るまで延長（最長60秒、入らなければ引き分け）。「奪う」で近くの相手からボールを奪える。「構える」の間は奪われない。キャラごとに投げる力・足の速さ・奪う力・ジャンプ力がちがう。チームはタップで選ぶ', players: '2人・4人' },
+  ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを相手のかごに真上から投げ入れる（かごのふちに当たるとはね返る）。床の「2点」の線より遠くから入れると2点。アイテムは出ない。攻撃はできない。ボールに触れると拾う。「投げる」を押したまま引っ張って狙い、離すと投げる（薄い線が道筋）。引っ張らずに単押しすると、後ろにいる味方へパス。時間切れで同点なら、1点入るまで延長（最長60秒、入らなければ引き分け）。「奪う」で近くの相手からボールを奪える。「構える」の間は奪われない。キャラごとに投げる力・足の速さ・奪う力・ジャンプ力がちがう。チームはタップで選ぶ', players: '2人・4人' },
   crown: { name: '王冠うばい', desc: '最初に相手を倒した人が王冠を手に入れ、持っている間だけ時間がたまる。持っている人に攻撃を当て続け、合計20%のダメージで奪える（王冠の上に残りの耐久が出る）。決めた時間だけ持つか、時間切れで一番長く持っていた人の勝ち', players: '3〜4人' },
   vault: { name: '金庫まもり', desc: '赤・青の2チームで自分の金庫を守り、相手の金庫を攻撃で壊す（飛び道具も当たる）。先に壊すか、時間切れで多く壊したチームの勝ち。チームはタップで選ぶ', players: '2人・4人' },
   bounty: { name: '賞金首', desc: '撃墜で1点、自分で落ちると1点減る。点が一番多い人（2点以上）は賞金首になり、倒すと3点。時間切れで点が一番多い人の勝ち', players: '3人以上（3人でも楽しめる）' },
@@ -1721,7 +1721,7 @@ function ruleControls(rules: MatchRules): string {
     <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>
     <div class="opt" data-hide="ball">チーム戦 ${seg('teams', [['on', 'あり'], ['off', 'なし']], rules.teams ? 'on' : 'off')}</div>
     <div class="opt" data-team data-ff>味方への攻撃 ${seg('ff', [['off', '当たらない'], ['on', '当たる']], rules.friendlyFire ? 'on' : 'off')}</div>
-    <div class="opt">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
+    <div class="opt" data-hide="ball">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
     <div class="opt" data-items>アイテムの頻度 ${seg('irate', [['low', '少ない'], ['mid', '普通'], ['high', '多い']], rules.itemRate ?? 'mid')}</div>
     <div class="opt opt-wide" data-items>出るアイテム（乱入アイテムも同じ）<div class="item-chips">${ITEM_NAMES.map((n, i) => `<button type="button" class="ichip ${(rules.itemKinds ?? ITEM_NAMES.map((_, k) => k)).includes(i) ? 'on' : ''}" data-ikind="${i}"><b>${n}</b><small>${ITEM_INFO[i].short}</small></button>`).join('')}</div></div>
     <div class="opt">ステージギミック ${seg('gim', [['on', 'あり'], ['off', 'なし']], rules.gimmicks ? 'on' : 'off')}</div>`;
@@ -1736,7 +1736,8 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     root.querySelectorAll<HTMLElement>('[data-show]').forEach((el) => el.classList.toggle('hidden', !el.dataset.show!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-hide]').forEach((el) => el.classList.toggle('hidden', el.dataset.hide!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.classList.toggle('hidden', !rules.teams));
-    root.querySelectorAll<HTMLElement>('[data-items]').forEach((el) => el.classList.toggle('hidden', !rules.items));
+    // 玉入れではアイテムを使わないので、アイテムの設定は出さない
+    root.querySelectorAll<HTMLElement>('[data-items]').forEach((el) => el.classList.toggle('hidden', !rules.items || rules.mode === 'ball'));
     // 玉入れは「味方への攻撃」の設定を使わない（相手への攻撃の設定がある）
     root.querySelectorAll<HTMLElement>('[data-ff]').forEach((el) => el.classList.toggle('hidden', !rules.teams || rules.mode === 'ball'));
     // 金庫まもりは「チーム戦 あり／なし」を選ばない（いつも2チーム）
@@ -2202,7 +2203,7 @@ function bindTabs(root: HTMLElement, onPick: (k: string) => void): void {
 /** 選んだ内容のまとめ（対戦開始ボタンの横に出す） */
 function ruleSummary(rules: MatchRules, stageId: string, cpu: number | null, cpuLevel: number): string {
   const st = stageId === RANDOM_STAGE ? 'ステージおまかせ' : getStage(stageId).name;
-  return [st, ruleText(rules), cpu === null ? '' : `CPU${cpu}人（強さ${cpuLevel}）`, `アイテム${rules.items ? 'あり' : 'なし'}`].filter(Boolean).join('・');
+  return [st, ruleText(rules), cpu === null ? '' : `CPU${cpu}人（強さ${cpuLevel}）`, rules.mode === 'ball' ? '' : `アイテム${rules.items ? 'あり' : 'なし'}`].filter(Boolean).join('・');
 }
 let localRulesTab = 'stage';
 let lobbyTab = 'stage';
@@ -4871,7 +4872,7 @@ function showLobby(): void {
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
         ${cpus.length ? `<div class="opt opt-wide"><div class="opt-label">CPUのキャラ（タップで変える）</div>${cpus.map((p, i) => `<button type="button" class="cpu-chip ${p.charId === RANDOM_CHAR ? 'rnd' : ''}" data-lcpu="${i}"><small>CPU${i + 1}</small>${p.charId === RANDOM_CHAR ? `${diceMark()}おまかせ` : esc(getCharacter(p.charId).name)}</button>`).join('')}</div>` : ''}
       </div></div>`
-    : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)} ／ アイテム${l.rules.items ? 'あり' : 'なし'} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}${tourOn ? ` ／ 乱入アイテム${l.dropOn !== false ? 'あり' : 'なし'}` : ''}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
+    : `<p class="help">${tourOn ? `<b>トーナメント</b>（1対1の勝ち抜き戦・3位決定戦${l.tourThird !== false ? 'あり' : 'なし'}） ／ ` : ''}ステージ：${l.stageId === RANDOM_STAGE ? 'おまかせ（毎試合ランダム）' : getStage(l.stageId).name} ／ ルール：${ruleText(l.rules)}${l.rules.mode === 'ball' ? '' : ` ／ アイテム${l.rules.items ? 'あり' : 'なし'}`} ／ ギミック${l.rules.gimmicks ? 'あり' : 'なし'}${tourOn ? ` ／ 乱入アイテム${l.dropOn !== false ? 'あり' : 'なし'}` : ''}<br/>★のホストが開始するのを待っています…${l.rules.teams ? '<br/>自分の枠をタップするとチームを変えられます。' : ''}</p>`;
   const teamCount = new Set(l.players.map((p) => (isTwoTeam(l.rules.mode) ? (p.team ?? 0) % 2 : p.team ?? 0))).size;
   // 準備OK：人（CPU以外）のうち押している数。全員そろうとホストの開始ボタンが光る
   const humanList = l.players.filter((p) => !p.cpu && p.connected);

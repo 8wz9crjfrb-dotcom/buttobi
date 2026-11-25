@@ -1553,7 +1553,7 @@ export class GameRenderer {
       bottom.position.set(g.cx, g.y1 + 0.01, -0.1);
       root.add(bottom);
     });
-    // 2ポイントライン：かごの中心から THROW.twoPoint の所の床に、そのかごの色の線と「2P」の札（矢印はかごの向き。ここより遠くから入れると2点）
+    // 2ポイントライン：かごの中心から THROW.twoPoint の所の床に、そのかごの色の線と「2点」の札（矢印はかごの向き。ここより遠くから入れると2点）
     ballBaskets(stage).forEach((g, k) => {
       const toward = k === 0 ? -1 : 1;
       const lx = g.cx - toward * THROW.twoPoint;
@@ -1573,11 +1573,11 @@ export class GameRenderer {
         c.fill();
         c.stroke();
         c.fillStyle = '#ffffff';
-        c.font = '900 46px sans-serif';
+        c.font = '900 38px sans-serif';
         c.textAlign = 'center';
         c.textBaseline = 'middle';
         // 矢印はかごのある向き
-        c.fillText(toward < 0 ? '◀2P' : '2P▶', 64, 66);
+        c.fillText(toward < 0 ? '◀2点' : '2点▶', 64, 66);
       });
       const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
       tag.scale.set(1.0, 1.0, 1);
