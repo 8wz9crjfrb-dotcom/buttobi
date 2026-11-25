@@ -1892,7 +1892,7 @@ function showNews(): void {
       <div class="modal-body news-list">${NEWS.map(
         (n) => `<section class="news-item">
           <div class="news-head"><b>${esc(n.title)}</b><small>${n.date}</small>${n.id > seen ? '<span class="news-new">NEW</span>' : ''}</div>
-          <ul>${n.items.map((it) => `<li class="${it.kind}"><span class="news-tag ${it.kind}">${NEWS_LABEL[it.kind]}</span>${esc(it.text)}</li>`).join('')}</ul>
+          <ul>${n.items.map((it) => `<li class="${it.kind}"><span class="news-tag ${it.kind}">${NEWS_LABEL[it.kind]}</span>${it.sub ? `<div>${esc(it.text)}<ul class="news-sub">${it.sub.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>` : esc(it.text)}</li>`).join('')}</ul>
         </section>`,
       ).join('')}</div>
       <div class="footer">${newsDebuts().map((d) => `<button class="btn" data-debut="${d.id}">${HIDDEN_CHARS.includes(d.charId) ? '（確認用）' : ''}${esc(d.name)}の登場映像</button>`).join('')}<button class="btn primary" data-close>閉じる</button></div>

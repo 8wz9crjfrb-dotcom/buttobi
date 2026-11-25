@@ -6,7 +6,8 @@ export interface NewsEntry {
   id: string;
   date: string;
   title: string;
-  items: { kind: NewsKind; text: string }[];
+  /** sub：本文の下に並べる箇条書き（長い説明を読みやすくする） */
+  items: { kind: NewsKind; text: string; sub?: string[] }[];
 }
 
 export const NEWS_LABEL: Record<NewsKind, string> = { new: '新機能', buff: '強化', nerf: '弱体化', fix: '修正' };

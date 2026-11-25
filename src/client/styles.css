@@ -4809,6 +4809,18 @@ table.rec td:first-child {
   align-items: flex-start;
   line-height: 1.45;
 }
+.news-item ul.news-sub {
+  margin-top: 5px;
+  padding-left: 1.2em;
+  list-style: disc;
+  display: block;
+  font-size: 13px;
+}
+.news-item ul.news-sub li {
+  display: list-item;
+  margin-bottom: 3px;
+  font-size: 13px;
+}
 /* 新機能だけ少し大きく */
 .news-item li.new {
   font-size: 15px;
