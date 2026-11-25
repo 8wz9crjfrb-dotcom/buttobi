@@ -4,7 +4,7 @@
 import { CHARACTERS, getCharacter, threebDef, type CharacterDef } from './characters';
 import { ABSORB, ALARM, RECOMMEND, CLOSE, MENHERA, CROWN, BOUNTY, COINS, VAULT, SLEEP_MAX, SUDDEN, REWIND, SHOT_HITSTUN, BIKE, CHARGE, DECOY, DEFLECT, GACHA1_CRIT, GACHA_RATES, GIMMICK, GRAB, ITEMS, DRONE, FOOD, moveOf, PAY, PITY, POPUP, PULL, SCROLL_FINISH, SLEEP_KB, SPEEDUP, SWAP, TETHER, THREEB_RULES, TRAINER, TRAP, WALL, type MoveDef, type ShotKind, type ShotSpec } from './moves';
 import { Rng } from './rng';
-import { BALL_DRAG, BALL_GRAVITY, ballStats, THROW, throwVelocity } from './ballThrow';
+import { BALL_DRAG, BALL_GRAVITY, ballStats, passVelocity, pickPassMate, THROW, throwVelocity, type PassMate } from './ballThrow';
 import { platformAt, stageFor, WIDE_PLAYERS, type StageDef } from './stages';
 
 /** 大人数（WIDE_PLAYERS 人以上）の試合のふっとびの倍率 */
@@ -1163,8 +1163,10 @@ export class Sim {
     if (f.ballAiming) {
       f.ballAiming = false;
       const len = Math.hypot(f.ballAimX, f.ballAimY);
-      if (holding && len >= THROW.deadZone) {
-        const v = throwVelocity(f.def.id, f.ballAimX, f.ballAimY);
+      // 引っ張らずに離した（単押し）：後ろにいる味方へパス。前にしか味方がいない・味方がいないときは何もしない
+      const mate = holding && len < THROW.deadZone ? this.ballPassMate(f) : null;
+      if (holding && (len >= THROW.deadZone || mate)) {
+        const v = mate ? passVelocity(f.def.id, b.x, b.y, mate) : throwVelocity(f.def.id, f.ballAimX, f.ballAimY);
         b.holder = -1;
         b.vx = v.vx;
         b.vy = v.vy;
@@ -1200,6 +1202,13 @@ export class Sim {
       }
     }
     return out;
+  }
+
+  /** パスの相手（自分が狙うかごから見て後ろにいる、いちばん近い味方）。いなければ null */
+  ballPassMate(f: Fighter): PassMate | null {
+    const goal = ballBaskets(this.stage)[1 - (f.team % 2)];
+    const mates = this.fighters.filter((o) => o !== f && o.team % 2 === f.team % 2 && o.alive && !o.out && o.state !== 'dead');
+    return pickPassMate(f.x, goal.cx, mates);
   }
 
   /** 巻き戻し：打った人の画面に映っていた（少し前の）ボールの位置のどこかに届いていたか */

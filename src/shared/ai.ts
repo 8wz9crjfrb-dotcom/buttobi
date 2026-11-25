@@ -450,6 +450,15 @@ export class CpuController {
         b.holdFrames = 12 + Math.round(this.rng.range(0, 14));
         return b.hold;
       }
+      // 前に相手が立ちふさがっていて、後ろの味方が空いている：単押しで味方へパス
+      const ahead = sim.fighters.find((o) => o.alive && !o.out && !sim.sameTeam(o, f) && Math.sign(o.x - f.x) === (Math.sign(g.cx - f.x) || 1) && Math.abs(o.x - f.x) < 3.2 && Math.abs(o.y - f.y) < 2);
+      const mate = ahead && f.grounded ? sim.ballPassMate(f) : null;
+      const open = mate && !sim.fighters.some((o) => o.alive && !o.out && !sim.sameTeam(o, f) && Math.abs(o.x - mate.x) < 1.6 && Math.abs(o.y - mate.y) < 2);
+      if (mate && open && this.rng.chance(0.02 + lv * 0.01)) {
+        b.hold = { mx: 0, my: 0, buttons: BTN_B };
+        b.holdFrames = 3 + Math.round(this.rng.range(0, 4));
+        return b.hold;
+      }
       const dist = 4.5 + (this.rng.next() < 0.5 ? 0 : 1.5);
       const spot = g.cx - toGoal * dist;
       if (Math.abs(f.x - spot) > 0.9 || !f.grounded) return walk(spot);

@@ -4,13 +4,13 @@ import { IS_TEST } from './testEnv';
 import './styles.css';
 import { CpuController } from '../shared/ai';
 import { ballTeamOf, CHARACTERS, RANDOM_CHAR, getCharacter, HIDDEN_CHARS, PREVIEW, PREVIEW_KEY, nameCpus, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, SPECIAL_DESCS, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
-import { THROW, throwPath, throwVelocity, ballStats } from '../shared/ballThrow';
+import { THROW, throwPath, throwVelocity, ballStats, passVelocity, pickPassMate } from '../shared/ballThrow';
 import { FREE_STAMPS, picStamp, PIC_STAMPS, setStampPortrait, tierName } from './stamps';
 import { cardBgAttrs, CARD_BG_GROUPS, CARD_BGS } from './cardBgs';
 import { ITEM_COST, ITEM_DUP_REFUND, itemCounts, ownsBg, pullItems, stampTier, type ItemPull } from './items';
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
-import { COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
+import { ballBaskets, COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
 import { moveOf } from '../shared/moves';
 import { RANDOM_STAGE, resolveStage, STAGES, getStage, stageFor } from '../shared/stages';
 import { BTN_B, BTN_JUMP, BTN_SHIELD, DEFAULT_HP, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
@@ -280,11 +280,24 @@ function updateThrowGuide(s: Session, v: ViewState): void {
   const b = v.ball;
   const me = s.mySlot !== null ? v.fighters.find((f) => f.slot === s.mySlot) : undefined;
   const inp = b && me && b.holder === me.slot && !v.ended ? readInput() : null;
-  if (!b || !me || !inp || !(inp.buttons & BTN_B) || Math.hypot(inp.mx, inp.my) < THROW.deadZone) return renderer.setThrowGuide(null);
+  if (!b || !me || !inp || !(inp.buttons & BTN_B)) return renderer.setThrowGuide(null);
   const charId = s.setup.players.find((p) => p.slot === me.slot)?.charId ?? 'hacker';
-  const vel = throwVelocity(charId, inp.mx, inp.my);
+  const stage = stageFor(s.setup.stageId, s.setup.players.length, false);
+  let vel: { vx: number; vy: number };
+  if (Math.hypot(inp.mx, inp.my) < THROW.deadZone) {
+    // 引っ張っていない：離すと後ろの味方へパスする。その道筋を出す（味方がいなければ出さない）
+    const team = (i: number) => (s.setup.rules.teams ? s.setup.players[i].team ?? i : i) % 2;
+    const myI = s.setup.players.findIndex((p) => p.slot === me.slot);
+    const mates = v.fighters.filter((o) => {
+      const i = s.setup.players.findIndex((p) => p.slot === o.slot);
+      return o.slot !== me.slot && i >= 0 && team(i) === team(myI) && !o.out && o.state !== 'dead';
+    });
+    const mate = myI >= 0 ? pickPassMate(me.x, ballBaskets(stage)[1 - team(myI)].cx, mates) : null;
+    if (!mate) return renderer.setThrowGuide(null);
+    vel = passVelocity(charId, b.x, b.y, mate);
+  } else vel = throwVelocity(charId, inp.mx, inp.my);
   // ステージの床より下に落ちるまで（最長約2.5秒）
-  const top = stageFor(s.setup.stageId, s.setup.players.length, false).main.top;
+  const top = stage.main.top;
   const pts = [{ x: b.x, y: b.y }, ...throwPath(b.x, b.y, vel.vx, vel.vy, 150, 1)];
   const end = pts.findIndex((p, i) => i > 0 && p.y < top);
   renderer.setThrowGuide(end > 0 ? pts.slice(0, end + 1) : pts);
@@ -1679,7 +1692,7 @@ const MODE_INFO: Record<MatchRules['mode'], { name: string; desc: string; player
   time: { name: 'タイム', desc: '時間内に何度でも復活。撃墜した数から落ちた数を引いた点が多い人の勝ち（同点なら%が低いほう）', players: '2〜4人' },
   stamina: { name: '体力制', desc: '%のかわりにHPで戦う。HPが0になるとその場で撃墜。ふっとびは小さめで、削り合いになる', players: '2〜4人' },
   area: { name: 'エリアバトル', desc: 'エリアに自分（チーム）だけが立っている間ゲージがたまる。先に満タンにするか、時間切れで多い人の勝ち', players: '3〜4人' },
-  ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを相手のかごに真上から投げ入れる。攻撃はできない。ボールに触れると拾う。「投げる」を押したまま引っ張って狙い、離すと投げる（薄い線が道筋）。「奪う」で近くの相手からボールを奪える。「構える」の間は奪われない。キャラごとに投げる力・足の速さ・奪う力・ジャンプ力がちがう。チームはタップで選ぶ', players: '2人・4人' },
+  ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを相手のかごに真上から投げ入れる。攻撃はできない。ボールに触れると拾う。「投げる」を押したまま引っ張って狙い、離すと投げる（薄い線が道筋）。引っ張らずに単押しすると、後ろにいる味方へパス。「奪う」で近くの相手からボールを奪える。「構える」の間は奪われない。キャラごとに投げる力・足の速さ・奪う力・ジャンプ力がちがう。チームはタップで選ぶ', players: '2人・4人' },
   crown: { name: '王冠うばい', desc: '最初に相手を倒した人が王冠を手に入れ、持っている間だけ時間がたまる。持っている人に攻撃を当て続け、合計20%のダメージで奪える（王冠の上に残りの耐久が出る）。決めた時間だけ持つか、時間切れで一番長く持っていた人の勝ち', players: '3〜4人' },
   vault: { name: '金庫まもり', desc: '赤・青の2チームで自分の金庫を守り、相手の金庫を攻撃で壊す（飛び道具も当たる）。先に壊すか、時間切れで多く壊したチームの勝ち。チームはタップで選ぶ', players: '2人・4人' },
   bounty: { name: '賞金首', desc: '撃墜で1点、自分で落ちると1点減る。点が一番多い人（2点以上）は賞金首になり、倒すと3点。時間切れで点が一番多い人の勝ち', players: '3人以上（3人でも楽しめる）' },

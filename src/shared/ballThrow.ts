@@ -137,3 +137,42 @@ export function speedToHit(charId: string, x: number, y: number, deg: number, tx
   }
   return (lo + hi) / 2;
 }
+
+/** パス：受ける味方の、ボールを届ける高さ（足元からの高さ） */
+export const PASS_CATCH_H = 1.0;
+
+/** パスできる味方の候補（試合の計算と画面で共通） */
+export interface PassMate {
+  slot: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * パスの相手：自分が狙うかご（goalX）から見て、自分より後ろ（遠い側）にいる味方のうち、いちばん近い人。
+ * 前にしか味方がいない・味方がいないときは null（パスしない）
+ */
+export function pickPassMate(x: number, goalX: number, mates: PassMate[]): PassMate | null {
+  let best: PassMate | null = null;
+  for (const m of mates) {
+    if (Math.abs(m.x - goalX) <= Math.abs(x - goalX) + 0.3) continue;
+    if (!best || Math.abs(m.x - x) < Math.abs(best.x - x)) best = m;
+  }
+  return best;
+}
+
+/** パスの速さ：味方の胸のあたりに山なりで届く強さを計算する（届かないほど遠ければ、いちばん強く投げる） */
+export function passVelocity(charId: string, x: number, y: number, mate: PassMate): { vx: number; vy: number } {
+  const tx = mate.x;
+  const ty = mate.y + PASS_CATCH_H;
+  const dir = Math.sign(tx - x) || 1;
+  for (const deg of [40, 52, 30, 65]) {
+    const sp = speedToHit(charId, x, y, deg, tx, ty);
+    if (sp === null) continue;
+    const a = (deg * Math.PI) / 180;
+    return { vx: Math.cos(a) * sp * dir, vy: Math.sin(a) * sp };
+  }
+  const top = throwTop(charId);
+  const a = (45 * Math.PI) / 180;
+  return { vx: Math.cos(a) * top * dir, vy: Math.sin(a) * top };
+}

@@ -293,4 +293,57 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   const l2 = peak('menhera', 'stock');
   check('ジャンプ力：玉入れ以外のルールでは、いつもの高さのまま', l2 / h2 < 1.25 && Math.abs(h2 - heavy) > 0.3, `トレーナー ${h2.toFixed(2)}m / メンヘラ ${l2.toFixed(2)}m`);
 }
+// ---- パス：「投げる」を引っ張らずに離すと、後ろ（狙うかごから遠い側）にいる味方へパス
+{
+  const setup = (mateBehind: boolean, n = 4) => {
+    const sim = make(n);
+    const [a] = sim.fighters;
+    const goal = ballBaskets(sim.stage)[1 - a.team];
+    const back = -Math.sign(goal.cx) || -1; // かごと反対の向き
+    a.x = 0;
+    a.y = sim.stage.main.top;
+    sim.ball.x = 0;
+    sim.ball.y = sim.stage.main.top + 1;
+    for (const o of sim.fighters.slice(1)) {
+      o.x = o.team === a.team ? (mateBehind ? back * 5 : -back * 5) : -back * 9;
+      o.y = sim.stage.main.top;
+      o.vx = 0;
+    }
+    run(sim, 20);
+    return { sim, a, mate: sim.fighters.find((o) => o !== a && o.team === a.team) };
+  };
+  const tap = (sim: Sim) => run(sim, 6, (i) => (i < 3 ? { mx: 0, my: 0, buttons: BTN_B } : N));
+  {
+    const { sim, a, mate } = setup(true);
+    check('パス：赤がボールを持つ', sim.ball.holder === a.slot);
+    tap(sim);
+    const thrown = sim.ball.holder === -1 && Math.sign(sim.ball.vx) === Math.sign(mate!.x - a.x);
+    for (let i = 0; i < 180 && sim.ball.holder === -1; i++) run(sim, 1);
+    check('パス：単押しで、後ろの味方へ投げる', thrown);
+    check('パス：後ろの味方が受け取る', sim.ball.holder === mate!.slot, `持っている人 ${sim.ball.holder}`);
+  }
+  {
+    const { sim, a } = setup(false);
+    tap(sim);
+    run(sim, 10);
+    check('パス：味方が前（かご側）にしかいないときは、何もしない', sim.ball.holder === a.slot);
+  }
+  {
+    const { sim, a } = setup(true, 2);
+    tap(sim);
+    run(sim, 10);
+    check('パス：味方がいない（1対1）ときは、何もしない', sim.ball.holder === a.slot);
+  }
+  {
+    const { sim, a, mate } = setup(true);
+    // 味方を場外へ出して撃墜する
+    mate!.x = sim.stage.blast.right + 2;
+    mate!.y = 3;
+    run(sim, 2);
+    const down = mate!.state === 'dead';
+    tap(sim);
+    run(sim, 10);
+    check('パス：後ろの味方が撃墜されて復活待ちのときは、何もしない', down && sim.ball.holder === a.slot);
+  }
+}
 process.exit(fail ? 1 : 0);
