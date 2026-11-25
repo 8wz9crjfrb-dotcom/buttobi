@@ -1444,6 +1444,8 @@ interface CharSelectOptions {
   onNext(charId: string): void;
   /** オンライン対戦：「おまかせ（試合ごとにランダム）」も選べる */
   allowRandom?: boolean;
+  /** 玉入れ：技・特性の代わりに、玉入れの性能を出す（玉入れでは技を使わないので） */
+  ball?: boolean;
 }
 
 /** オンライン対戦で使うキャラ（おまかせなら RANDOM_CHAR） */
@@ -1476,7 +1478,12 @@ function showCharSelect(o: CharSelectOptions): void {
     const c = getCharacter(id);
     return `<div class="cs-role">${c.role}</div><div class="cs-name">${c.name}</div>`;
   };
-  const detail = (id: string) => (id === RANDOM_CHAR ? '<p class="help">試合が始まるときに、キャラがランダムで決まります（衣装はいつもの服）。何が出るかはお楽しみ！</p>' : charDetail(id));
+  const detail = (id: string) =>
+    id === RANDOM_CHAR
+      ? '<p class="help">試合が始まるときに、キャラがランダムで決まります（衣装はいつもの服）。何が出るかはお楽しみ！</p>'
+      : o.ball
+        ? `<div class="cd-desc">玉入れでは技は使いません。キャラごとの性能がちがいます。</div>${ballStatsHtml(id)}`
+        : charDetail(id);
   const cos = (id: string) => (id === RANDOM_CHAR ? '' : costumeChips(id));
   showScreen(
     `<div class="cs-drag" data-charsel></div>
@@ -2139,6 +2146,8 @@ function showLocalSetup(fromRules = false): void {
     slot: 0,
     current: settings.charId,
     nextLabel: fromRules ? '決定' : 'つぎへ',
+    // 今選んでいるルールが玉入れなら、玉入れの性能を出す
+    ball: settings.rules.mode === 'ball',
     onBack: fromRules ? () => showLocalRules() : () => showMenu('solo'),
     onNext: () => showLocalRules(),
   });
@@ -4941,6 +4950,7 @@ function showLobby(): void {
           current: me?.charId ?? onlineChar(),
           nextLabel: 'これにする',
           allowRandom: true,
+          ball: l.rules.mode === 'ball',
           onBack: showLobby,
           onNext: (id) => {
             net.costumeMap = myCostumeMap();

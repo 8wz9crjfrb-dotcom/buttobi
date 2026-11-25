@@ -6354,3 +6354,9 @@ table.rec td:first-child {
 .hud-ballstats.gone {
   opacity: 0;
 }
+.char-detail .ball-stats {
+  flex-wrap: nowrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  margin: 4px 0;
+}

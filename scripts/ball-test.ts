@@ -148,6 +148,35 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   check('ゴール：出し直したボールは中央', sim.ball.on && Math.abs(sim.ball.x) < 1);
 }
 {
+  // 点を取ったチーム（赤）は、次に出てくるボールを約1秒は取れない。取られたチーム（青）は取れる
+  const sim = make();
+  const g = ballBaskets(sim.stage)[1];
+  const [a, v] = sim.fighters;
+  a.x = -8;
+  v.x = 8;
+  Object.assign(sim.ball, { x: g.cx, y: g.y2 + 0.5, vx: 0, vy: -2, holder: -1 });
+  run(sim, 20);
+  check('点を取った：赤の点', sim.ballScore.join() === '1,0');
+  run(sim, BALL.respawn);
+  // 出てきたボールの真下に赤を立たせる
+  a.x = sim.ball.x;
+  run(sim, 40);
+  check('点を取ったチームは、出てきたボールを約1秒取れない', sim.ball.holder === -1);
+  run(sim, 40);
+  check('約1秒たてば取れる', sim.ball.holder === 0);
+  // 取られた側は、すぐに取れる
+  const s2 = make();
+  const g2 = ballBaskets(s2.stage)[1];
+  s2.fighters[0].x = -8;
+  s2.fighters[1].x = 8;
+  Object.assign(s2.ball, { x: g2.cx, y: g2.y2 + 0.5, vx: 0, vy: -2, holder: -1 });
+  run(s2, 20);
+  run(s2, BALL.respawn);
+  s2.fighters[1].x = s2.ball.x;
+  run(s2, 40);
+  check('点を取られたチームは、出てきたボールをすぐ取れる', s2.ball.holder === 1);
+}
+{
   // 横から入っても点にならない（はね返る）
   const sim = make();
   const g = ballBaskets(sim.stage)[1];

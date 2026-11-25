@@ -457,8 +457,9 @@ export const BALL = {
 /** 玉入れのかご（0 = 赤チームが守る左、1 = 青チームが守る右）。床の端の上に、ポールで少し高く付ける */
 export function ballBaskets(stage: StageDef): { x1: number; x2: number; y1: number; y2: number; cx: number }[] {
   const m = stage.main;
-  const w = Math.min(2.2, (m.x2 - m.x1) * 0.13);
-  return [m.x1 + 1.4, m.x2 - 1.4].map((cx) => ({ cx, x1: cx - w / 2, x2: cx + w / 2, y1: m.top + 1.8, y2: m.top + 3.4 }));
+  // 口の幅は小さめ、高さは高め（真上から落とさないと入らない）。台の端の近くに置いて、かごどうしの距離を広く
+  const w = Math.min(1.7, (m.x2 - m.x1) * 0.1);
+  return [m.x1 + 0.9, m.x2 - 0.9].map((cx) => ({ cx, x1: cx - w / 2, x2: cx + w / 2, y1: m.top + 2.9, y2: m.top + 4.3 }));
 }
 
 /** 決まった値から作る、ばらつきのある整数（エリアの場所選びに使う。試合ごとに同じ結果になる） */
@@ -981,7 +982,7 @@ export class Sim {
 
   // ---------------------------------------------------------------- 玉入れ
   /** holder = 持っている人（-1 = だれも持っていない）、noCatch / noCatchT = 投げた人がすぐ取り直せないように */
-  ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1, holder: -1, noCatch: -1, noCatchT: 0 };
+  ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1, holder: -1, noCatch: -1, noCatchT: 0, lockTeam: -1, lockT: 0 };
   /** 飛び道具でボールを最後に押した時刻（slot ごと） */
   private ballShotAt = new Map<number, number>();
   ballScore: [number, number] = [0, 0];
@@ -993,7 +994,8 @@ export class Sim {
   /** ボールをステージの中央の上に出す（timer フレーム後に出てくる） */
   private resetBall(timer = 0): void {
     const m = this.stage.main;
-    this.ball = { x: (m.x1 + m.x2) / 2, y: m.top + 4.5, vx: 0, vy: 0, on: timer === 0, timer, last: -1, holder: -1, noCatch: -1, noCatchT: 0 };
+    const lock = this.ball ? { lockTeam: this.ball.lockTeam, lockT: this.ball.lockT } : { lockTeam: -1, lockT: 0 };
+    this.ball = { x: (m.x1 + m.x2) / 2, y: m.top + 4.5, vx: 0, vy: 0, on: timer === 0, timer, last: -1, holder: -1, noCatch: -1, noCatchT: 0, ...lock };
   }
 
   private kickBall(vx: number, vy: number, by: number): void {
@@ -1015,6 +1017,7 @@ export class Sim {
     }
     const r = BALL.r;
     if (b.noCatchT > 0) b.noCatchT--;
+    if (b.lockT > 0) b.lockT--;
     // 持っている人がいる：ボールはその人の頭の上についていく。倒れた・ひるんだら落とす
     if (b.holder >= 0) {
       const h = this.fighter(b.holder);
@@ -1033,6 +1036,8 @@ export class Sim {
       if (!f.alive || f.out || f.state === 'hitstun' || f.state === 'dead') continue;
       if (b.noCatchT > 0 && f.slot === b.noCatch) continue;
       if (b.noCatchT > THROW.noCatch - THROW.noCatchAll && b.noCatch >= 0 && b.last === b.noCatch) continue;
+      // 点を取ったチームは、次に出てくるボールを約1秒は取れない
+      if (b.lockT > 0 && f.team % 2 === b.lockTeam) continue;
       if (!circleHitsBox(b.x, b.y, r + 0.1, f)) continue;
       b.holder = f.slot;
       b.last = f.slot;
@@ -1095,6 +1100,8 @@ export class Sim {
       }
       const team = 1 - k;
       this.ballScore[team]++;
+      b.lockTeam = team;
+      b.lockT = THROW.scorerLock;
       const by = this.fighter(b.last);
       if (by && by.team === team) by.goals++;
       this.events.push({ k: 'goal', x: g.cx, y: (g.y1 + g.y2) / 2, t: team, s: b.last });
