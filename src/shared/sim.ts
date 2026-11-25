@@ -1216,7 +1216,6 @@ export class Sim {
         b.holder = f.slot;
         b.last = f.slot;
         f.ballSafe = THROW.safe;
-        f.stealCd = THROW.stealMiss;
         h.ballAiming = false;
         h.stealCd = THROW.stolenCd;
         this.events.push({ k: 'steal', x: b.x, y: b.y, s: f.slot, a: h.slot });

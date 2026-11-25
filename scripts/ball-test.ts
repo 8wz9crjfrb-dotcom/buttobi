@@ -442,7 +442,7 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   check('2点：投げる力が強いキャラは、もっと遠くからでも入る', strong === 2, String(strong));
 }
 
-// ---- 「奪う」の待ち時間：使ったら約1秒は使えない
+// ---- 「奪う」：奪われた人は約1.3秒「奪う」が使えない（奪った人は待ち時間なし）
 {
   const sim = make(2);
   const [a, v] = sim.fighters;
@@ -452,9 +452,21 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   a.x = 1.2;
   a.facing = 1;
   v.ballSafe = 0;
+  v.facing = -1;
   run(sim, 2, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
   const stole = sim.ball.holder === 0;
-  check('奪う：成功したら、約1秒は次の「奪う」が使えない', stole && a.stealCd >= THROW.stealMiss - 3 && THROW.stealMiss === 60, `残り ${a.stealCd}`);
+  check('奪う：奪われた人は約1.3秒「奪う」が使えない（奪った人は待ち時間なし）', stole && THROW.stolenCd === 78 && v.stealCd >= THROW.stolenCd - 3 && a.stealCd === 0, `奪われた人 ${v.stealCd}・奪った人 ${a.stealCd}`);
+  // 約1.1秒後に押しても奪えない（奪った人の「奪われない時間」は約1秒で切れている）
+  run(sim, 64);
+  v.x = a.x + 0.8;
+  v.facing = -1;
+  run(sim, 2, (i) => (i === 0 ? N : N), (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
+  check('奪う：奪われてから約1.1秒では、まだ奪い返せない', sim.ball.holder === 0);
+  run(sim, 16);
+  v.x = a.x + 0.8;
+  v.facing = -1;
+  run(sim, 2, () => N, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
+  check('奪う：約1.3秒たてば奪い返せる', sim.ball.holder === 1, `持っている人 ${sim.ball.holder}`);
 }
 // ---- アイテム：玉入れでは出ない（ルールで「あり」になっていても）
 {
