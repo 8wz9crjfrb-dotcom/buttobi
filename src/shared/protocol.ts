@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 53;
+export const PROTOCOL_VERSION = 54;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -229,7 +229,7 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
     ...(v.bounty ? { bo: [v.bounty.holder, ...v.bounty.pts.flat()] } : {}),
     ...(v.coins ? { co: [v.coins.list.length, ...v.coins.list.flatMap((c) => [Math.round(c.x * 100), Math.round(c.y * 100), c.v]), ...v.coins.held.flat()] } : {}),
     ...(v.vault ? { v: [Math.round(v.vault.hp[0] * 10) / 10, Math.round(v.vault.hp[1] * 10) / 10, v.vault.max] } : {}),
-    ...(v.ball ? { b: [Math.round(v.ball.x * 100), Math.round(v.ball.y * 100), Math.round(v.ball.vx * 10), v.ball.on ? 1 : 0, v.ball.score[0], v.ball.score[1], v.ball.target, v.ball.holder ?? -1] } : {}),
+    ...(v.ball ? { b: [Math.round(v.ball.x * 100), Math.round(v.ball.y * 100), Math.round(v.ball.vx * 10), v.ball.on ? 1 : 0, v.ball.score[0], v.ball.score[1], v.ball.target, v.ball.holder ?? -1, v.ball.lock ?? -1] } : {}),
     ...(v.area
       ? {
           a: {
@@ -295,7 +295,7 @@ export function decodeState(s: EncodedState): ViewState {
           held: pairs(s.co, 1 + s.co[0] * 3),
         }
       : undefined,
-    ball: s.b ? { x: s.b[0] / 100, y: s.b[1] / 100, vx: s.b[2] / 10, on: s.b[3] === 1, score: [s.b[4], s.b[5]], target: s.b[6], holder: s.b[7] ?? -1 } : undefined,
+    ball: s.b ? { x: s.b[0] / 100, y: s.b[1] / 100, vx: s.b[2] / 10, on: s.b[3] === 1, score: [s.b[4], s.b[5]], target: s.b[6], holder: s.b[7] ?? -1, lock: s.b[8] ?? -1 } : undefined,
     area: s.a
       ? {
           zones: s.a.z.map((a) => ({ x1: a[0] / 100, x2: a[1] / 100, y1: a[2] / 100, y2: a[3] / 100, holder: a[4] })),

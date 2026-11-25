@@ -404,6 +404,8 @@ export interface BallView {
   target: number;
   /** 持っている人（-1 = だれも持っていない） */
   holder?: number;
+  /** 今ボールを取れないチーム（0 = 赤、1 = 青、-1 = なし） */
+  lock?: number;
 }
 
 /** エリア（床の上の、縦に長い範囲） */

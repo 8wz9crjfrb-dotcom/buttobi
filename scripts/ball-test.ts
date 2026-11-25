@@ -177,6 +177,29 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   check('点を取られたチームは、出てきたボールをすぐ取れる', s2.ball.holder === 1);
 }
 {
+  // 投げて外し、場外へ：投げたチーム（赤）は、次に出てくるボールを約0.5秒さわれない
+  const sim = make();
+  const [a, v] = sim.fighters;
+  v.x = 8;
+  a.x = sim.ball.x;
+  run(sim, 30);
+  check('外し：赤がボールを持つ', sim.ball.holder === 0);
+  // 左（場外の方）へ強く投げる
+  run(sim, 10, () => ({ mx: -0.9, my: 0.3, buttons: BTN_B }));
+  run(sim, 1);
+  check('外し：投げた', sim.ball.holder === -1);
+  for (let i = 0; i < 300 && sim.ball.on; i++) run(sim, 1);
+  check('外し：場外に出た', !sim.ball.on && sim.ballScore.join() === '0,0');
+  check('外し：投げたチームは取れない印が付く', sim.ball.lockTeam === 0 && sim.ball.lockT > 0);
+  for (let i = 0; i < 300 && !sim.ball.on; i++) run(sim, 1);
+  a.x = sim.ball.x;
+  run(sim, 20);
+  const v1 = sim.toView().ball!;
+  check('外し：出てきたボールを、投げたチームは約0.5秒さわれない（画面に「取れないチーム」が伝わる）', sim.ball.holder === -1 && v1.lock === 0);
+  run(sim, 25);
+  check('外し：約0.5秒たてば取れる', sim.ball.holder === 0 && sim.toView().ball!.lock === -1);
+}
+{
   // 横から入っても点にならない（はね返る）
   const sim = make();
   const g = ballBaskets(sim.stage)[1];

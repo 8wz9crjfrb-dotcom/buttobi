@@ -982,7 +982,7 @@ export class Sim {
 
   // ---------------------------------------------------------------- 玉入れ
   /** holder = 持っている人（-1 = だれも持っていない）、noCatch / noCatchT = 投げた人がすぐ取り直せないように */
-  ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1, holder: -1, noCatch: -1, noCatchT: 0, lockTeam: -1, lockT: 0 };
+  ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1, holder: -1, noCatch: -1, noCatchT: 0, lockTeam: -1, lockT: 0, thrownTeam: -1 };
   /** 飛び道具でボールを最後に押した時刻（slot ごと） */
   private ballShotAt = new Map<number, number>();
   ballScore: [number, number] = [0, 0];
@@ -995,7 +995,7 @@ export class Sim {
   private resetBall(timer = 0): void {
     const m = this.stage.main;
     const lock = this.ball ? { lockTeam: this.ball.lockTeam, lockT: this.ball.lockT } : { lockTeam: -1, lockT: 0 };
-    this.ball = { x: (m.x1 + m.x2) / 2, y: m.top + 4.5, vx: 0, vy: 0, on: timer === 0, timer, last: -1, holder: -1, noCatch: -1, noCatchT: 0, ...lock };
+    this.ball = { x: (m.x1 + m.x2) / 2, y: m.top + 4.5, vx: 0, vy: 0, on: timer === 0, timer, last: -1, holder: -1, noCatch: -1, noCatchT: 0, thrownTeam: -1, ...lock };
   }
 
   private kickBall(vx: number, vy: number, by: number): void {
@@ -1041,6 +1041,7 @@ export class Sim {
       if (!circleHitsBox(b.x, b.y, r + 0.1, f)) continue;
       b.holder = f.slot;
       b.last = f.slot;
+      b.thrownTeam = -1;
       f.ballSafe = THROW.safe;
       this.events.push({ k: 'catch', x: b.x, y: b.y, s: f.slot });
       return;
@@ -1113,6 +1114,11 @@ export class Sim {
     if (b.on && (b.y < bl.bottom || b.x < bl.left || b.x > bl.right)) {
       b.on = false;
       b.timer = BALL.respawn / 2;
+      // 投げて外し、だれにも取られないまま場外へ：投げたチームは、次に出てくるボールを約0.5秒さわれない
+      if (b.thrownTeam >= 0) {
+        b.lockTeam = b.thrownTeam;
+        b.lockT = THROW.missLock;
+      }
     }
   }
 
@@ -1165,6 +1171,7 @@ export class Sim {
         b.last = f.slot;
         b.noCatch = f.slot;
         b.noCatchT = THROW.noCatch;
+        b.thrownTeam = f.team % 2;
         if (Math.abs(v.vx) > 0.3) f.facing = v.vx > 0 ? 1 : -1;
         this.events.push({ k: 'kick', x: b.x, y: b.y, p: Math.hypot(v.vx, v.vy) });
       }
@@ -1209,7 +1216,8 @@ export class Sim {
   private ballHist: { x: number; y: number }[] = [];
 
   private ballView(): BallView {
-    return { x: this.ball.x, y: this.ball.y, vx: this.ball.vx, on: this.ball.on, score: [...this.ballScore] as [number, number], target: this.ballTarget, holder: this.ball.holder };
+    const b = this.ball;
+    return { x: b.x, y: b.y, vx: b.vx, on: b.on, score: [...this.ballScore] as [number, number], target: this.ballTarget, holder: b.holder, lock: b.lockT > 0 ? b.lockTeam : -1 };
   }
 
   // ---------------------------------------------------------------- エリアバトル

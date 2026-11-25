@@ -1,7 +1,7 @@
 // three.js による描画：ステージ、キャラクター、カメラ、エフェクト
 
 import * as THREE from 'three';
-import { areaColor, getCharacter, ITEM_COLORS, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES, TEAM_COLORS } from '../shared/characters';
+import { areaColor, ballTeamOf, getCharacter, ITEM_COLORS, ITEM_INFO, ITEM_NAMES, playerColor, SLOT_COLORS, TAUNT_LINES, TEAM_COLORS } from '../shared/characters';
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
 import { BALL, ballBaskets, COUNTDOWN_FRAMES, gimmickAt, gimmickPhase, isSlippery, ROULETTE, SIZE_REQ, WARP, warpSpots } from '../shared/sim';
@@ -1498,7 +1498,7 @@ export class GameRenderer {
   }
 
   // ---------------------------------------------------------------- 玉入れ：ボールとかご
-  private ballObj: { root: THREE.Group; ball: THREE.Group; shadow: THREE.Mesh; spin: number; guide: THREE.Points } | null = null;
+  private ballObj: { root: THREE.Group; ball: THREE.Group; shadow: THREE.Mesh; spin: number; guide: THREE.Points; faded: boolean } | null = null;
 
   private buildBall(stage: StageDef): void {
     const root = new THREE.Group();
@@ -1569,7 +1569,7 @@ export class GameRenderer {
     guide.frustumCulled = false;
     guide.renderOrder = 5;
     root.add(guide);
-    this.ballObj = { root, ball, shadow, spin: 0, guide };
+    this.ballObj = { root, ball, shadow, spin: 0, guide, faded: false };
   }
 
   /** 投げる道筋を出す（null で消す） */
@@ -1594,6 +1594,20 @@ export class GameRenderer {
     const b = view.ball;
     if (!o || !b) return;
     o.ball.visible = b.on;
+    // 自分のチームが今ボールを取れない間（点を取った直後・投げて場外に出した直後）は、ボールを半透明にする
+    const myTeam = this.localSlot !== null && this.setup ? ballTeamOf(this.setup, this.localSlot) : -1;
+    const faded = b.on && (b.lock ?? -1) >= 0 && myTeam === b.lock;
+    if (faded !== o.faded) {
+      o.faded = faded;
+      o.ball.traverse((m) => {
+        const mat = (m as THREE.Mesh).material as THREE.Material | undefined;
+        if (!mat) return;
+        mat.transparent = faded;
+        mat.opacity = faded ? 0.35 : 1;
+        mat.depthWrite = !faded;
+        mat.needsUpdate = true;
+      });
+    }
     o.shadow.visible = b.on && !!this.stage && b.x >= this.stage.main.x1 && b.x <= this.stage.main.x2 && b.y >= this.stage.main.top;
     o.ball.position.set(b.x, b.y, 0);
     // 転がり・飛んでいく向きに回す
