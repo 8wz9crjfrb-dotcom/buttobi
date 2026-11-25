@@ -4338,6 +4338,20 @@ export class Sim {
         }
         return;
       }
+      // 玉入れ：同点で時間切れなら、どちらかに1点入るまで延長（最長 OVERTIME_MAX。入らなければ引き分け）
+      if (rules.mode === 'ball' && !this.solo && !(this.overtime && this.frame - this.overtimeStart > OVERTIME_MAX)) {
+        const tied = this.ballScore[0] === this.ballScore[1];
+        // 延長中に点が入った直後は、ふつうのゴールと同じく少し間をおいてから終わる
+        const justScored = this.overtime && !tied && this.ball.timer >= BALL.respawn - 45;
+        if (tied || justScored) {
+          if (!this.overtime) {
+            this.overtime = true;
+            this.overtimeStart = this.frame;
+            this.events.push({ k: 'overtime' });
+          }
+          return;
+        }
+      }
       over = true;
     }
     if (over) {

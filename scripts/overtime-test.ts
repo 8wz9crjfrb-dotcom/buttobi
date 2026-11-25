@@ -1,5 +1,5 @@
 // 延長戦（エリア・王冠）、復活までの待ち時間、コイン集めの撃墜時のコイン
-import { Sim, COUNTDOWN_FRAMES, OVERTIME_MAX } from '../src/shared/sim';
+import { Sim, COUNTDOWN_FRAMES, OVERTIME_MAX, BALL } from '../src/shared/sim';
 import type { InputState, MatchRules } from '../src/shared/types';
 
 let fail = 0;
@@ -147,6 +147,56 @@ for (const [mode, wait] of [['stock', 100], ['crown', 300], ['coins', 300]] as c
   const total = sim.coins.reduce((n, c) => n + c.v, 0);
   check('コイン集め：撃墜した人が、手放したコインの半分をもらう', sim.coinsHeld.get(0) === 5 && sim.coinsHeld.get(1) === 10, `撃墜した人 ${sim.coinsHeld.get(0)}・された人 ${sim.coinsHeld.get(1)}`);
   check('コイン集め：残りはステージのあちこちに降る（中央に固まらない）', total === 5 && spread > (m.x2 - m.x1) * 0.4, `${xs.map((x) => x.toFixed(1)).join(', ')}`);
+}
+
+// ---- 玉入れ：同点で時間切れなら、1点入るまで延長（最長60秒で引き分け）
+{
+  const sim = make({ mode: 'ball', timeLimit: 10, goals: 5 }, 2);
+  toTimeUp(sim);
+  sim.ballScore[0] = 1;
+  sim.ballScore[1] = 1;
+  step(sim, 30);
+  check('玉入れ：同点で時間切れなら、続く（延長中）', !sim.ended && sim.overtime && !!sim.toView().overtime);
+  // 延長中に赤が1点（ゴールのあとと同じく、ボールは少しのあいだ消える）
+  sim.ballScore[0] = 2;
+  sim.ball.on = false;
+  sim.ball.holder = -1;
+  sim.ball.timer = BALL.respawn;
+  step(sim, 2);
+  check('玉入れ：延長中に点が入っても、すぐには終わらない（ゴールの間をおく）', !sim.ended);
+  step(sim, 200);
+  const r = sim.results();
+  check('玉入れ：延長中に点が入ったら、そのチームの勝ちで終わる', sim.ended && r.find((e) => e.slot === 0)?.rank === 1 && r.find((e) => e.slot === 1)?.rank === 2);
+}
+{
+  const sim = make({ mode: 'ball', timeLimit: 10, goals: 5 }, 2);
+  toTimeUp(sim);
+  sim.ballScore[0] = 2;
+  sim.ballScore[1] = 1;
+  step(sim, 3);
+  check('玉入れ：同点でなければ、時間切れでそのまま終わる', sim.ended && !sim.overtime);
+}
+{
+  const sim = make({ mode: 'ball', timeLimit: 10, goals: 5 }, 2);
+  toTimeUp(sim);
+  const keep = () => {
+    sim.ballScore[0] = 0;
+    sim.ballScore[1] = 0;
+  };
+  keep();
+  step(sim, 3);
+  const during = !sim.ended && sim.overtime;
+  for (let i = 0; i < OVERTIME_MAX - 120 && !sim.ended; i++) {
+    keep();
+    sim.step(new Map());
+  }
+  const mid = !sim.ended;
+  for (let i = 0; i < 300 && !sim.ended; i++) {
+    keep();
+    sim.step(new Map());
+  }
+  const r = sim.results();
+  check('玉入れ：延長して60秒入らなければ、引き分けで終わる', during && mid && sim.ended && r.every((e) => e.rank === 1), r.map((e) => e.rank).join(','));
 }
 
 if (fail) {

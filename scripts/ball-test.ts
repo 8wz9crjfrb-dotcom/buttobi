@@ -260,13 +260,16 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
 {
   let goals = 0;
   let ended = 0;
+  const secs: number[] = [];
   for (let s = 1; s <= 4; s++) {
     const r = ballRun(4, s);
     goals += r.score[0] + r.score[1];
-    if (r.secs <= 121) ended++;
+    secs.push(Math.round(r.secs));
+    // 2分の試合。同点で時間切れなら最長60秒の延長がある
+    if (r.secs <= 121 + 61) ended++;
   }
   check('CPU：4人の試合で点が入る', goals >= 8, `4試合で${goals}点`);
-  check('CPU：試合がきちんと終わる', ended === 4);
+  check('CPU：試合がきちんと終わる（延長も最長60秒）', ended === 4, `${secs.join('・')}秒`);
 }
 // ---- ジャンプ力：重たいキャラ（トレーナー・ジャンプ力1）は、軽いキャラ（メンヘラ・ジャンプ力4）より低い
 {
