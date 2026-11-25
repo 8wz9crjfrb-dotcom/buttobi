@@ -4,6 +4,7 @@ import { ballTeamOf, playerColor, TEAM_COLORS } from '../src/shared/characters';
 import { decodeState, encodeState } from '../src/shared/protocol';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type InputState, type MatchRules, type PlayerSetup } from '../src/shared/types';
 import { ballRun } from './ball-balance';
+import { THROW, speedToHit, lenForSpeed } from '../src/shared/ballThrow';
 
 let fail = 0;
 function check(name: string, ok: boolean, info = '') {
@@ -357,5 +358,102 @@ const run = (sim: Sim, frames: number, p0: (i: number) => InputState = () => N, 
   check('ステージ：玉入れ以外では、足場はいつもどおり', ids.some((id) => mk(id, 2, 'stock').platforms.length > 0));
   const w = (id: string, n: number, mode: 'ball' | 'stock') => mk(id, n, mode).main.x2 - mk(id, n, mode).main.x1;
   check('ステージ：広さはストック制と同じ（4人以上で広くなる）', ids.every((id) => w(id, 2, 'ball') === w(id, 2, 'stock') && w(id, 4, 'ball') === w(id, 4, 'stock')) && w('plain', 4, 'ball') > w('plain', 2, 'ball'), `そらの台地 2人 ${w('plain', 2, 'ball')}m / 4人 ${w('plain', 4, 'ball')}m`);
+}
+// ---- かごのふち（輪）：当たるとはね返る。真下から投げても入らない
+{
+  const sim = make(2);
+  const g = ballBaskets(sim.stage)[1];
+  sim.fighters[0].x = -3;
+  sim.fighters[1].x = -5;
+  sim.ball.holder = -1;
+  sim.ball.x = g.x1;
+  sim.ball.y = g.y2 + 2;
+  sim.ball.vx = 0;
+  sim.ball.vy = 0;
+  sim.ball.last = 0;
+  run(sim, 40);
+  check('ふち：ふちの真上から落ちると、はね返って入らない', sim.ballScore.join() === '0,0' && sim.ball.x < g.x1, `x=${(sim.ball.x - g.x1).toFixed(2)}`);
+}
+{
+  const sim = make(2);
+  const g = ballBaskets(sim.stage)[1];
+  const a = sim.fighters[0];
+  a.x = g.cx;
+  sim.fighters[1].x = -5;
+  sim.ball.x = a.x;
+  run(sim, 20);
+  // 真上へ強く投げる
+  run(sim, 8, (i) => (i < 5 ? { mx: 0, my: 1, buttons: BTN_B } : N));
+  for (let i = 0; i < 200 && sim.ball.holder === -1 && sim.ballScore.join() === '0,0'; i++) run(sim, 1);
+  check('ふち：かごの真下から真上に投げても入らない', sim.ballScore.join() === '0,0');
+}
+{
+  const sim = make(2);
+  const g = ballBaskets(sim.stage)[1];
+  sim.fighters[0].x = -3;
+  sim.fighters[1].x = -5;
+  sim.ball.holder = -1;
+  sim.ball.x = g.cx;
+  sim.ball.y = g.y2 + 2;
+  sim.ball.vx = 0;
+  sim.ball.vy = 0;
+  sim.ball.last = 0;
+  sim.ball.thrownTeam = 0;
+  sim.ball.shotX = g.cx - 3;
+  run(sim, 40);
+  check('ふち：まん中に真上から落ちれば入る（1点）', sim.ballScore.join() === '1,0');
+}
+
+// ---- 2ポイントライン：遠くから投げて入れたら2点。投げる力がいちばん弱いキャラでも届く
+{
+  const shoot = (charId: string, dist: number) => {
+    const sim = new Sim({ players: [P(0, charId), P(1, 'hacker')], stageId: 'gacha', rules: { mode: 'ball', stocks: 3, timeLimit: 120, goals: 9 }, seed: 1 });
+    while (sim.frame <= COUNTDOWN_FRAMES) sim.step(new Map());
+    for (let i = 0; i < 120; i++) sim.step(new Map());
+    const a = sim.fighters[0];
+    const g = ballBaskets(sim.stage)[1 - a.team];
+    const dir = Math.sign(g.cx) || 1;
+    a.x = g.cx - dir * dist;
+    a.facing = dir;
+    sim.fighters[1].x = g.cx - dir * (dist + 4);
+    sim.ball.x = a.x;
+    sim.ball.y = sim.stage.main.top + 1;
+    run(sim, 20);
+    if (sim.ball.holder !== 0) return 'no-hold';
+    // いちばん届く角度を探して、かごのまん中を狙う
+    let best: { deg: number; sp: number } | null = null;
+    for (let deg = 30; deg <= 70; deg++) {
+      const sp = speedToHit(charId, sim.ball.x, sim.ball.y, deg, g.cx, g.y2 + 0.05);
+      if (sp !== null && (!best || sp < best.sp)) best = { deg, sp };
+    }
+    if (!best) return 'unreachable';
+    const len = lenForSpeed(charId, best.sp);
+    const ang = (best.deg * Math.PI) / 180;
+    run(sim, 6, (i) => (i < 4 ? { mx: Math.cos(ang) * len * dir, my: Math.sin(ang) * len, buttons: BTN_B } : N));
+    for (let i = 0; i < 240 && sim.ball.on && (sim.ball.holder as number) === -1; i++) run(sim, 1);
+    return sim.ballScore[a.team];
+  };
+  const weak = ['thief', 'dopa', 'menhera'];
+  const far = weak.map((c) => shoot(c, THROW.twoPoint + 0.1));
+  check('2点：投げる力がいちばん弱いキャラでも、2ポイントラインのすぐ外から入れられて2点', far.every((p) => p === 2), far.join(','));
+  const near = shoot('thief', THROW.twoPoint - 1.5);
+  check('2点：2ポイントラインの内側から入れたら1点', near === 1, String(near));
+  const strong = shoot('trainer', THROW.twoPoint + 3);
+  check('2点：投げる力が強いキャラは、もっと遠くからでも入る', strong === 2, String(strong));
+}
+
+// ---- 「奪う」の待ち時間：使ったら約1秒は使えない
+{
+  const sim = make(2);
+  const [a, v] = sim.fighters;
+  v.x = 2;
+  sim.ball.x = 2;
+  run(sim, 20);
+  a.x = 1.2;
+  a.facing = 1;
+  v.ballSafe = 0;
+  run(sim, 2, (i) => (i === 0 ? { mx: 0, my: 0, buttons: BTN_A } : N));
+  const stole = sim.ball.holder === 0;
+  check('奪う：成功したら、約1秒は次の「奪う」が使えない', stole && a.stealCd >= THROW.stealMiss - 3 && THROW.stealMiss === 60, `残り ${a.stealCd}`);
 }
 process.exit(fail ? 1 : 0);

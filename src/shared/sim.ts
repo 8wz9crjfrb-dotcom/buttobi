@@ -982,7 +982,7 @@ export class Sim {
 
   // ---------------------------------------------------------------- 玉入れ
   /** holder = 持っている人（-1 = だれも持っていない）、noCatch / noCatchT = 投げた人がすぐ取り直せないように */
-  ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1, holder: -1, noCatch: -1, noCatchT: 0, lockTeam: -1, lockT: 0, thrownTeam: -1 };
+  ball = { x: 0, y: 0, vx: 0, vy: 0, on: false, timer: 0, last: -1, holder: -1, noCatch: -1, noCatchT: 0, lockTeam: -1, lockT: 0, thrownTeam: -1, shotX: NaN };
   /** 飛び道具でボールを最後に押した時刻（slot ごと） */
   private ballShotAt = new Map<number, number>();
   ballScore: [number, number] = [0, 0];
@@ -995,7 +995,7 @@ export class Sim {
   private resetBall(timer = 0): void {
     const m = this.stage.main;
     const lock = this.ball ? { lockTeam: this.ball.lockTeam, lockT: this.ball.lockT } : { lockTeam: -1, lockT: 0 };
-    this.ball = { x: (m.x1 + m.x2) / 2, y: m.top + 4.5, vx: 0, vy: 0, on: timer === 0, timer, last: -1, holder: -1, noCatch: -1, noCatchT: 0, thrownTeam: -1, ...lock };
+    this.ball = { x: (m.x1 + m.x2) / 2, y: m.top + 4.5, vx: 0, vy: 0, on: timer === 0, timer, last: -1, holder: -1, noCatch: -1, noCatchT: 0, thrownTeam: -1, shotX: NaN, ...lock };
   }
 
   private kickBall(vx: number, vy: number, by: number): void {
@@ -1042,6 +1042,7 @@ export class Sim {
       b.holder = f.slot;
       b.last = f.slot;
       b.thrownTeam = -1;
+      b.shotX = NaN;
       f.ballSafe = THROW.safe;
       this.events.push({ k: 'catch', x: b.x, y: b.y, s: f.slot });
       return;
@@ -1080,6 +1081,25 @@ export class Sim {
     // ゴール：相手チームのかごに（上から）入ったら点
     ballBaskets(this.stage).forEach((g, k) => {
       if (!b.on) return;
+      // かごのふち（左右の輪）に当たったら、はね返る（バスケットのリングのように）
+      for (const rx of [g.x1, g.x2]) {
+        const dx = b.x - rx;
+        const dy = b.y - g.y2;
+        const d = Math.hypot(dx, dy);
+        const min = r + THROW.rimR;
+        if (d >= min || d < 1e-6) continue;
+        const nx = dx / d;
+        const ny = dy / d;
+        const vn = b.vx * nx + b.vy * ny;
+        if (vn < 0) {
+          b.vx -= (1 + THROW.rimBounce) * vn * nx;
+          b.vy -= (1 + THROW.rimBounce) * vn * ny;
+        }
+        b.x = rx + nx * min;
+        b.y = g.y2 + ny * min;
+        // ふちのてっぺんに乗って止まらないよう、少しだけかごの外側へこぼす
+        if (Math.abs(nx) < 0.2) b.vx += (rx < g.cx ? -1 : 1) * 0.6;
+      }
       const inside = b.x >= g.x1 && b.x <= g.x2 && b.y >= g.y1 && b.y <= g.y2;
       // 真上から入ったときだけ点：かごの口（上のふち）を、口の内側で上から下へ通りぬけた
       const fromTop = b.vy < 0 && py > g.y2 && b.y <= g.y2 && px >= g.x1 && px <= g.x2 && b.x >= g.x1 && b.x <= g.x2;
@@ -1100,12 +1120,14 @@ export class Sim {
         return;
       }
       const team = 1 - k;
-      this.ballScore[team]++;
+      // 2ポイントラインより遠くから投げて（だれにも触られずに）入ったら2点
+      const pts = b.thrownTeam === team && Math.abs(b.shotX - g.cx) >= THROW.twoPoint ? 2 : 1;
+      this.ballScore[team] += pts;
       b.lockTeam = team;
       b.lockT = THROW.scorerLock;
       const by = this.fighter(b.last);
       if (by && by.team === team) by.goals++;
-      this.events.push({ k: 'goal', x: g.cx, y: (g.y1 + g.y2) / 2, t: team, s: b.last });
+      this.events.push({ k: 'goal', x: g.cx, y: (g.y1 + g.y2) / 2, t: team, s: b.last, p: pts });
       b.on = false;
       b.timer = BALL.respawn;
     });
@@ -1174,6 +1196,8 @@ export class Sim {
         b.noCatch = f.slot;
         b.noCatchT = THROW.noCatch;
         b.thrownTeam = f.team % 2;
+        // パスは2点にならない
+        b.shotX = mate ? NaN : f.x;
         if (Math.abs(v.vx) > 0.3) f.facing = v.vx > 0 ? 1 : -1;
         this.events.push({ k: 'kick', x: b.x, y: b.y, p: Math.hypot(v.vx, v.vy), s: f.slot, pass: mate ? 1 : 0 });
       }
@@ -1192,6 +1216,7 @@ export class Sim {
         b.holder = f.slot;
         b.last = f.slot;
         f.ballSafe = THROW.safe;
+        f.stealCd = THROW.stealMiss;
         h.ballAiming = false;
         h.stealCd = THROW.stolenCd;
         this.events.push({ k: 'steal', x: b.x, y: b.y, s: f.slot, a: h.slot });

@@ -5,6 +5,7 @@ import { areaColor, ballTeamOf, getCharacter, ITEM_COLORS, ITEM_INFO, ITEM_NAMES
 import { platformAt, type StageDef } from '../shared/stages';
 import { TETHER } from '../shared/moves';
 import { BALL, ballBaskets, COUNTDOWN_FRAMES, gimmickAt, gimmickPhase, isSlippery, ROULETTE, SIZE_REQ, WARP, warpSpots } from '../shared/sim';
+import { THROW } from '../shared/ballThrow';
 import { GIMMICK, VAULT } from '../shared/moves';
 import { FX_BIG, FX_SMALL, FX_SPEED, FX_WARPCD, type GameEvent, type MatchSetup, type ViewFighter, type ViewState } from '../shared/types';
 import { getCostume } from '../shared/costumes';
@@ -1064,7 +1065,7 @@ export class GameRenderer {
         this.scene.add(sprite);
         this.particles.push({ mesh: sprite as unknown as THREE.Mesh, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 4, life: 50, max: 50, grow: -0.005 });
       }
-      this.props.showText(`${e.t === 0 ? '赤' : '青'}チーム ゴール！`, '#' + col.toString(16).padStart(6, '0'), e.x < 0 ? e.x + 3 : e.x - 3, e.y + 1.8, true, 90);
+      this.props.showText(`${e.t === 0 ? '赤' : '青'}チーム ${e.p === 2 ? '2ポイント！' : 'ゴール！'}`, '#' + col.toString(16).padStart(6, '0'), e.x < 0 ? e.x + 3 : e.x - 3, e.y + 1.8, true, 90);
       this.shake = Math.max(this.shake, 0.8);
       return;
     }
@@ -1551,6 +1552,37 @@ export class GameRenderer {
       bottom.rotation.x = -Math.PI / 2;
       bottom.position.set(g.cx, g.y1 + 0.01, -0.1);
       root.add(bottom);
+    });
+    // 2ポイントライン：かごの中心から THROW.twoPoint の所の床に、そのかごの色の線と「2P」の札（矢印はかごの向き。ここより遠くから入れると2点）
+    ballBaskets(stage).forEach((g, k) => {
+      const toward = k === 0 ? -1 : 1;
+      const lx = g.cx - toward * THROW.twoPoint;
+      if (lx < stage.main.x1 + 0.2 || lx > stage.main.x2 - 0.2) return;
+      const col = TEAM_COLORS[k];
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 2.8), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false }));
+      line.rotation.x = -Math.PI / 2;
+      line.position.set(lx, stage.main.top + 0.02, 0);
+      root.add(line);
+      const hex = '#' + col.toString(16).padStart(6, '0');
+      const tex = canvasTex(128, (c) => {
+        c.fillStyle = hex;
+        c.strokeStyle = '#ffffff';
+        c.lineWidth = 6;
+        c.beginPath();
+        c.roundRect(10, 28, 108, 72, 18);
+        c.fill();
+        c.stroke();
+        c.fillStyle = '#ffffff';
+        c.font = '900 46px sans-serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        // 矢印はかごのある向き
+        c.fillText(toward < 0 ? '◀2P' : '2P▶', 64, 66);
+      });
+      const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+      tag.scale.set(1.0, 1.0, 1);
+      tag.position.set(lx, stage.main.top + 0.45, -1.3);
+      root.add(tag);
     });
     // 投げる道筋（「投げる」を押して狙っている間だけ、自分の画面に薄い点線で出す）
     const guideGeo = new THREE.BufferGeometry();

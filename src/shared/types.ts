@@ -198,7 +198,8 @@ export type GameEvent =
   | { k: 'buff'; s: number }
   | { k: 'poof'; x: number; y: number }
   /** 玉入れ：ゴール（t = 点を取ったチーム、s = 最後にボールに触った人） */
-  | { k: 'goal'; x: number; y: number; t: number; s: number }
+  /** p = 入った点（2ポイントラインの外からなら2） */
+  | { k: 'goal'; x: number; y: number; t: number; s: number; p?: number }
   /** 玉入れ：ボールを打った */
   /** 玉入れで投げた。s = 投げた人、pass = 1 ならパス（頭の上に「シュート！」「パス！」を出す） */
   | { k: 'kick'; x: number; y: number; p: number; s?: number; pass?: number }

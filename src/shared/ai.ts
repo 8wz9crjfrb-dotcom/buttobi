@@ -4,7 +4,7 @@ import { Rng } from './rng';
 import { THREEB_RULES, TRAINER } from './moves';
 import { BTN_A, BTN_B, BTN_JUMP, BTN_SHIELD, type AreaZone, type InputState } from './types';
 import { ballBaskets, type Fighter, type Sim } from './sim';
-import { lenForSpeed, speedToHit } from './ballThrow';
+import { ballStats, lenForSpeed, speedToHit, THROW } from './ballThrow';
 
 /** CPUが狙う相手（選手、または分身） */
 interface Target {
@@ -20,6 +20,10 @@ interface Brain {
   holdFrames: number;
   cooldown: number;
   lastButtons: number;
+  /** 玉入れ：今ボールを持っているか（拾った瞬間に、どこから投げるかを決める） */
+  hadBall?: boolean;
+  /** 玉入れ：今回は2ポイントラインの外から投げる */
+  farShot?: boolean;
 }
 
 export class CpuController {
@@ -459,7 +463,10 @@ export class CpuController {
         b.holdFrames = 3 + Math.round(this.rng.range(0, 4));
         return b.hold;
       }
-      const dist = 4.5 + (this.rng.next() < 0.5 ? 0 : 1.5);
+      // 拾った瞬間に決める：ときどき2ポイントラインの外から狙う（投げる力が強いキャラほど多め）
+      if (!b.hadBall) b.farShot = ballStats(f.def.id).throw >= 3 && this.rng.next() < 0.15 * (ballStats(f.def.id).throw - 2);
+      b.hadBall = true;
+      const dist = b.farShot ? THROW.twoPoint + 0.6 : 4.5 + (this.rng.next() < 0.5 ? 0 : 1.5);
       const spot = g.cx - toGoal * dist;
       if (Math.abs(f.x - spot) > 0.9 || !f.grounded) return walk(spot);
       // 狙う：角度を決めて、かごの口のまん中に上から落ちる速さを計算する（弱いCPUほどずれる）
@@ -477,6 +484,7 @@ export class CpuController {
       b.holdFrames = 10 + Math.round(this.rng.range(0, 30 - lv * 2));
       return b.hold;
     }
+    b.hadBall = false;
     // 自分たちのかご（守る側）
     const mine = ballBaskets(sim.stage)[f.team % 2];
     const toMine = Math.sign(mine.cx - (m.x1 + m.x2) / 2) || 1;

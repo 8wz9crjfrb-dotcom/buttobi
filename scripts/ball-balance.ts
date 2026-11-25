@@ -11,12 +11,12 @@ export function ballRun(n: number, seed: number, lv = 5, stageId?: string) {
   const sim = new Sim({ players, stageId: stageId ?? STAGES[seed % STAGES.length], rules: { mode: 'ball', stocks: 3, timeLimit: 120, goals: 5, teams: true }, seed });
   const ai = new CpuController(seed);
   let guard = 0;
-  while (!sim.finished && guard++ < 140 * 60) {
+  while (!sim.finished && guard++ < 200 * 60) {
     const inputs = new Map<number, InputState>();
     for (const f of sim.fighters) inputs.set(f.slot, ai.think(sim, f, lv));
     sim.step(inputs);
   }
-  return { score: sim.ballScore, target: sim.ballTarget, secs: Math.round((sim.endFrame - 150) / 60), stage: sim.setup.stageId };
+  return { score: sim.ballScore, target: sim.ballTarget, secs: sim.finished ? Math.round((sim.endFrame - 150) / 60) : 999, stage: sim.setup.stageId };
 }
 if (process.argv[1]?.endsWith('ball-balance.ts')) {
   for (const n of [2, 4, 6]) {
