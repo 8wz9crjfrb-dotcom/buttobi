@@ -124,6 +124,29 @@ export class GameRenderer {
     this.props = new PropRenderer(this.scene);
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    // iPhone では、向きを変えた直後などに古い大きさのまま resize が来ることがあるので、少しあとにも測り直す
+    const later = () => [100, 400, 1000].forEach((ms) => setTimeout(() => this.resize(), ms));
+    window.addEventListener('orientationchange', later);
+    window.visualViewport?.addEventListener('resize', later);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) later();
+    });
+  }
+
+  /** 画面に出ているキャンバスの大きさ（CSS の大きさ）。取れなければ window の大きさ */
+  private viewSize(): { w: number; h: number } {
+    const c = this.renderer.domElement;
+    return { w: Math.max(1, c.clientWidth || window.innerWidth), h: Math.max(1, c.clientHeight || window.innerHeight) };
+  }
+  private sizeW = 0;
+  private sizeH = 0;
+  /** 定期的に：実際に画面に出ている大きさが変わっていたら合わせる（縦横比がずれてキャラが潰れて見えるのを防ぐ） */
+  private sizeTick = 0;
+  private checkSize(): void {
+    // 大きさを読むと画面の配置の計算が走るので、毎フレームではなく約0.25秒ごとに見る
+    if (++this.sizeTick % 15 !== 0) return;
+    const { w, h } = this.viewSize();
+    if (w !== this.sizeW || h !== this.sizeH) this.resize();
   }
 
   setQuality(q: Quality): void {
@@ -154,8 +177,9 @@ export class GameRenderer {
   }
 
   resize(): void {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const { w, h } = this.viewSize();
+    this.sizeW = w;
+    this.sizeH = h;
     const maxRatio = this.quality === 'high' ? 2 : 1.25;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxRatio));
     this.renderer.setSize(w, h, false);
@@ -521,8 +545,7 @@ export class GameRenderer {
   private renderPreview(dt: number): void {
     const pv = this.preview!;
     const cam = pv.camera;
-    const w = window.innerWidth;
-    const h = Math.max(1, window.innerHeight);
+    const { w, h } = this.viewSize();
     cam.aspect = w / h;
     // キャラを画面の左寄り（約 22%）に置く。縦はキャラの全身が入る距離
     const dist = 8.2;
@@ -708,11 +731,13 @@ export class GameRenderer {
   /** 試合の中の位置（x, y）が、画面のどこに映るか（画面の左上が 0,0 のピクセル） */
   project(x: number, y: number): { x: number; y: number } {
     const v = new THREE.Vector3(x, y, 0).project(this.camera);
-    return { x: ((v.x + 1) / 2) * window.innerWidth, y: ((1 - v.y) / 2) * window.innerHeight };
+    const { w, h } = this.viewSize();
+    return { x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h };
   }
 
   render(view: ViewState | null, dt: number, newEvents: GameEvent[]): void {
     this.time += dt;
+    this.checkSize();
     // 暗転：予告から1.5秒後に暗くなり、約3秒続いてから明るく戻る
     const bt = this.blackoutAt < 0 || this.preview || !view ? -1 : this.time - this.blackoutAt;
     const dark = bt < 0 ? 0 : bt < 0.3 ? bt / 0.3 : bt < 3.3 ? 1 : bt < 3.8 ? (3.8 - bt) / 0.5 : 0;
@@ -823,8 +848,7 @@ export class GameRenderer {
     const mc = this.menuChar;
     if (!mc) return;
     const cam = mc.camera;
-    const w = window.innerWidth;
-    const h = Math.max(1, window.innerHeight);
+    const { w, h } = this.viewSize();
     cam.aspect = w / h;
     // キャラを画面の左寄り（約 18%）に置く。縦長に近い画面（タブレット）では、少し遠くから写して大きくなりすぎないようにする
     const dist = 8.6 * Math.max(1, 1.9 / cam.aspect);
