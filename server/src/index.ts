@@ -433,7 +433,8 @@ export class Room extends DurableObject<Env> {
     if (msg.t === 'ping') {
       // 往復の時間を覚えておく（当たり判定の巻き戻しに使う）
       if (slot >= 0 && typeof msg.r === 'number' && msg.r > 0 && msg.r < 2000) this.rtt.set(slot, msg.r);
-      return this.send(ws, { t: 'pong', c: msg.c });
+      this.findColo();
+      return this.send(ws, { t: 'pong', c: msg.c, ...(this.colo ? { w: this.colo } : {}) });
     }
 
     if (msg.t === 'hello') {
@@ -1011,6 +1012,24 @@ export class Room extends DurableObject<Env> {
 
   /** 人ごとの往復の時間（ms） */
   private rtt = new Map<number, number>();
+  /** このルームが動いているデータセンター（通信の遅さを調べるために端末へ伝える） */
+  private colo = '';
+  private coloAsked = false;
+  private findColo(): void {
+    if (this.coloAsked) return;
+    this.coloAsked = true;
+    this.ctx.waitUntil(
+      fetch('https://www.cloudflare.com/cdn-cgi/trace')
+        .then((r) => r.text())
+        .then((t) => {
+          const m = t.match(/^colo=([A-Z]{3})$/m);
+          if (m) this.colo = m[1];
+        })
+        .catch(() => {
+          this.coloAsked = false;
+        }),
+    );
+  }
 
   /**
    * 当たり判定の巻き戻し：その人の画面に映る相手は「片道の遅れ＋表示のなめらかさ（80ms）」だけ前のもの。
