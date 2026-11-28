@@ -135,6 +135,7 @@ export interface MatchRules {
   /** チーム戦 */
   teams?: boolean;
   /** チーム戦で味方にも攻撃が当たる */
+  /** 前の版の「味方への攻撃：当たる」。今は使わない（味方には当たらない） */
   friendlyFire?: boolean;
   /** 100人組手：倒す敵の人数（端末だけで遊ぶモード。players の先頭が自分、ほかは全員敵） */
   horde?: number;

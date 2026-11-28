@@ -1699,7 +1699,7 @@ function ruleText(r: MatchRules): string {
                   : r.mode === 'coins'
                     ? `コイン集め ${r.timeLimit / 60}分`
                     : `タイム ${r.timeLimit / 60}分`;
-  return r.teams && !isTwoTeam(r.mode) ? `${base}・チーム戦（味方への攻撃${r.friendlyFire ? 'あり' : 'なし'}）` : base;
+  return r.teams && !isTwoTeam(r.mode) ? `${base}・チーム戦` : base;
 }
 
 /** モードの説明（どんな遊びか）と、おすすめの人数。ルール画面でモードの下に出す */
@@ -1736,7 +1736,6 @@ function ruleControls(rules: MatchRules): string {
     <div class="opt" data-show="stamina">HP ${seg('hp', [[100, '100'], [150, '150'], [200, '200'], [300, '300']], rules.hp ?? DEFAULT_HP)}</div>
     <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>
     <div class="opt" data-hide="ball">チーム戦 ${seg('teams', [['on', 'あり'], ['off', 'なし']], rules.teams ? 'on' : 'off')}</div>
-    <div class="opt" data-team data-ff>味方への攻撃 ${seg('ff', [['off', '当たらない'], ['on', '当たる']], rules.friendlyFire ? 'on' : 'off')}</div>
     <div class="opt" data-hide="ball">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
     <div class="opt" data-items>アイテムの頻度 ${seg('irate', [['low', '少ない'], ['mid', '普通'], ['high', '多い']], rules.itemRate ?? 'mid')}</div>
     <div class="opt opt-wide" data-items>出るアイテム（乱入アイテムも同じ）<div class="item-chips">${ITEM_NAMES.map((n, i) => `<button type="button" class="ichip ${(rules.itemKinds ?? ITEM_NAMES.map((_, k) => k)).includes(i) ? 'on' : ''}" data-ikind="${i}"><b>${n}</b><small>${ITEM_INFO[i].short}</small></button>`).join('')}</div></div>
@@ -1754,8 +1753,6 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     root.querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.classList.toggle('hidden', !rules.teams));
     // 玉入れではアイテムを使わないので、アイテムの設定は出さない
     root.querySelectorAll<HTMLElement>('[data-items]').forEach((el) => el.classList.toggle('hidden', !rules.items || rules.mode === 'ball'));
-    // 玉入れは「味方への攻撃」の設定を使わない（相手への攻撃の設定がある）
-    root.querySelectorAll<HTMLElement>('[data-ff]').forEach((el) => el.classList.toggle('hidden', !rules.teams || rules.mode === 'ball'));
     // 金塊どろぼうは「チーム戦 あり／なし」を選ばない（いつも2チーム）
     root.querySelectorAll<HTMLElement>('[data-seg="teams"]').forEach((el) => el.closest('.opt')?.classList.toggle('hidden', isTwoTeam(rules.mode)));
   };
@@ -1787,10 +1784,6 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
   bindSeg(root, 'teams', (v) => {
     rules.teams = v === 'on';
     sync();
-    onChange();
-  });
-  bindSeg(root, 'ff', (v) => {
-    rules.friendlyFire = v === 'on';
     onChange();
   });
   bindSeg(root, 'stocks', (v) => {
@@ -3262,7 +3255,7 @@ function showHowTo(): void {
        <p><b>コイン集め：</b>ステージにコインが降ってくるので、触れて拾います（大きいコインは5枚分）。攻撃を受けるとダメージに合わせてコインを落とし（1回に最大5枚）、撃墜されると持っているコインの半分がステージの中央にばらまかれます。時間切れのときに一番多く持っている人の勝ち。何人でも遊べ、チーム戦にもできます。</p>
        <p><b>玉入れ：</b>赤と青の2チームに分かれ（タップで選べます）、ボールを攻撃でふっとばして、相手チームのかご（赤は右、青は左）に上から入れると1点。先取点（3・5・7点）か、時間切れで点の多いチームの勝ち。ルールで「相手への攻撃：当たらない」にすると、攻撃はボールにだけ当たります。弱攻撃はかごまで4〜6mくらい、横攻撃は8〜12mくらいから入りやすいです。<b>ねらい方：</b>スティックを斜め上に入れながら攻撃すると山なりに高く（かごに入れやすい）、斜め下に入れながら攻撃すると低く速く飛びます。</p>
        <p><b>体力制：</b>%のかわりにHPで戦います。HPが0になるとその場で撃墜。ふっとびは小さめなので、HPを削り切るのが基本です。</p>
-       <p><b>チーム戦：</b>CPU戦はルール画面、オンラインはルームの枠をタップしてチームを分けます。「味方への攻撃：当たらない」なら、味方には攻撃も飛び道具も当たりません。</p>
+       <p><b>チーム戦：</b>CPU戦はルール画面、オンラインはルームの枠をタップしてチームを分けます。味方には攻撃も飛び道具も当たりません。</p>
        <p><b>100人組手：</b>1機だけで、次々に出てくる敵を100人倒すとクリア。10人倒すごとに少し回復し、30人倒すと敵が3人に増えます。</p>
        <p><b>アイテム・ステージギミック：</b>ルールで「あり」にすると、アイテムが落ちてきて、触れると使えます。落ちているアイテムの上に効果が書いてあり、効果中は自分の枠の上にしるしが出ます。${ITEM_NAMES.map((n, i) => `<br/>・${n}：${ITEM_INFO[i].effect.replace('！', '')}`).join('')}<br/>ギミックはキャラ別ステージごとに違う仕掛け（強風・レーザー・スクーターなど）で、来る前に予告が出ます。</p>
        <p><b>崖：</b>ステージの端に近づくと自動でつかまります。スティック上かジャンプで上がります。</p>

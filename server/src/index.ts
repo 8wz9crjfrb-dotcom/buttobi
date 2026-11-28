@@ -683,7 +683,7 @@ export class Room extends DurableObject<Env> {
           hp: Math.max(50, Math.min(300, (r?.hp ?? 0) | 0 || DEFAULT_HP)),
           // 玉入れ・金庫まもりはいつも赤・青の2チーム（チームは選べる）
           teams: isTwoTeam(r?.mode) ? true : r?.teams === true,
-          friendlyFire: r?.friendlyFire === true,
+          friendlyFire: false,
         };
         if (msg.stageId === RANDOM_STAGE || STAGES.some((s) => s.id === msg.stageId)) l.stageId = msg.stageId;
         l.cpuCount = Math.max(0, Math.min(MAX_PLAYERS - l.humans.length, msg.cpuCount | 0));

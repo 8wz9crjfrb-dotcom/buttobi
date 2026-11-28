@@ -29,7 +29,7 @@ function jabAt(sim: Sim) {
   const ff = make([P(0, 'guard', 0), P(1, 'hacker', 0), P(2, 'thief', 1)], { teams: true, friendlyFire: true });
   ff.fighters[0].x = 0; ff.fighters[0].facing = 1; ff.fighters[1].x = 0.9; ff.fighters[2].x = -6;
   jabAt(ff);
-  check('チーム戦：「味方にも当たる」なら当たる', ff.fighters[1].damage > 0, `${ff.fighters[1].damage.toFixed(1)}%`);
+  check('チーム戦：前の版の「味方にも当たる」の設定が残っていても、味方には当たらない', ff.fighters[1].damage === 0, `${ff.fighters[1].damage.toFixed(1)}%`);
   const foe = make([P(0, 'guard', 0), P(1, 'hacker', 1), P(2, 'thief', 1)], { teams: true });
   foe.fighters[0].x = 0; foe.fighters[0].facing = 1; foe.fighters[1].x = 0.9; foe.fighters[2].x = -6;
   jabAt(foe);
@@ -81,9 +81,6 @@ function jabAt(sim: Sim) {
   };
   const off = count(false);
   check('チーム戦：CPU同士でも味方には1回も当たらない', off.foe > 30 && off.ally === 0 && off.ended, `敵へ${off.foe} 味方へ${off.ally}`);
-  // 1試合だとばらつくので、4試合の合計で見る（ふだんは味方への巻き込みが敵への3割弱）
-  const on = [7, 8, 9, 10].map((seed) => count(true, seed)).reduce((a, b) => ({ ally: a.ally + b.ally, foe: a.foe + b.foe, ended: a.ended && b.ended }));
-  check('チーム戦（味方にも当たる）：CPUは敵を狙う（巻き込みは少なめ）', on.foe > 120 && on.ally < on.foe * 0.35, `4試合で 敵へ${on.foe} 味方へ${on.ally}`);
 }
 
 // ---- 体力制

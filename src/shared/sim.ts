@@ -1552,7 +1552,7 @@ export class Sim {
     // 玉入れで「相手への攻撃：当たらない」なら、だれの攻撃もほかの人に当たらない（ボールにだけ当たる）
     // 玉入れは攻撃がない（アイテムなどもほかの人には当たらない）
     if (this.setup.rules.mode === 'ball') return true;
-    if (this.setup.rules.friendlyFire) return false;
+    // チーム戦では、味方には攻撃が当たらない（どのモードでも。前の版の「味方への攻撃：当たる」の設定は使わない）
     const a = this.fighter(from);
     return !!a && a.team === v.team;
   }
