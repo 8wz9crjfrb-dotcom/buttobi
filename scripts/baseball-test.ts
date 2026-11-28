@@ -217,8 +217,8 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
 {
   const g = new Baseball(setup());
   until(g, () => g.phase === 'pitch', pitchAt(BB.aimX, 0.9));
+  const px = g.pitchInfo().x;
   until(g, () => g.phase !== 'pitch');
-  const px = g.plate.x;
   if (px >= BB.hbpX) check('内側に大きく外れて体に当たるとデッドボール（1塁へ）', g.lastResult === 'hbp' && g.bases[0] && g.balls === 0, `x ${px.toFixed(2)} ${g.lastResult}`);
   else check('内側に大きく外れて体に当たるとデッドボール（1塁へ）', false, `x ${px.toFixed(2)} が体まで届いていない`);
   const h = new Baseball(setup());
