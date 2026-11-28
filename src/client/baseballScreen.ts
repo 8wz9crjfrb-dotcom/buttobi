@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { getCharacter, TEAM_COLORS } from '../shared/characters';
 import { getCostume } from '../shared/costumes';
-import { Baseball, BB, BBCpu, BB_RESULT_NAMES, bbStats, type BBPlayer, type BBSetup } from '../shared/baseball';
+import { Baseball, BB, BBCpu, BB_RESULT_NAMES, bbStats, pitchKmh, type BBPlayer, type BBSetup } from '../shared/baseball';
 import type { InputState, ViewFighter } from '../shared/types';
 import { FighterModel } from './fighterModel';
 
@@ -46,6 +46,9 @@ export class BaseballScreen {
   private swingT = -1;
   private pitchAnimT = -1;
   private disposables: { dispose(): void }[] = [];
+  /** 球の通り道の残像 */
+  private trail: THREE.Mesh[] = [];
+  private trailPos: THREE.Vector3[] = [];
   private ended = false;
 
   constructor(setup: BBSetup, mySlot: number, hooks: BBHooks, uiRoot: HTMLElement) {
@@ -162,8 +165,40 @@ export class BaseballScreen {
       m.position.set(Math.sin(a) * r, 8.3 + Math.random() * 0.8, Math.cos(a) * r);
       s.add(m);
     }
-    // ボールと影
-    this.ball = add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff })));
+    // ボール（赤い縫い目つき。回転が見えるように）と影
+    const seam = document.createElement('canvas');
+    seam.width = 256;
+    seam.height = 128;
+    const sc = seam.getContext('2d')!;
+    sc.fillStyle = '#ffffff';
+    sc.fillRect(0, 0, 256, 128);
+    sc.strokeStyle = '#d42b2b';
+    sc.lineWidth = 9;
+    for (const off of [0, 128]) {
+      sc.beginPath();
+      for (let i = 0; i <= 64; i++) {
+        const u = (i / 64) * 128 + off;
+        const v = 64 + Math.sin((i / 64) * Math.PI * 2) * 34 * (off ? -1 : 1);
+        if (i === 0) sc.moveTo(u, v);
+        else sc.lineTo(u, v);
+      }
+      sc.stroke();
+    }
+    const seamTex = new THREE.CanvasTexture(seam);
+    seamTex.colorSpace = THREE.SRGBColorSpace;
+    this.disposables.push(seamTex);
+    this.ball = add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 14), new THREE.MeshBasicMaterial({ map: seamTex })));
+    // 球の通り道（うすい残像）：曲がり方が分かるように
+    const trailGeo = new THREE.SphereGeometry(0.07, 10, 8);
+    this.disposables.push(trailGeo);
+    for (let i = 0; i < 14; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 * (1 - i / 14), depthWrite: false });
+      this.disposables.push(mat);
+      const m = new THREE.Mesh(trailGeo, mat);
+      m.visible = false;
+      s.add(m);
+      this.trail.push(m);
+    }
     this.ballShadow = add(new THREE.Mesh(new THREE.CircleGeometry(0.09, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 })));
     this.ballShadow.rotation.x = -Math.PI / 2;
     // ストライクゾーンの枠
@@ -209,6 +244,7 @@ export class BaseballScreen {
       <div class="bb-board"><div class="bb-inn"></div><div class="bb-teams"></div></div>
       <div class="bb-count"><div class="bb-bso"></div><div class="bb-bases"><i class="b2"></i><i class="b3"></i><i class="b1"></i></div><div class="bb-pa"></div></div>
       <div class="bb-matchup"></div>
+      <div class="bb-speed"></div>
       <div class="bb-msg"></div>
       <div class="bb-help"></div>`;
     uiRoot.appendChild(this.ui);
@@ -270,8 +306,10 @@ export class BaseballScreen {
         break;
       case 'contact':
         this.hooks.sound('hit');
+        this.showSpeed();
         break;
       case 'call':
+        if (e.c !== 'foul') this.showSpeed();
         if (e.c === 'strike') say('ストライク！', 'strike');
         else if (e.c === 'ball') say('ボール', 'ball');
         else if (e.c === 'foul') say('ファウル', 'ball');
@@ -298,6 +336,17 @@ export class BaseballScreen {
       }
     }
   }
+
+  /** 球速と球種（投げた球がホームベースに来たあとに出す） */
+  private showSpeed(): void {
+    const g = this.game;
+    const name = g.pitchType === 'straight' ? 'ストレート' : g.pitchSide === 0 ? 'フォーク' : g.pitchSide > 0 ? 'シュート' : 'スライダー';
+    const el = this.ui.querySelector<HTMLElement>('.bb-speed')!;
+    el.innerHTML = `<b>${pitchKmh(g.pitchSpeed)}</b><small>km/h</small><span>${name}</span>`;
+    el.classList.add('show');
+    this.speedT = 2.2;
+  }
+  private speedT = 0;
 
   private message(html: string, cls: string): void {
     const el = this.ui.querySelector<HTMLElement>('.bb-msg')!;
@@ -346,6 +395,29 @@ export class BaseballScreen {
     this.ballShadow.visible = showBall;
     this.ball.position.set(bp.x, Math.max(0.07, bp.y), bp.z);
     this.ballShadow.position.set(bp.x, 0.02, bp.z);
+    // 回転：ストレートは縦の強い逆回転、横に曲がる球は横回転、落ちる球はほとんど回らない（ゆらゆら）
+    if (g.phase === 'pitch') {
+      const step = dt * 60;
+      if (g.pitchType === 'straight') this.ball.rotateX(-0.55 * step);
+      else if (g.pitchSide === 0) {
+        this.ball.rotateX(0.04 * step);
+        this.ball.rotateZ(Math.sin(this.time * 9) * 0.03);
+      } else this.ball.rotateY(0.5 * g.pitchSide * step);
+    } else if (g.phase === 'hit') this.ball.rotateX(0.4 * dt * 60);
+    // 残像：投げた球の通り道
+    if (g.phase === 'pitch') {
+      this.trailPos.unshift(this.ball.position.clone());
+      if (this.trailPos.length > this.trail.length * 2) this.trailPos.length = this.trail.length * 2;
+    } else if (g.phase !== 'call') this.trailPos = [];
+    this.trail.forEach((m, i) => {
+      const p = this.trailPos[(i + 1) * 2];
+      m.visible = !!p && (g.phase === 'pitch' || g.phase === 'call');
+      if (p) m.position.copy(p);
+    });
+    if (this.speedT > 0) {
+      this.speedT -= dt;
+      if (this.speedT <= 0) this.ui.querySelector('.bb-speed')!.classList.remove('show');
+    }
     // ミートの丸・狙いの印・ゾーンの枠
     const role = this.role;
     const meetR = BB.meetR + (bbStats(g.batter.charId).meet - 3) * BB.perMeet;

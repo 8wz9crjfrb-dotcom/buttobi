@@ -60,8 +60,15 @@ export const BB = {
   /** コントロールのぶれ（コントロール3のとき）と、1段階ごとの差 */
   wild: 0.07,
   perControl: 0.016,
-  /** 狙い・ミートの丸を動かす速さ（1フレーム） */
-  cursorSpeed: 0.024,
+  /** 狙い・ミートの丸を動かすいちばん速い速さ（1フレーム）と、速さが追いつく割合（なめらかに加速・減速する） */
+  cursorMax: 0.042,
+  cursorEase: 0.3,
+  /** スティックの遊び（これより小さい傾きは動かない） */
+  cursorDead: 0.1,
+  /** 打球が地面ではねるときの、はね返り・転がるときの減り方と、落ちてから結果を出すまで（フレーム） */
+  bounce: 0.42,
+  roll: 0.78,
+  rollT: 55,
   /** ミートの丸の半径（ミート3のとき）と、1段階ごとの差 */
   meetR: 0.15,
   perMeet: 0.02,
@@ -151,6 +158,14 @@ export class Baseball {
   /** ピッチャーの狙い、バッターのミートの丸 */
   aim = { x: 0, y: 0.8 };
   cursor = { x: 0, y: 0.8 };
+  /** 狙い・ミートの丸が動いている速さ（なめらかに動かすため） */
+  private aimV = { x: 0, y: 0 };
+  private cursorV = { x: 0, y: 0 };
+  /** 投げた球の曲がる向き（-1・1 = 横、0 = 落ちる）と、速さ（1フレームに進む距離） */
+  pitchSide = 0;
+  pitchSpeed = 0;
+  /** 打球が落ちてから結果を出すまで（はねて転がる間）。落ちたときに結果は決めておく */
+  private landing: { left: number; result: BBResult | 'foul' } | null = null;
   /** 投げた球：最初の位置・速さ・曲がり（1フレームあたり）と、ホームベースに着くまでのフレーム数 */
   private p0: Vec = { x: 0, y: BB.releaseY, z: BB.releaseZ };
   private v0: Vec = { x: 0, y: 0, z: 0 };
@@ -228,8 +243,7 @@ export class Baseball {
     const sp = bbStats(pit.charId);
     // バッター：投げる前と、球が来ている間はミートの丸を動かせる
     if (this.phase === 'ready' || this.phase === 'aim' || (this.phase === 'pitch' && this.swingAt < 0)) {
-      this.cursor.x = clamp(this.cursor.x + bi.mx * BB.cursorSpeed, -BB.aimX, BB.aimX);
-      this.cursor.y = clamp(this.cursor.y + bi.my * BB.cursorSpeed, BB.aimY1, BB.aimY2);
+      moveCursor(this.cursor, this.cursorV, bi);
     }
     switch (this.phase) {
       case 'ready':
@@ -237,12 +251,12 @@ export class Baseball {
           this.phase = 'aim';
           this.timer = BB.aimMax;
           this.aim = { x: 0, y: 0.8 };
+          this.aimV = { x: 0, y: 0 };
         }
         break;
       case 'aim': {
         // ピッチャー：狙いを動かし、A でストレート、B で変化球（押したときのスティックの向きで曲がる向き。真ん中なら落ちる球）
-        this.aim.x = clamp(this.aim.x + pi.mx * BB.cursorSpeed, -BB.aimX, BB.aimX);
-        this.aim.y = clamp(this.aim.y + pi.my * BB.cursorSpeed, BB.aimY1, BB.aimY2);
+        moveCursor(this.aim, this.aimV, pi);
         const a = this.pressed(pit.slot, pi, BTN_A);
         const b = this.pressed(pit.slot, pi, BTN_B);
         if (a || b || --this.timer <= 0) this.throwPitch(b ? 'breaking' : 'straight', b ? Math.sign(Math.abs(pi.mx) > 0.4 ? pi.mx : 0) : 0, sp);
@@ -288,8 +302,10 @@ export class Baseball {
 
   private throwPitch(type: 'straight' | 'breaking', side: number, s: BBStats): void {
     this.pitchType = type;
+    this.pitchSide = type === 'breaking' ? side : 0;
     const speed = (BB.pitchSpeed + (s.speed - 3) * BB.perSpeed) * (type === 'breaking' ? BB.breakSlow : 1);
     const F = Math.round(BB.releaseZ / speed);
+    this.pitchSpeed = speed;
     // 狙いから、コントロールのぶんだけぶれる
     const wild = Math.max(0.02, BB.wild - (s.control - 3) * BB.perControl);
     const ang = this.rng.next() * Math.PI * 2;
@@ -353,6 +369,7 @@ export class Baseball {
     };
     this.phase = 'hit';
     this.timer = 0;
+    this.landing = null;
   }
 
   /** 打球を飛ばす。落ちたら（またはフェンスを越えたら）結果を決める */
@@ -371,18 +388,38 @@ export class Baseball {
     const dist = Math.hypot(b.x, b.z);
     const fence = this.fenceAt(b.spray);
     const foul = Math.abs(b.spray) > BB.foulDeg || b.z < 0;
-    if (!foul && dist >= fence && b.y > 2.5) {
+    if (!this.landing && !foul && dist >= fence && b.y > 2.5) {
       this.finishAtBat('homer');
       return;
     }
-    if (b.y <= 0 || this.timer > 400) {
+    // 地面ではねる・転がる（ゴロらしく）
+    if (b.y <= 0 && b.vy < 0) {
       b.y = 0;
-      b.landed = true;
-      if (foul) {
-        this.setCall('foul');
-        return;
+      if (!this.landing) {
+        // 最初に落ちたときに結果を決めておき、はねて転がるのを見せてから出す
+        b.landed = true;
+        this.landing = { left: BB.rollT, result: foul ? 'foul' : this.outcome(dist, b.launch, b.speed) };
       }
-      this.finishAtBat(this.outcome(dist, b.launch, b.speed));
+      b.vy = Math.abs(b.vy) * BB.bounce;
+      b.vx *= BB.roll;
+      b.vz *= BB.roll;
+      if (b.vy < 1.2) b.vy = 0;
+    }
+    if (b.y <= 0 && b.vy === 0) {
+      // 転がる：だんだん止まる
+      b.vx *= 0.97;
+      b.vz *= 0.97;
+    }
+    if (this.landing && --this.landing.left <= 0) {
+      const r = this.landing.result;
+      this.landing = null;
+      if (r === 'foul') this.setCall('foul');
+      else this.finishAtBat(r);
+      return;
+    }
+    if (this.timer > 420) {
+      this.landing = null;
+      this.finishAtBat(foul ? 'flyout' : this.outcome(dist, b.launch, b.speed));
     }
   }
 
@@ -579,13 +616,39 @@ export class BBCpu {
       const ty = info.y + pl.ey + 0.02;
       const dx = tx - g.cursor.x;
       const dy = ty - g.cursor.y;
-      const mx = clamp(dx / BB.cursorSpeed, -1, 1);
-      const my = clamp(dy / BB.cursorSpeed, -1, 1);
+      const mx = clamp(dx / (BB.cursorMax * 1.5), -1, 1);
+      const my = clamp(dy / (BB.cursorMax * 1.5), -1, 1);
       const swing = pl.swing && g.swingAt < 0 && info.left <= pl.wait;
       return { mx, my, buttons: swing ? BTN_A : 0 };
     }
     return { mx: 0, my: 0, buttons: 0 };
   }
+}
+
+/**
+ * スティックで丸を動かす。小さく倒すとゆっくり（細かく合わせられる）、大きく倒すと速く。
+ * 速さはすぐには変わらず、なめらかに加速・減速する
+ */
+function moveCursor(c: { x: number; y: number }, v: { x: number; y: number }, inp: InputState): void {
+  const mag = Math.min(1, Math.hypot(inp.mx, inp.my));
+  const k = mag <= BB.cursorDead ? 0 : (mag - BB.cursorDead) / (1 - BB.cursorDead);
+  const sp = (k * k * 0.65 + k * 0.35) * BB.cursorMax;
+  const tx = mag > 0 ? (inp.mx / mag) * sp : 0;
+  const ty = mag > 0 ? (inp.my / mag) * sp : 0;
+  v.x += (tx - v.x) * BB.cursorEase;
+  v.y += (ty - v.y) * BB.cursorEase;
+  const nx = clamp(c.x + v.x, -BB.aimX, BB.aimX);
+  const ny = clamp(c.y + v.y, BB.aimY1, BB.aimY2);
+  // 端に当たったら、その向きの速さは消す
+  if (nx !== c.x + v.x) v.x = 0;
+  if (ny !== c.y + v.y) v.y = 0;
+  c.x = nx;
+  c.y = ny;
+}
+
+/** 球速の表示（km/h）。実際の速さは遊びやすく遅めにしているので、見た目の数字に直す */
+export function pitchKmh(speedPerFrame: number): number {
+  return Math.round(60 + speedPerFrame * 300);
 }
 
 function clamp(v: number, a: number, b: number): number {

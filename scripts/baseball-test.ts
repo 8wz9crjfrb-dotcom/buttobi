@@ -135,6 +135,45 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
   until(g, () => g.phase !== 'result');
   check('最終回の裏に勝ち越したら、サヨナラで終わる', g.finished && g.winner === 1);
 }
+// ---- ゴロは地面ではねて転がる（落ちてからしばらくして結果が出る）
+{
+  const g = new Baseball(setup());
+  g.phase = 'hit';
+  g.hitBall = { x: 0, y: 0.6, z: 3, vx: 0, vy: -4, vz: 22, landed: false, spray: 0, launch: -5, speed: 25 };
+  let bounced = false;
+  let maxAfter = 0;
+  let landedAt = -1;
+  for (let i = 0; i < 200 && g.phase === 'hit'; i++) {
+    g.step(new Map());
+    if (g.hitBall.landed && landedAt < 0) landedAt = i;
+    if (landedAt >= 0 && g.hitBall.y > 0.05) bounced = true;
+    if (landedAt >= 0) maxAfter = Math.max(maxAfter, g.hitBall.y);
+  }
+  const rolled = Math.hypot(g.hitBall.x, g.hitBall.z);
+  check('ゴロ：地面に落ちたあと、はねる', bounced, `はねた高さ ${maxAfter.toFixed(2)}m`);
+  check('ゴロ：はねて転がってから結果が出る', g.phase === 'result' && rolled > 10, `転がった距離 ${rolled.toFixed(1)}m`);
+}
+// ---- ミートの丸：小さく倒すとゆっくり、大きく倒すと速く、なめらかに動く
+{
+  const g = new Baseball(setup());
+  const move = (mx: number, n: number) => {
+    const x0 = g.cursor.x;
+    for (let i = 0; i < n; i++) g.step(new Map([[g.batter.slot, { mx, my: 0, buttons: 0 }]]));
+    return Math.abs(g.cursor.x - x0);
+  };
+  const slow = move(0.3, 10);
+  g.cursor.x = 0;
+  move(0, 20);
+  g.cursor.x = 0;
+  const fast = move(1, 10);
+  g.cursor.x = 0;
+  move(0, 20);
+  g.cursor.x = 0;
+  const first = move(1, 1);
+  check('ミートの丸：小さく倒すとゆっくり、大きく倒すと速い', fast > slow * 3, `小 ${slow.toFixed(3)} / 大 ${fast.toFixed(3)}`);
+  check('ミートの丸：急には最高速にならない（なめらかに加速）', first < BB.cursorMax * 0.5, `${first.toFixed(4)}`);
+}
+
 void N;
 
 process.exit(fail ? 1 : 0);

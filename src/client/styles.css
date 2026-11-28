@@ -6608,3 +6608,30 @@ table.rec td:first-child {
 .bb-mine {
   text-align: center;
 }
+.bb-speed {
+  position: absolute;
+  top: calc(64px + var(--safe-t));
+  right: calc(70px + var(--safe-r, 0px));
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(16, 20, 40, 0.82);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.bb-speed.show {
+  opacity: 1;
+}
+.bb-speed b {
+  font-size: 22px;
+  color: #ffd23f;
+}
+.bb-speed small {
+  font-size: 11px;
+}
+.bb-speed span {
+  margin-left: 6px;
+  font-size: 12px;
+}
