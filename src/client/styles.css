@@ -6637,40 +6637,162 @@ table.rec td:first-child {
 }
 .bb-pick {
   position: absolute;
-  top: calc(88px + var(--safe-t));
   left: 50%;
-  transform: translateX(-50%);
+  top: 54%;
+  width: 0;
+  height: 0;
   display: none;
-  gap: 6px;
-  pointer-events: auto;
+  pointer-events: none;
 }
 .bb-pick.show {
-  display: flex;
+  display: block;
+}
+/* まん中のボール */
+.bb-pick-ball {
+  position: absolute;
+  left: -20px;
+  top: -20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff, #dfe3ea);
+  box-shadow: 0 0 0 3px rgba(16, 20, 40, 0.8);
+}
+.bb-pick-ball::before,
+.bb-pick-ball::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  width: 12px;
+  height: 28px;
+  border: 2px solid #d42b2b;
+  border-radius: 50%;
+}
+.bb-pick-ball::before {
+  left: -4px;
+  border-left-color: transparent;
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+}
+.bb-pick-ball::after {
+  right: -4px;
+  border-right-color: transparent;
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+}
+/* ボールから各球種へ、曲がる向きの帯 */
+.bb-ray {
+  position: absolute;
+  left: 0;
+  top: -3px;
+  width: 60px;
+  height: 6px;
+  border-radius: 3px;
+  transform-origin: 0 50%;
+  background: repeating-linear-gradient(90deg, #ffd23f 0 8px, transparent 8px 11px);
+  opacity: 0.85;
+}
+.bb-ray[data-ray='straight'] {
+  transform: rotate(-90deg) translateX(24px);
+}
+.bb-ray[data-ray='slider'] {
+  transform: rotate(180deg) translateX(24px);
+}
+.bb-ray[data-ray='curve'] {
+  transform: rotate(130deg) translateX(24px);
+}
+.bb-ray[data-ray='fork'] {
+  transform: rotate(90deg) translateX(24px);
+}
+.bb-ray[data-ray='shoot'] {
+  transform: rotate(0deg) translateX(24px);
 }
 .bb-pick button {
+  position: absolute;
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  min-width: 70px;
-  padding: 4px 8px;
-  white-space: nowrap;
-  border-radius: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  background: rgba(16, 20, 40, 0.82);
+  min-width: 92px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(16, 20, 40, 0.88);
   color: #fff;
   font-weight: 800;
+  white-space: nowrap;
+  pointer-events: auto;
   touch-action: manipulation;
 }
 .bb-pick button b {
   font-size: 13px;
 }
 .bb-pick button small {
-  font-size: 9px;
-  opacity: 0.8;
+  font-size: 10px;
+  color: #ffd23f;
+}
+.bb-pick button[data-pk='straight'] {
+  left: 0;
+  top: -100px;
+}
+.bb-pick button[data-pk='slider'] {
+  left: -150px;
+  top: 0;
+}
+.bb-pick button[data-pk='curve'] {
+  left: -118px;
+  top: 84px;
+}
+.bb-pick button[data-pk='fork'] {
+  left: 0;
+  top: 104px;
+}
+.bb-pick button[data-pk='shoot'] {
+  left: 150px;
+  top: 0;
 }
 .bb-pick button.on {
   border-color: #ffd23f;
-  background: rgba(255, 210, 63, 0.25);
-  box-shadow: 0 0 10px rgba(255, 210, 63, 0.5);
+  box-shadow: 0 0 10px rgba(255, 210, 63, 0.6);
+}
+.bb-pname {
+  position: absolute;
+  left: 50%;
+  top: 72%;
+  transform: translateX(-50%);
+  padding: 3px 18px;
+  background: rgba(16, 20, 40, 0.82);
+  font-size: 14px;
+  display: none;
+}
+.bb-pname.show {
+  display: block;
+}
+.bb-repick {
+  position: absolute;
+  left: calc(14px + var(--safe-l, 0px));
+  top: 46%;
+  display: none;
+  pointer-events: auto;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 2px solid #ffd23f;
+  background: rgba(16, 20, 40, 0.88);
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+}
+.bb-repick.show {
+  display: block;
+}
+.bb-drag {
+  position: absolute;
+  inset: 0;
+  display: none;
+  pointer-events: auto;
+  touch-action: none;
+}
+.bb-drag.on {
+  display: block;
 }

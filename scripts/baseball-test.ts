@@ -185,8 +185,13 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
     // コントロールのぶれをなくして比べる
     (g as unknown as { rng: { next(): number } }).rng.next = () => 0;
     g.step(new Map([[g.pitcher.slot, { mx: 0, my: 0, buttons: BTN_A }]]));
-    const half = g.pitchPos(Math.round(g.pitchInfo().left / 2));
-    return { x: half.x, y: half.y, type: g.pitchType, kmh: g.pitchSpeed };
+    const F = g.pitchInfo().left;
+    const end = g.pitchPos(F);
+    // 曲がり始める前（前半）は、狙いに向かってまっすぐ
+    const early = g.pitchPos(Math.round(F * 0.3));
+    const lineX = (0.8 - 0) * 0;
+    void lineX;
+    return { x: end.x, y: end.y, ex: early.x, type: g.pitchType, kmh: g.pitchSpeed };
   };
   const st = mid('straight');
   const sl = mid('slider');
@@ -194,10 +199,11 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
   const fo = mid('fork');
   const sh = mid('shoot');
   check('球種：選んだ球種で投げる', st.type === 'straight' && sl.type === 'slider' && cu.type === 'curve' && fo.type === 'fork' && sh.type === 'shoot');
-  // 途中ではまだ曲がっていない：最後に向かって曲がるので、途中の位置は曲がる向きと逆側にいる
-  check('球種：スライダーは外へ（x がマイナスへ）曲がる', sl.x > st.x + 0.03, `途中 x ${sl.x.toFixed(2)}`);
-  check('球種：シュートは内へ（x がプラスへ）曲がる', sh.x < st.x - 0.03, `途中 x ${sh.x.toFixed(2)}`);
-  check('球種：フォーク・カーブは落ちる（途中では高い）', fo.y > st.y + 0.05 && cu.y > st.y + 0.05, `途中 y ストレート${st.y.toFixed(2)} フォーク${fo.y.toFixed(2)} カーブ${cu.y.toFixed(2)}`);
+  // 狙い（投げ出す向き）は同じ。ホームベースでは球種の向きへ大きくずれる。前半はまっすぐ（曲がらない）
+  check('球種：前半はどれも同じ道筋（手元で曲がる）', Math.abs(sl.ex - st.ex) < 0.01 && Math.abs(sh.ex - st.ex) < 0.01, `前半 x ${st.ex.toFixed(3)} / ${sl.ex.toFixed(3)}`);
+  check('球種：スライダーは外へ（x がマイナスへ）大きく曲がる', sl.x < st.x - 0.3, `ホームで x ${sl.x.toFixed(2)}`);
+  check('球種：シュートは内へ（x がプラスへ）曲がる', sh.x > st.x + 0.25, `ホームで x ${sh.x.toFixed(2)}`);
+  check('球種：フォーク・カーブは大きく落ちる', fo.y < st.y - 0.35 && cu.y < st.y - 0.35, `ホームで y ストレート${st.y.toFixed(2)} フォーク${fo.y.toFixed(2)} カーブ${cu.y.toFixed(2)}`);
   check('球種：ストレートがいちばん速く、カーブがいちばん遅い', st.kmh > sl.kmh && sl.kmh > cu.kmh && fo.kmh > cu.kmh);
   const g = new Baseball(setup());
   until(g, () => g.phase === 'aim');

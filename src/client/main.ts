@@ -415,6 +415,8 @@ function setBaseballPad(role: 'bat' | 'pitch' | 'none'): void {
   document.getElementById('btn-b')!.classList.toggle('hidden', role !== 'pitch');
   document.getElementById('btn-jump')!.classList.toggle('hidden', true);
   document.getElementById('btn-shield')!.classList.toggle('hidden', true);
+  // 打つ番は、画面を指でなぞってバットを動かすので、スティックとボタンは隠す
+  if (bbScreen) touchEl.classList.toggle('hidden', role !== 'pitch' || input.gamepadConnected);
 }
 function resetPadAfterBaseball(): void {
   for (const id of ['btn-b', 'btn-jump', 'btn-shield']) document.getElementById(id)!.classList.remove('hidden');

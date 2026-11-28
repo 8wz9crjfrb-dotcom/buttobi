@@ -55,8 +55,14 @@ export const BB = {
   perSpeed: 0.025,
   breakSlow: 0.84,
   /** 変化球の曲がる量（ホームベースでのずれ。曲がり3のとき）と、1段階ごとの差 */
-  brk: 0.32,
-  perBrk: 0.06,
+  brk: 0.44,
+  perBrk: 0.07,
+  /** 変化球が曲がり始める所（投げてからホームベースまでの割合）。手元で曲がるほど打ちにくい */
+  breakStart: 0.42,
+  /** バットの当たる範囲（横長のだ円）：ミートの丸の半径に対する横・縦の大きさと、芯（いちばん強く飛ぶ所）の大きさ */
+  batW: 2.1,
+  batH: 0.72,
+  sweet: 0.35,
   /** コントロールのぶれ（コントロール3のとき）と、1段階ごとの差 */
   wild: 0.07,
   perControl: 0.016,
@@ -83,15 +89,15 @@ export const BB = {
   gravity: 9.8,
   drag: 0.035,
   /** フェンスまでの距離（両翼・センター） */
-  fenceLine: 72,
-  fenceCenter: 86,
+  fenceLine: 76,
+  fenceCenter: 90,
   /** ファウルになる角度（度） */
   foulDeg: 45,
   /** 1イニングの打席の数（チームごと） */
   paPerHalf: 3,
   /** 間の時間（フレーム） */
   readyT: 50,
-  aimMax: 6 * 60,
+  aimMax: 12 * 60,
   callT: 55,
   resultT: 110,
   changeT: 110,
@@ -231,11 +237,33 @@ export class Baseball {
 
   /** 投げた球の、t フレーム後の位置 */
   pitchPos(t: number): Vec {
+    // 曲がり始めるまではまっすぐ、そこから曲がる
+    const u = Math.max(0, t - this.breakT);
     return {
-      x: this.p0.x + this.v0.x * t + 0.5 * this.acc.x * t * t,
-      y: this.p0.y + this.v0.y * t + 0.5 * this.acc.y * t * t,
-      z: this.p0.z + this.v0.z * t + 0.5 * this.acc.z * t * t,
+      x: this.p0.x + this.v0.x * t + 0.5 * this.acc.x * u * u,
+      y: this.p0.y + this.v0.y * t + 0.5 * this.acc.y * u * u,
+      z: this.p0.z + this.v0.z * t,
     };
+  }
+  /** 変化球が曲がり始めるフレーム */
+  private breakT = 0;
+
+  /** 画面から：ピッチャーの狙い・バッターのバットの位置を直接決める（指で動かすとき）。振るのは requestSwing */
+  setAim(slot: number, x: number, y: number): void {
+    if (this.pitcher.slot !== slot || this.phase !== 'aim') return;
+    this.aim.x = clamp(x, -BB.aimX, BB.aimX);
+    this.aim.y = clamp(y, BB.aimY1, BB.aimY2);
+    this.aimV = { x: 0, y: 0 };
+  }
+  setCursor(slot: number, x: number, y: number): void {
+    if (this.batter.slot !== slot || this.swingAt >= 0) return;
+    this.cursor.x = clamp(x, -BB.aimX, BB.aimX);
+    this.cursor.y = clamp(y, BB.aimY1, BB.aimY2);
+    this.cursorV = { x: 0, y: 0 };
+  }
+  private swingReq = -1;
+  requestSwing(slot: number): void {
+    if (this.batter.slot === slot && this.phase === 'pitch' && this.swingAt < 0) this.swingReq = slot;
   }
   /** 今の球の位置（投げていなければピッチャーの手元） */
   get ballPos(): Vec {
@@ -283,7 +311,8 @@ export class Baseball {
       }
       case 'pitch': {
         this.pitchT++;
-        if (this.swingAt < 0 && this.pressed(bat.slot, bi, BTN_A)) {
+        if (this.swingAt < 0 && (this.pressed(bat.slot, bi, BTN_A) || this.swingReq === bat.slot)) {
+          this.swingReq = -1;
           this.swingAt = this.pitchT;
           this.events.push({ k: 'swing' });
         }
@@ -329,7 +358,7 @@ export class Baseball {
     this.pitchType = type;
     const spec = PITCH_SPECS[type];
     this.pitchSide = Math.sign(spec.x);
-    const speed = (BB.pitchSpeed + (s.speed - 3) * BB.perSpeed) * spec.speed;
+    const speed = pitchSpeedOf(type, s.speed);
     const F = Math.round(BB.releaseZ / speed);
     this.pitchSpeed = speed;
     // 狙いから、コントロールのぶんだけぶれる
@@ -338,16 +367,14 @@ export class Baseball {
     const r = wild * Math.sqrt(this.rng.next());
     const tx = this.aim.x + Math.cos(ang) * r;
     const ty = this.aim.y + Math.sin(ang) * r;
-    // 変化球：ホームベースで、球種ごとの向きへ曲がる（狙いは曲がったあとの場所）。曲がりの強さはキャラの「変化」で変わる
-    const b = BB.brk + (s.brk - 3) * BB.perBrk;
-    const shift = { x: spec.x * b, y: spec.y * b };
-    this.acc = { x: (2 * shift.x) / (F * F), y: (2 * shift.y) / (F * F), z: 0 };
+    // 変化球：狙い（投げ出す向き）に向かってまっすぐ飛び、途中から球種ごとの向きへ曲がる（ホームベースで shift だけずれる）
+    const shift = pitchShift(type, s.brk);
+    const tb = Math.round(F * BB.breakStart);
+    const n = F - tb;
+    this.breakT = tb;
+    this.acc = { x: (2 * shift.x) / (n * n), y: (2 * shift.y) / (n * n), z: 0 };
     this.p0 = { x: 0, y: BB.releaseY, z: BB.releaseZ };
-    this.v0 = {
-      x: (tx - this.p0.x - 0.5 * this.acc.x * F * F) / F,
-      y: (ty - this.p0.y - 0.5 * this.acc.y * F * F) / F,
-      z: -BB.releaseZ / F,
-    };
+    this.v0 = { x: (tx - this.p0.x) / F, y: (ty - this.p0.y) / F, z: -BB.releaseZ / F };
     this.pitchF = F;
     this.pitchT = 0;
     this.swingAt = -1;
@@ -364,17 +391,23 @@ export class Baseball {
       return;
     }
     const diff = this.swingAt + BB.swingDelay - this.pitchF; // マイナス = 早い
+    // バット：横長のだ円。真ん中（芯）に近いほど強い当たり
     const r = BB.meetR + (s.meet - 3) * BB.perMeet;
-    const d = Math.hypot(this.cursor.x - p.x, this.cursor.y - p.y);
-    if (Math.abs(diff) > BB.timingWin || d > r) {
+    const rw = r * BB.batW;
+    const rh = r * BB.batH;
+    const ex = (this.cursor.x - p.x) / rw;
+    const ey = (this.cursor.y - p.y) / rh;
+    const e = Math.hypot(ex, ey);
+    if (Math.abs(diff) > BB.timingWin || e > 1) {
       this.setCall('whiff');
       return;
     }
-    // 当たった：当たりの良さ（丸の真ん中に近く、タイミングが合うほど良い）
-    const q = Math.pow(1 - d / r, 0.6) * (1 - Math.pow(Math.abs(diff) / BB.timingWin, 2));
+    // 当たった：当たりの良さ（芯に近く、タイミングが合うほど良い。芯の中なら満点）
+    const core = Math.max(0, (e - BB.sweet * 0.5) / (1 - BB.sweet * 0.5));
+    const q = Math.pow(1 - core, 0.6) * (1 - Math.pow(Math.abs(diff) / BB.timingWin, 2));
     const speed = (BB.exitBase + BB.exitRange * q) * (1 + (s.power - 3) * BB.perPower);
-    // 丸が球より上 = 球の上をたたく（ゴロ）、下 = 下をすくう（フライ）
-    const dy = (this.cursor.y - p.y) / r;
+    // バットが球より上 = 球の上をたたく（ゴロ）、下 = 下をすくう（フライ）
+    const dy = ey * 0.75;
     const launch = clamp(16 - dy * 38 + (this.rng.next() - 0.5) * 8, -12, 62);
     // タイミングが早いと引っ張り（左）、遅いと流し（右）
     const spray = diff * 7 + (this.rng.next() - 0.5) * 10;
@@ -615,8 +648,10 @@ export class BBCpu {
         pl = { wait: 30 + Math.floor(this.rng.range(0, 70)), x, y, type, side, swing: false, at: g.pa * 100 + g.balls * 10 + g.strikes + g.inning * 1000 + g.half * 500, ex: 0, ey: 0 };
         this.plan.set(slot, pl);
       }
-      const dx = pl.x - g.aim.x;
-      const dy = pl.y - g.aim.y;
+      // 狙いは「投げ出す向き」なので、球が来てほしい所から曲がるぶんを引く
+      const sh = pitchShift(pl.type, bbStats(g.pitcher.charId).brk);
+      const dx = pl.x - sh.x - g.aim.x;
+      const dy = pl.y - sh.y - g.aim.y;
       const mx = Math.abs(dx) > 0.02 ? Math.sign(dx) : 0;
       const my = Math.abs(dy) > 0.02 ? Math.sign(dy) : 0;
       if (--pl.wait <= 0 && !mx && !my) {
@@ -672,6 +707,17 @@ function moveCursor(c: { x: number; y: number }, v: { x: number; y: number }, in
   if (ny !== c.y + v.y) v.y = 0;
   c.x = nx;
   c.y = ny;
+}
+
+/** 球種ごとの、ホームベースでの曲がる量（x, y）。brk = キャラの「変化」 */
+export function pitchShift(kind: PitchKind, brk: number): { x: number; y: number } {
+  const spec = PITCH_SPECS[kind];
+  const b = BB.brk + (brk - 3) * BB.perBrk;
+  return { x: spec.x * b, y: spec.y * b };
+}
+/** 球種ごとの速さ（1フレームに進む距離）。speed = キャラの「球の速さ」 */
+export function pitchSpeedOf(kind: PitchKind, speed: number): number {
+  return (BB.pitchSpeed + (speed - 3) * BB.perSpeed) * PITCH_SPECS[kind].speed;
 }
 
 /** 球速の表示（km/h）。実際の速さは遊びやすく遅めにしているので、見た目の数字に直す */

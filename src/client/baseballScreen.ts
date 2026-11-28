@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { getCharacter, TEAM_COLORS } from '../shared/characters';
 import { getCostume } from '../shared/costumes';
-import { Baseball, BB, BBCpu, BB_RESULT_NAMES, bbStats, pitchKmh, PITCH_KINDS, PITCH_NAMES, type BBPlayer, type BBSetup, type PitchKind } from '../shared/baseball';
+import { Baseball, BB, BBCpu, BB_RESULT_NAMES, bbStats, pitchKmh, pitchShift, pitchSpeedOf, PITCH_KINDS, PITCH_NAMES, type BBPlayer, type BBSetup, type PitchKind } from '../shared/baseball';
+import { BTN_B } from '../shared/types';
 import type { InputState, ViewFighter } from '../shared/types';
 import { FighterModel } from './fighterModel';
 
@@ -35,6 +36,15 @@ export class BaseballScreen {
   private ball: THREE.Mesh;
   private ballShadow: THREE.Mesh;
   private cursorRing: THREE.Mesh;
+  private batShape!: THREE.Group;
+  private batSweet!: THREE.Mesh;
+  /** 変化の道筋（狙いの印から、曲がって来る所まで）の点と、来る所のボール */
+  private breakDots: THREE.Mesh[] = [];
+  private breakEnd!: THREE.Mesh;
+  /** 球種を選んでいるところ（投げる番の最初と、「球種選択」を押したとき） */
+  private selecting = false;
+  private lastAimPa = '';
+  private prevB = false;
   private aimMark: THREE.Group;
   private zoneFrame: THREE.LineSegments;
   private time = 0;
@@ -212,10 +222,20 @@ export class BaseballScreen {
     this.zoneFrame = add(new THREE.LineSegments(zg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthTest: false })));
     this.zoneFrame.renderOrder = 5;
     this.disposables.push(zg, this.zoneFrame.material as THREE.Material);
-    // ミートの丸（バッター）
-    const ringGeo = new THREE.RingGeometry(0.85, 1, 40);
-    this.cursorRing = add(new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.85, depthTest: false, side: THREE.DoubleSide })));
-    this.cursorRing.renderOrder = 6;
+    // バットのカーソル（バッター）：横長のだ円（当たる範囲）と、まん中の芯の丸
+    this.cursorRing = new THREE.Mesh();
+    const batGroup = new THREE.Group();
+    const batFill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: 0xa47bff, transparent: true, opacity: 0.45, depthTest: false, side: THREE.DoubleSide }));
+    const batEdge = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 48), new THREE.MeshBasicMaterial({ color: 0xd7c4ff, transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide }));
+    const sweet = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 32), new THREE.MeshBasicMaterial({ color: 0x5dff8a, transparent: true, opacity: 0.95, depthTest: false, side: THREE.DoubleSide }));
+    for (const m of [batFill, batEdge, sweet]) {
+      m.renderOrder = 6;
+      this.disposables.push(m.geometry, m.material as THREE.Material);
+    }
+    batGroup.add(batFill, batEdge);
+    this.batShape = batGroup;
+    this.batSweet = sweet;
+    s.add(batGroup, sweet);
     // 狙いの印（ピッチャー）：十字と丸
     this.aimMark = new THREE.Group();
     const aimMat = new THREE.MeshBasicMaterial({ color: 0xff5a5a, depthTest: false, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
@@ -229,6 +249,20 @@ export class BaseballScreen {
       this.disposables.push(m.geometry);
     }
     s.add(this.aimMark);
+    const dotGeo = new THREE.CircleGeometry(0.022, 12);
+    const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+    this.disposables.push(dotGeo, dotMat);
+    for (let i = 0; i < 9; i++) {
+      const d = new THREE.Mesh(dotGeo, dotMat);
+      d.renderOrder = 6;
+      d.visible = false;
+      s.add(d);
+      this.breakDots.push(d);
+    }
+    this.breakEnd = new THREE.Mesh(new THREE.CircleGeometry(0.06, 20), new THREE.MeshBasicMaterial({ map: seamTex, depthTest: false, side: THREE.DoubleSide }));
+    this.breakEnd.renderOrder = 7;
+    this.disposables.push(this.breakEnd.geometry, this.breakEnd.material as THREE.Material);
+    s.add(this.breakEnd);
     // 選手
     for (const p of setup.players) {
       const def = getCharacter(p.charId);
@@ -245,7 +279,10 @@ export class BaseballScreen {
       <div class="bb-count"><div class="bb-bso"></div><div class="bb-bases"><i class="b2"></i><i class="b3"></i><i class="b1"></i></div><div class="bb-pa"></div></div>
       <div class="bb-matchup"></div>
       <div class="bb-speed"></div>
-      <div class="bb-pick">${PITCH_KINDS.map((k) => `<button type="button" data-pk="${k}"><b>${PITCH_NAMES[k]}</b><small>${PITCH_HINT[k]}</small></button>`).join('')}</div>
+      <div class="bb-pick"><div class="bb-pick-ball"></div>${PITCH_KINDS.map((k) => `<i class="bb-ray" data-ray="${k}"></i><button type="button" data-pk="${k}"><b>${PITCH_NAMES[k]}</b><small></small></button>`).join('')}</div>
+      <div class="bb-pname"></div>
+      <button type="button" class="bb-repick">球種選択</button>
+      <div class="bb-drag"></div>
       <div class="bb-msg"></div>
       <div class="bb-help"></div>`;
     uiRoot.appendChild(this.ui);
@@ -255,10 +292,56 @@ export class BaseballScreen {
         ev.preventDefault();
         ev.stopPropagation();
         this.game.choosePitch(this.mySlot, b.dataset.pk as PitchKind);
+        this.selecting = false;
         this.updateUi(true);
       }),
     );
+    this.ui.querySelector('.bb-repick')!.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.selecting = true;
+      this.updateUi(true);
+    });
+    // 打つ：画面を指でなぞるとバットが同じだけ動き、指を離すと振る
+    const drag = this.ui.querySelector<HTMLElement>('.bb-drag')!;
+    let pid = -1;
+    let sx = 0;
+    let sy = 0;
+    let cx0 = 0;
+    let cy0 = 0;
+    drag.addEventListener('pointerdown', (ev) => {
+      if (pid >= 0) return;
+      pid = ev.pointerId;
+      drag.setPointerCapture(ev.pointerId);
+      sx = ev.clientX;
+      sy = ev.clientY;
+      cx0 = this.game.cursor.x;
+      cy0 = this.game.cursor.y;
+      ev.preventDefault();
+    });
+    drag.addEventListener('pointermove', (ev) => {
+      if (ev.pointerId !== pid) return;
+      const k = this.worldPerPx();
+      // バッター視点では、画面の右が x のマイナス側
+      this.game.setCursor(this.mySlot, cx0 - (ev.clientX - sx) * k, cy0 - (ev.clientY - sy) * k);
+    });
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      pid = -1;
+      this.game.requestSwing(this.mySlot);
+    };
+    drag.addEventListener('pointerup', up);
+    drag.addEventListener('pointercancel', (ev) => {
+      if (ev.pointerId === pid) pid = -1;
+    });
     this.updateUi(true);
+  }
+
+  /** 打つ視点で、ホームベースの所の1ピクセルが何メートルか（指で動かした分だけバットが動くように） */
+  private worldPerPx(): number {
+    const d = Math.abs(this.camera.position.z);
+    const h = 2 * d * Math.tan(((this.camera.fov / 2) * Math.PI) / 180);
+    return h / Math.max(1, this.ui.clientHeight || window.innerHeight);
   }
 
   private player(slot: number): BBPlayer | undefined {
@@ -287,7 +370,14 @@ export class BaseballScreen {
       for (const p of g.setup.players) {
         if (p.slot === this.mySlot) {
           // バッター視点（ホーム側から外野を見る）では、画面の右が x のマイナス側なので、左右を逆にする
-          const mine = this.role === 'bat' ? { ...my, mx: -my.mx } : my;
+          let mine = this.role === 'bat' ? { ...my, mx: -my.mx } : my;
+          if (this.role === 'pitch') {
+            // B は「球種選択」を開く。選んでいる間は投げない・狙いも動かない
+            const b = (my.buttons & BTN_B) !== 0;
+            if (b && !this.prevB) this.selecting = !this.selecting;
+            this.prevB = b;
+            mine = this.selecting ? { mx: 0, my: 0, buttons: 0 } : { ...mine, buttons: mine.buttons & ~BTN_B };
+          }
           inputs.set(p.slot, mine);
         } else if (p.cpu) inputs.set(p.slot, this.cpu.think(g, p.slot));
       }
@@ -438,14 +528,32 @@ export class BaseballScreen {
     const role = this.role;
     const meetR = BB.meetR + (bbStats(g.batter.charId).meet - 3) * BB.perMeet;
     const atBat = g.phase === 'ready' || g.phase === 'aim' || g.phase === 'pitch';
-    this.cursorRing.visible = role === 'bat' && atBat;
-    this.cursorRing.scale.setScalar(meetR);
-    this.cursorRing.position.set(g.cursor.x, g.cursor.y, 0);
-    this.cursorRing.rotation.y = Math.PI;
-    this.aimMark.visible = role === 'pitch' && g.phase === 'aim';
+    // バット（横長のだ円）と芯
+    const showBat = role === 'bat' && (atBat || g.phase === 'call');
+    this.batShape.visible = showBat;
+    this.batSweet.visible = showBat;
+    this.batShape.scale.set(meetR * BB.batW, meetR * BB.batH, 1);
+    this.batShape.position.set(g.cursor.x, g.cursor.y, 0);
+    this.batShape.rotation.y = Math.PI;
+    const sw = meetR * BB.batH * 0.42;
+    this.batSweet.scale.set(sw, sw, 1);
+    this.batSweet.position.set(g.cursor.x, g.cursor.y, -0.001);
+    this.batSweet.rotation.y = Math.PI;
+    // 狙いの印（投げ出す向き）と、曲がって来る所までの点線
+    const aiming = role === 'pitch' && g.phase === 'aim' && !this.selecting;
+    this.aimMark.visible = aiming;
     this.aimMark.position.set(g.aim.x, g.aim.y, 0);
     this.aimMark.scale.setScalar(1.5);
     this.aimMark.rotation.y = 0;
+    const sh = pitchShift(g.choice, bbStats(g.pitcher.charId).brk);
+    const bend = aiming && g.choice !== 'straight';
+    this.breakDots.forEach((d, i) => {
+      const t = (i + 1) / (this.breakDots.length + 1);
+      d.visible = bend;
+      d.position.set(g.aim.x + sh.x * t * t, g.aim.y + sh.y * t * t, 0);
+    });
+    this.breakEnd.visible = bend;
+    this.breakEnd.position.set(g.aim.x + sh.x, g.aim.y + sh.y, 0);
     this.zoneFrame.visible = atBat || g.phase === 'call';
     // カメラ：打つときはバッターの後ろ、投げるときはピッチャーの後ろ、打球は追いかける
     const cp = new THREE.Vector3();
@@ -491,7 +599,13 @@ export class BaseballScreen {
       if (this.msgT <= 0) this.ui.querySelector('.bb-msg')!.classList.remove('show');
     }
     const role = this.role;
-    const picking = role === 'pitch' && (g.phase === 'ready' || g.phase === 'aim');
+    // 投げる番が来たら、まず球種選択を開く
+    const paKey = `${g.inning}-${g.half}-${g.pa}-${g.balls}-${g.strikes}-${g.frame > 0 ? 1 : 0}`;
+    if (role === 'pitch' && g.phase === 'ready' && paKey !== this.lastAimPa) {
+      this.lastAimPa = paKey;
+      this.selecting = true;
+    }
+    const picking = role === 'pitch' && (g.phase === 'ready' || g.phase === 'aim') && this.selecting;
     const key = [g.inning, g.half, g.pa, g.balls, g.strikes, g.outs, g.bases.join(), g.score.join(), role, g.phase === 'aim' ? 1 : 0, g.finished, picking, g.choice].join('|');
     if (key === this.lastKey && !force) return;
     this.lastKey = key;
@@ -516,13 +630,28 @@ export class BaseballScreen {
     const help = this.ui.querySelector<HTMLElement>('.bb-help')!;
     help.innerHTML =
       role === 'bat'
-        ? 'あなたが打つ番：スティックで<b>ミートの丸</b>を動かし、球に合わせて <b>A</b> で打つ'
+        ? 'あなたが打つ番：画面を<b>指でなぞってバット</b>を球に合わせ、<b>指を離すと振る</b>（紫が当たる所・緑の丸が芯）'
         : role === 'pitch'
-          ? 'あなたが投げる番：上の<b>球種</b>を選び（<b>B</b> でも切りかえ）、スティックで<b>コース</b>を決めて <b>A</b> で投げる'
+          ? this.selecting
+            ? '<b>球種</b>を選ぶ（曲がる向きに並んでいます）'
+            : 'スティックで<b>狙い</b>（投げ出す向き）を決めて <b>A</b> で投げる。点線の先に曲がって来る'
           : '';
     const pick = this.ui.querySelector<HTMLElement>('.bb-pick')!;
     pick.classList.toggle('show', picking);
-    pick.querySelectorAll<HTMLElement>('[data-pk]').forEach((b) => b.classList.toggle('on', b.dataset.pk === g.choice));
+    const ps = bbStats(g.pitcher.charId);
+    pick.querySelectorAll<HTMLElement>('[data-pk]').forEach((b) => {
+      b.classList.toggle('on', b.dataset.pk === g.choice);
+      const sm = b.querySelector('small')!;
+      const kmh = `${pitchKmh(pitchSpeedOf(b.dataset.pk as PitchKind, ps.speed))} km/h`;
+      if (sm.textContent !== kmh) sm.textContent = kmh;
+    });
+    const aimingNow = role === 'pitch' && g.phase === 'aim' && !this.selecting;
+    const pn = this.ui.querySelector<HTMLElement>('.bb-pname')!;
+    pn.textContent = aimingNow ? PITCH_NAMES[g.choice] : '';
+    pn.classList.toggle('show', aimingNow);
+    this.ui.querySelector<HTMLElement>('.bb-repick')!.classList.toggle('show', role === 'pitch' && (g.phase === 'aim' || g.phase === 'ready') && !this.selecting);
+    // 打つ番：画面をなぞってバットを動かす（スティックとボタンは隠す）
+    this.ui.querySelector<HTMLElement>('.bb-drag')!.classList.toggle('on', role === 'bat');
     this.hooks.setPad(role);
   }
 
@@ -538,8 +667,6 @@ export class BaseballScreen {
   }
 }
 
-/** 球種ボタンの小さな説明（曲がる向き） */
-const PITCH_HINT: Record<PitchKind, string> = { straight: '速い', slider: '外へ曲がる', curve: '大きく落ちる', fork: 'ストンと落ちる', shoot: '内へ曲がる' };
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
