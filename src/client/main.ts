@@ -47,8 +47,8 @@ import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIM
 /** UR のカード・衣装ボタンの上に舞うキラキラの粒（中身は styles.css の .ur-sp） */
 const URSP = '<i class="ur-sp" aria-hidden="true"></i>';
 import { COSTUMES, GACHA_COSTUMES, getCostume, rarityName } from '../shared/costumes';
-import { BaseballScreen } from './baseballScreen';
-import type { Baseball } from '../shared/baseball';
+import { BaseballScreen, STADIUMS, type BBPadState } from './baseballScreen';
+import { BAT_SKILLS, bbRep, bbStats, PITCH_NAMES, PITCH_SKILLS, type Baseball } from '../shared/baseball';
 
 registerServiceWorker();
 preventZoomGestures();
@@ -404,19 +404,21 @@ let bbScreen: BaseballScreen | null = null;
 let bbLast: { me: MatchSetup['players'][number]; cpu: MatchSetup['players'][number]; innings: number } | null = null;
 const bbUiRoot = document.getElementById('app')!;
 
-/** ボタンの名前を、投げる・打つに合わせて変える（ジャンプ・ガードは使わない） */
-function setBaseballPad(role: 'bat' | 'pitch' | 'none'): void {
+/**
+ * 野球のボタン：投げる前だけ出す。球種を選んでいる間は A =「決定」（B は出さない）、狙っている間は A =「投げる」・B =「球種」。
+ * 打つ番（画面をなぞってバットを動かす）・球が飛んでいる間・判定の間は出さない
+ */
+function setBaseballPad(state: BBPadState): void {
   const label = (id: string, text: string) => {
     const sm = document.querySelector<HTMLElement>(`#${id} small`);
     if (sm && sm.textContent !== text) sm.textContent = text;
   };
-  label('btn-a', role === 'pitch' ? '投げる' : '打つ');
+  label('btn-a', state === 'select' ? '決定' : '投げる');
   label('btn-b', '球種');
-  document.getElementById('btn-b')!.classList.toggle('hidden', role !== 'pitch');
+  document.getElementById('btn-b')!.classList.toggle('hidden', state !== 'aim');
   document.getElementById('btn-jump')!.classList.toggle('hidden', true);
   document.getElementById('btn-shield')!.classList.toggle('hidden', true);
-  // 打つ番は、画面を指でなぞってバットを動かすので、スティックとボタンは隠す
-  if (bbScreen) touchEl.classList.toggle('hidden', role !== 'pitch' || input.gamepadConnected);
+  if (bbScreen) touchEl.classList.toggle('hidden', (state !== 'select' && state !== 'aim') || input.gamepadConnected);
 }
 function resetPadAfterBaseball(): void {
   for (const id of ['btn-b', 'btn-jump', 'btn-shield']) document.getElementById(id)!.classList.remove('hidden');
@@ -428,7 +430,8 @@ function startBaseball(me: MatchSetup['players'][number], cpu: MatchSetup['playe
   stopBaseball();
   clearScreen();
   hud.show(false);
-  pauseBtn.classList.add('hidden');
+  // ポーズはほかのモードと同じボタン（右上の II）
+  pauseBtn.classList.remove('hidden');
   trainingBtn.classList.add('hidden');
   comboEl.classList.add('hidden');
   // 先攻・後攻はランダム
@@ -447,6 +450,7 @@ function startBaseball(me: MatchSetup['players'][number], cpu: MatchSetup['playe
     {
       sound: (k) => {
         if (k === 'pitch') sfx.shot();
+        else if (k === 'tick') sfx.click();
         else if (k === 'swing') sfx.shield();
         else if (k === 'hit') sfx.hit(16);
         else if (k === 'strike') sfx.beep(true);
@@ -467,22 +471,87 @@ function startBaseball(me: MatchSetup['players'][number], cpu: MatchSetup['playe
   music.play('plain');
   void keepAwake(true);
   void enterFullscreenLandscape();
-  // やめるボタン
-  const quit = document.createElement('button');
-  quit.className = 'bb-quit';
-  quit.textContent = 'やめる';
-  quit.addEventListener('click', () => {
-    if (!confirm('試合をやめてメニューに戻りますか？')) return;
-    stopBaseball();
-    backFromBaseball();
+}
+
+/** 野球のポーズ（ほかのモードのポーズと同じ形） */
+function showBaseballPause(): void {
+  const bb = bbScreen;
+  if (!bb || bb.game.finished) return;
+  bb.paused = true;
+  touchEl.classList.add('hidden');
+  const me = bb.game.setup.players.find((p) => p.slot === bb.mySlot);
+  showScreen(
+    `<h2 style="text-align:center">ポーズ</h2>
+     <div class="menu-grid">
+       <button class="btn primary" id="resume">続ける</button>
+       <button class="btn" id="moves">野球の性能</button>
+       <button class="btn" id="quit">試合をやめる</button>
+     </div>
+     <div class="setup-grid pause-opts">
+       <div class="opt">効果音 ${seg('vol', [[0, 'なし'], [0.4, '小'], [0.7, '中'], [1, '大']], settings.volume)}</div>
+       <div class="opt">BGM ${seg('bgm', [[0, 'なし'], [0.3, '小'], [0.5, '中'], [0.8, '大']], settings.bgmVolume)}</div>
+     </div>`,
+    'overlay',
+    (root) => {
+      root.querySelector('#resume')!.addEventListener('click', () => {
+        bb.paused = false;
+        clearScreen();
+      });
+      root.querySelector('#moves')!.addEventListener('click', () => openBaseballInfo(me?.charId ?? settings.charId));
+      bindSeg(root, 'vol', (v) => {
+        settings.volume = Number(v);
+        sfx.volume = settings.volume;
+        sfx.beep();
+        saveSettings(settings);
+      });
+      bindSeg(root, 'bgm', (v) => {
+        settings.bgmVolume = Number(v);
+        music.volume = settings.bgmVolume;
+        saveSettings(settings);
+      });
+      root.querySelector('#quit')!.addEventListener('click', () => {
+        clearScreen();
+        stopBaseball();
+        backFromBaseball();
+      });
+    },
+  );
+}
+
+/** 野球の性能（球速・変化・制球・ミート・パワー）・持ち球・固有技 */
+function bbStatsHtml(charId: string): string {
+  const st = bbStats(charId);
+  const r = bbRep(charId);
+  const dots = (n: number) => `<span class="bs-dots">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
+  const pitches = r.pitches.map((k) => `${r.fav === k ? '<b class="bb-fav">★' : ''}${PITCH_NAMES[k]}${r.fav === k ? '</b>' : ''}`).join('・');
+  return `<div class="ball-stats bb-stats"><span class="tag">野球の性能</span>
+      <span class="bs-row">球速${dots(st.speed)}</span><span class="bs-row">変化${dots(st.brk)}</span><span class="bs-row">制球${dots(st.control)}</span>
+      <span class="bs-row">ミート${dots(st.meet)}</span><span class="bs-row">パワー${dots(st.power)}</span></div>
+    <div class="bb-reps">
+      <div><span class="tag">持ち球</span>${pitches}<small>（★得意球）</small></div>
+      <div><span class="tag">固有球</span><b>${PITCH_SKILLS[r.ps].name}</b>：${PITCH_SKILLS[r.ps].desc}</div>
+      <div><span class="tag">固有打</span><b>${BAT_SKILLS[r.bs].name}</b>：${BAT_SKILLS[r.bs].desc}</div>
+    </div>`;
+}
+function openBaseballInfo(charId: string): void {
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.innerHTML = `<div class="modal-box">
+      <h3>${esc(getCharacter(charId).name)}の野球の性能</h3>
+      <div class="modal-body">${bbStatsHtml(charId)}</div>
+      <div class="footer"><button class="btn primary" data-close>閉じる</button></div>
+    </div>`;
+  el.addEventListener('click', (e) => {
+    if (e.target === el || (e.target as HTMLElement).closest('[data-close]')) el.remove();
   });
-  bbUiRoot.querySelector('.bb-ui')?.appendChild(quit);
+  screensEl.appendChild(el);
 }
 
 function stopBaseball(): void {
   if (!bbScreen) return;
   bbScreen.dispose();
   bbScreen = null;
+  pauseBtn.classList.add('hidden');
   document.getElementById('bb-result')?.remove();
   resetPadAfterBaseball();
 }
@@ -1617,6 +1686,8 @@ interface CharSelectOptions {
   allowRandom?: boolean;
   /** 玉入れ：技・特性の代わりに、玉入れの性能を出す（玉入れでは技を使わないので） */
   ball?: boolean;
+  /** 野球：技・特性の代わりに、野球の性能・持ち球・固有技を出す */
+  baseball?: boolean;
 }
 
 /** オンライン対戦で使うキャラ（おまかせなら RANDOM_CHAR） */
@@ -1652,7 +1723,9 @@ function showCharSelect(o: CharSelectOptions): void {
   const detail = (id: string) =>
     id === RANDOM_CHAR
       ? '<p class="help">試合が始まるときに、キャラがランダムで決まります（衣装はいつもの服）。何が出るかはお楽しみ！</p>'
-      : o.ball
+      : o.baseball
+        ? bbStatsHtml(id)
+        : o.ball
         ? `<div class="cd-desc">玉入れでは技は使いません。キャラごとの性能がちがいます。</div>${ballStatsHtml(id)}`
         : charDetail(id);
   const cos = (id: string) => (id === RANDOM_CHAR ? '' : costumeChips(id));
@@ -1664,7 +1737,7 @@ function showCharSelect(o: CharSelectOptions): void {
      <div class="costume-row">${cos(picked)}</div>
      <div class="char-detail">${detail(picked)}</div>
      <div class="footer"><button class="btn" id="back">もどる</button><button class="btn primary" id="next">${o.nextLabel}</button></div>`,
-    'overlay charsel-screen',
+    `overlay charsel-screen${o.baseball ? ' charsel-bb' : ''}`,
     (root) => {
       root.querySelectorAll<HTMLElement>('.char-card').forEach((el) =>
         el.addEventListener('click', () => {
@@ -1801,10 +1874,20 @@ function stageCards(selected: string): string {
   }).join('')}</div>`;
 }
 
+/** 野球のスタジアム（今は1つ。種類はあとで増やす） */
+function stadiumCards(selected: string | undefined): string {
+  const cur = STADIUMS.some((s) => s.id === selected) ? selected : STADIUMS[0].id;
+  return `<div class="stages">${STADIUMS.map(
+    (s) => `<div class="stage-card ${s.id === cur ? 'on' : ''}" data-stadium="${s.id}">
+      <div class="thumb" style="background:${s.thumb}"></div>
+      <div class="nm">${s.name}</div><div class="who">${s.desc}</div></div>`,
+  ).join('')}</div>`;
+}
+
 function bindStages(root: HTMLElement, onPick: (id: string) => void): void {
-  root.querySelectorAll<HTMLElement>('.stage-card').forEach((el) =>
+  root.querySelectorAll<HTMLElement>('.stage-card[data-stage]').forEach((el) =>
     el.addEventListener('click', () => {
-      root.querySelectorAll('.stage-card').forEach((x) => x.classList.toggle('on', x === el));
+      root.querySelectorAll('.stage-card[data-stage]').forEach((x) => x.classList.toggle('on', x === el));
       sfx.click();
       onPick(el.dataset.stage!);
     }),
@@ -1855,7 +1938,7 @@ const MODE_INFO: Record<MatchRules['mode'], { name: string; desc: string; player
   ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを相手のかごに真上から投げ入れる（かごのふちに当たるとはね返る）。床の「2点」の線より遠くから入れると2点。アイテムは出ない。攻撃はできない。ボールに触れると拾う。「投げる」を押したまま引っ張って狙い、離すと投げる（薄い線が道筋）。引っ張らずに単押しすると、後ろにいる味方へパス。時間切れで同点なら、1点入るまで延長（最長60秒、入らなければ引き分け）。「奪う」で近くの相手からボールを奪える。「構える」の間は奪われない。キャラごとに投げる力・足の速さ・奪う力・ジャンプ力がちがう。チームはタップで選ぶ', players: '2人・4人' },
   crown: { name: '王冠うばい', desc: '最初に相手を倒した人が王冠を手に入れ、持っている間だけ時間がたまる。持っている人に攻撃を当て続け、合計20%のダメージで奪える（王冠の上に残りの耐久が出る）。決めた時間だけ持つか、時間切れで一番長く持っていた人の勝ち', players: '3〜4人' },
   vault: { name: '金塊どろぼう', desc: '赤・青の2チームで、相手の金庫から金塊を盗んで自分の金庫に運び込む。相手の金庫の扉を攻撃すると開く（数秒で閉まる）。開いた金庫に触れると金塊を持ち出せる。持っている間は足が遅く、攻撃・ガードができない。攻撃を受けると落とす。落ちた金塊は、相手が触ると拾い、持ち主のチームが触ると金庫に戻る。先に決めた本数を運び込むか、時間切れで多く運んだチームの勝ち（同点なら1本入るまで延長）。チームはタップで選ぶ', players: '2人・4人' },
-  baseball: { name: '野球', desc: 'CPUと1対1の野球。投げるときはピッチャーの後ろ、打つときはバッターの後ろから見る。投げる：球種（ストレート・スライダー・カーブ・フォーク・シュート）を選び、スティックでコースを決めて A で投げる。打つ：スティックでミートの丸を球に合わせて、A で打つ。1イニングは3打席で攻守交代（アウトの数では交代しない）。決めたイニングが終わって点の多いほうの勝ち', players: '1人（CPUと対戦）' },
+  baseball: { name: '野球', desc: 'CPUと1対1の野球。投げる：持ち球から球種を選び（キャラごとに持ち球と★得意球がちがう）、スティックで狙いを決めて A で投げる。打つ：画面をなぞってバットを動かし、指を離すと振る。キャラごとの固有技は、投打合わせて1試合2回まで使える。1イニングは3打席で攻守交代（アウトの数では交代しない）。決めたイニングが終わって点の多いほうの勝ち', players: '1人（CPUと対戦）' },
   bounty: { name: '賞金首', desc: '撃墜で1点、自分で落ちると1点減る。点が一番多い人（2点以上）は賞金首になり、倒すと3点。時間切れで点が一番多い人の勝ち', players: '3人以上（3人でも楽しめる）' },
   coins: { name: 'コイン集め', desc: '降ってくるコインを拾う。攻撃を受けるとコインを落とし、撃墜されると半分ばらまく。時間切れで一番多く持っている人の勝ち', players: '3人以上（3人でも楽しめる）' },
 };
@@ -2325,6 +2408,7 @@ function showLocalSetup(fromRules = false): void {
     nextLabel: fromRules ? '決定' : 'つぎへ',
     // 今選んでいるルールが玉入れなら、玉入れの性能を出す
     ball: settings.rules.mode === 'ball',
+    baseball: settings.rules.mode === 'baseball',
     onBack: fromRules ? () => showLocalRules() : () => showMenu('solo'),
     onNext: () => showLocalRules(),
   });
@@ -2367,7 +2451,7 @@ function bindTabs(root: HTMLElement, onPick: (k: string) => void): void {
 function ruleSummary(rules: MatchRules, stageId: string, cpu: number | null, cpuLevel: number): string {
   const st = stageId === RANDOM_STAGE ? 'ステージおまかせ' : getStage(stageId).name;
   // 野球：ステージ・アイテムは使わない。CPUは1人（強さだけ）
-  if (rules.mode === 'baseball') return [ruleText(rules), `CPUの強さ${cpuLevel}`].join('・');
+  if (rules.mode === 'baseball') return [(STADIUMS.find((x) => x.id === settings.stadiumId) ?? STADIUMS[0]).name, ruleText(rules), `CPUの強さ${cpuLevel}`].join('・');
   return [st, ruleText(rules), cpu === null ? '' : `CPU${cpu}人（強さ${cpuLevel}）`, rules.mode === 'ball' ? '' : `アイテム${rules.items ? 'あり' : 'なし'}`].filter(Boolean).join('・');
 }
 let localRulesTab = 'stage';
@@ -2377,17 +2461,17 @@ function showLocalRules(): void {
   const rules = { ...settings.rules };
   if (settings.stageId !== RANDOM_STAGE && !STAGES.some((s) => s.id === settings.stageId)) settings.stageId = STAGES[0].id;
   showScreen(
-    `<h2>CPUと対戦：ステージとルール <small class="h2-sub">使うキャラ：${getCharacter(settings.charId).name}</small></h2>
-     ${ruleTabs(localRulesTab)}
-     <div data-pane="stage">${stageCards(settings.stageId)}</div>
+    `<h2>CPUと対戦：<span data-hide="baseball">ステージ</span><span data-show="baseball">スタジアム</span>とルール <small class="h2-sub">使うキャラ：${getCharacter(settings.charId).name}</small></h2>
+     ${ruleTabs(localRulesTab, [['stage', '<span data-hide="baseball">ステージ</span><span data-show="baseball">スタジアム</span>'], ...RULE_TABS.slice(1)])}
+     <div data-pane="stage"><div data-hide="baseball">${stageCards(settings.stageId)}</div><div data-show="baseball">${stadiumCards(settings.stadiumId)}</div></div>
      <div data-pane="rule"><div class="setup-grid">${ruleControls(rules)}</div></div>
      <div data-pane="cpu">
        <div class="setup-grid">
-         <div class="opt">CPUの人数 ${seg('cpu', [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']], settings.cpuCount)}</div>
+         <div class="opt" data-hide="baseball">CPUの人数 ${seg('cpu', [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']], settings.cpuCount)}</div>
          <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], settings.cpuLevel)}</div>
        </div>
        <div class="cpu-pick" data-cpupick></div>
-       <div class="team-pick" data-team></div>
+       <div class="team-pick" data-team data-hide="baseball"></div>
      </div>
      <div class="footer"><button class="btn" id="to-menu">もどる</button><span class="rule-sum" data-sum></span><button class="btn" id="back">キャラを変える</button><button class="btn primary" id="start">対戦開始！</button></div>`,
     'overlay',
@@ -2443,6 +2527,13 @@ function showLocalRules(): void {
         });
       });
       bindStages(root, (v) => (settings.stageId = v));
+      root.querySelectorAll<HTMLElement>('[data-stadium]').forEach((el) =>
+        el.addEventListener('click', () => {
+          root.querySelectorAll('[data-stadium]').forEach((x) => x.classList.toggle('on', x === el));
+          sfx.click();
+          settings.stadiumId = el.dataset.stadium!;
+        }),
+      );
       bindSeg(root, 'cpu', (v) => {
         settings.cpuCount = Number(v);
         drawTeams();
@@ -3344,6 +3435,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
 }
 
 function showPause(): void {
+  if (bbScreen) return showBaseballPause();
   if (!session || session.kind === 'demo') return;
   if (session instanceof LocalSession && session.training) return showTrainingMenu(session);
   const online = session.kind === 'net';
@@ -3389,6 +3481,13 @@ pauseBtn.addEventListener('click', showPause);
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR' && session instanceof LocalSession && session.training && !screensEl.children.length) resetTrainingPositions(session);
   if (e.code === 'Escape' || e.code === 'KeyP') {
+    if (bbScreen) {
+      if (bbScreen.paused) {
+        bbScreen.paused = false;
+        clearScreen();
+      } else showPause();
+      return;
+    }
     if (screensEl.children.length && session?.paused) {
       session.paused = false;
       clearScreen();

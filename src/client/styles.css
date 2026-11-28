@@ -6575,19 +6575,6 @@ table.rec td:first-child {
 .bb-help b {
   color: #ffd23f;
 }
-.bb-quit {
-  position: absolute;
-  top: calc(8px + var(--safe-t));
-  right: calc(10px + var(--safe-r, 0px));
-  pointer-events: auto;
-  padding: 6px 10px;
-  border-radius: 10px;
-  border: none;
-  background: rgba(16, 20, 40, 0.82);
-  color: #fff;
-  font-weight: 800;
-  font-size: 12px;
-}
 .bb-line {
   margin: 4px auto 10px;
   border-collapse: collapse;
@@ -6769,23 +6756,6 @@ table.rec td:first-child {
 .bb-pname.show {
   display: block;
 }
-.bb-repick {
-  position: absolute;
-  left: calc(14px + var(--safe-l, 0px));
-  top: 46%;
-  display: none;
-  pointer-events: auto;
-  padding: 8px 16px;
-  border-radius: 10px;
-  border: 2px solid #ffd23f;
-  background: rgba(16, 20, 40, 0.88);
-  color: #fff;
-  font-weight: 800;
-  font-size: 13px;
-}
-.bb-repick.show {
-  display: block;
-}
 .bb-drag {
   position: absolute;
   inset: 0;
@@ -6905,4 +6875,50 @@ table.rec td:first-child {
 }
 .bb-pick button.fav b {
   color: #ffd23f;
+}
+/* 野球：キャラ選択の性能・持ち球・固有技 */
+.bb-reps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.bb-reps small {
+  opacity: 0.75;
+  font-size: 10px;
+}
+.bb-reps .tag {
+  margin-right: 6px;
+}
+.bb-fav {
+  color: #ffd23f;
+}
+/* 野球：キャラ選択では性能を 3 列 × 2 行、持ち球・固有技は小さめに。入りきらなければ説明の所だけスクロール */
+.char-detail .bb-stats {
+  grid-template-columns: auto auto auto auto;
+  gap: 2px 12px;
+  margin: 2px 0;
+}
+.char-detail .bb-reps {
+  font-size: 11px;
+  gap: 2px;
+  margin-top: 2px;
+}
+.charsel-screen .char-detail {
+  overflow-y: auto;
+  min-height: 0;
+}
+/* 野球のキャラ選択：キャラの一覧を3列にして、性能・持ち球・固有技を入れる場所を作る */
+.charsel-bb .chars {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.charsel-bb .char-card {
+  font-size: 11px;
+  gap: 5px;
+}
+.charsel-bb .char-card .swatch {
+  width: 16px;
+  height: 16px;
 }

@@ -28,6 +28,8 @@ export interface Settings {
   /** CPU戦の相手のキャラ（CPU1〜5の順。'random' = 毎試合ランダム） */
   cpuChars: string[];
   stageId: string;
+  /** 野球のスタジアム */
+  stadiumId?: string;
   rules: MatchRules;
   /** キャラごとに着ている衣装の id */
   costumes: Record<string, string>;

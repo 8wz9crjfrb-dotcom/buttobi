@@ -5,16 +5,24 @@ import * as THREE from 'three';
 import { getCharacter, TEAM_COLORS } from '../shared/characters';
 import { getCostume } from '../shared/costumes';
 import { Baseball, BAT_SKILLS, BB, BBCpu, BB_RESULT_NAMES, bbRep, bbStats, pitchKmh, pitchShift, PITCH_KINDS, PITCH_NAMES, PITCH_SKILLS, type BBPlayer, type BBSetup, type PitchKind } from '../shared/baseball';
-import { BTN_B } from '../shared/types';
+import { BTN_A, BTN_B } from '../shared/types';
 import type { InputState, ViewFighter } from '../shared/types';
 import { FighterModel } from './fighterModel';
 
+/** 野球のスタジアム（種類はあとで増やす） */
+export const STADIUMS: { id: string; name: string; desc: string; thumb: string }[] = [
+  { id: 'day', name: 'トバセ・スタジアム', desc: '昼の屋外球場', thumb: 'linear-gradient(#7cc4ff 0 45%, #2f8f3a 45% 75%, #c98a4b 75%)' },
+];
+
+export type BBPadState = 'select' | 'aim' | 'bat' | 'wait';
+
 /** 画面に出すときに呼ぶもの（音・終わったとき） */
 export interface BBHooks {
-  sound: (kind: 'pitch' | 'swing' | 'hit' | 'strike' | 'ball' | 'homer' | 'cheer' | 'out' | 'end') => void;
+  sound: (kind: 'pitch' | 'tick' | 'swing' | 'hit' | 'strike' | 'ball' | 'homer' | 'cheer' | 'out' | 'end') => void;
   onEnd: (g: Baseball, mySlot: number) => void;
   /** ボタンの名前を、投げる・打つに合わせて変える */
-  setPad: (role: 'bat' | 'pitch' | 'none') => void;
+  /** 画面のボタンの出し方：select = 球種を選んでいる（A=決定）、aim = 狙って投げる（A=投げる・B=球種）、それ以外はボタンを出さない */
+  setPad: (state: BBPadState) => void;
 }
 
 const FIELD_GREEN = 0x4caf50;
@@ -47,6 +55,21 @@ export class BaseballScreen {
   private selecting = false;
   private lastAimPa = '';
   private prevB = false;
+  private prevA = false;
+  /** 球種選択を A で閉じたあと、A を離すまで投げない */
+  private holdA = false;
+  /** スティックで球種を選んだ（スティックを戻すと決定） */
+  private stickPicked = false;
+  /** ポーズ中は進めない（野球の表示も隠す。戻したら画面のボタンを出し直す） */
+  private pausedFlag = false;
+  get paused(): boolean {
+    return this.pausedFlag;
+  }
+  set paused(v: boolean) {
+    this.pausedFlag = v;
+    this.ui.style.visibility = v ? 'hidden' : '';
+    if (!v) this.lastKey = '';
+  }
   private aimMark: THREE.Group;
   private zoneFrame: THREE.LineSegments;
   private time = 0;
@@ -295,7 +318,6 @@ export class BaseballScreen {
       <div class="bb-speed"></div>
       <div class="bb-pick"><div class="bb-pick-ball"></div>${PITCH_KINDS.map((k) => `<i class="bb-ray" data-ray="${k}"></i><button type="button" data-pk="${k}"><b>${PITCH_NAMES[k]}</b><small></small></button>`).join('')}</div>
       <div class="bb-pname"></div>
-      <button type="button" class="bb-repick">球種選択</button>
       <button type="button" class="bb-pskill"></button>
       <div class="bb-drag"></div>
       <button type="button" class="bb-bskill"></button>
@@ -313,12 +335,6 @@ export class BaseballScreen {
         this.updateUi(true);
       }),
     );
-    this.ui.querySelector('.bb-repick')!.addEventListener('pointerdown', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this.selecting = true;
-      this.updateUi(true);
-    });
     // 固有技のボタン（ピッチャー：次の球を固有球にする／バッター：この球で使う）
     this.ui.querySelector('.bb-pskill')!.addEventListener('pointerdown', (ev) => {
       ev.preventDefault();
@@ -389,11 +405,27 @@ export class BaseballScreen {
     return 'none';
   }
 
+  /** スティックの向き（右が +、上が +）にいちばん近い持ち球（球種選択の並びと同じ向き） */
+  private stickPitch(dx: number, dy: number): PitchKind | null {
+    const dirs: Record<PitchKind, [number, number]> = { straight: [0, 1], slider: [-1, 0], curve: [-0.815, -0.58], fork: [0, -1], shoot: [1, 0] };
+    let best: PitchKind | null = null;
+    let bd = -2;
+    for (const k of bbRep(this.game.pitcher.charId).pitches) {
+      const d = dirs[k][0] * dx + dirs[k][1] * dy;
+      if (d > bd) {
+        bd = d;
+        best = k;
+      }
+    }
+    return best;
+  }
+
   /** 1コマ進めて描く準備をする。my = 自分の操作 */
   frame(dt: number, my: InputState): void {
     this.time += dt;
     this.acc += dt;
     let steps = 0;
+    if (this.paused) this.acc = 0;
     while (this.acc >= 1 / 60 && steps < 4) {
       this.acc -= 1 / 60;
       steps++;
@@ -406,9 +438,34 @@ export class BaseballScreen {
           if (this.role === 'pitch') {
             // B は「球種選択」を開く。選んでいる間は投げない・狙いも動かない
             const b = (my.buttons & BTN_B) !== 0;
-            if (b && !this.prevB) this.selecting = !this.selecting;
+            const a = (my.buttons & BTN_A) !== 0;
+            const before = g.phase === 'ready' || g.phase === 'aim';
+            if (b && !this.prevB && before) this.selecting = !this.selecting;
+            if (this.selecting && before) {
+              // スティックを倒した向きの球種を選ぶ（球種は曲がる向きに並んでいる）。スティックを戻すか A で決定
+              const mag = Math.hypot(my.mx, my.my);
+              if (mag > 0.55) {
+                const k = this.stickPitch(my.mx / mag, my.my / mag);
+                if (k) {
+                  if (k !== g.choice) this.hooks.sound('tick');
+                  g.choosePitch(this.mySlot, k);
+                  this.stickPicked = true;
+                }
+              } else if (mag < 0.25 && this.stickPicked) {
+                this.stickPicked = false;
+                this.selecting = false;
+                this.holdA = a;
+              }
+              if (a && !this.prevA) {
+                this.selecting = false;
+                this.stickPicked = false;
+                this.holdA = true;
+              }
+            }
+            if (!a) this.holdA = false;
             this.prevB = b;
-            mine = this.selecting ? { mx: 0, my: 0, buttons: 0 } : { ...mine, buttons: mine.buttons & ~BTN_B };
+            this.prevA = a;
+            mine = this.selecting ? { mx: 0, my: 0, buttons: 0 } : { ...mine, buttons: mine.buttons & ~BTN_B & (this.holdA ? ~BTN_A : ~0) };
           }
           inputs.set(p.slot, mine);
         } else if (p.cpu) inputs.set(p.slot, this.cpu.think(g, p.slot));
@@ -754,8 +811,8 @@ export class BaseballScreen {
         ? 'あなたが打つ番：画面を<b>指でなぞってバット</b>を球に合わせ、<b>指を離すと振る</b>（紫が当たる所・緑の丸が芯・黄色の丸が球の来る所）'
         : role === 'pitch'
           ? this.selecting
-            ? '<b>球種</b>を選ぶ（曲がる向きに並んでいます）'
-            : 'スティックで<b>狙い</b>（投げ出す向き）を決めて <b>A</b> で投げる。点線の先に曲がって来る'
+            ? '<b>球種</b>をタップ、またはスティックを倒して選ぶ（曲がる向きに並んでいます）'
+            : 'スティックで<b>狙い</b>（投げ出す向き）を決めて <b>A</b> で投げる。点線の先に曲がって来る（<b>B</b> で球種を選び直す）'
           : '';
     const pick = this.ui.querySelector<HTMLElement>('.bb-pick')!;
     pick.classList.toggle('show', picking);
@@ -779,7 +836,6 @@ export class BaseballScreen {
     const pn = this.ui.querySelector<HTMLElement>('.bb-pname')!;
     pn.textContent = aimingNow ? `${PITCH_NAMES[g.choice]}${g.choiceSkill ? ` ＋ 固有球「${PITCH_SKILLS[own.ps].name}」` : ''}` : '';
     pn.classList.toggle('show', aimingNow);
-    this.ui.querySelector<HTMLElement>('.bb-repick')!.classList.toggle('show', role === 'pitch' && (g.phase === 'aim' || g.phase === 'ready') && !this.selecting);
     // 固有技のボタン
     const before = g.phase === 'ready' || g.phase === 'aim';
     const pBtn = this.ui.querySelector<HTMLElement>('.bb-pskill')!;
@@ -797,7 +853,7 @@ export class BaseballScreen {
     bBtn.innerHTML = `固有「${BAT_SKILLS[bsk].name}」<em>${BAT_SKILLS[bsk].desc}</em><small>${g.batSkill ? '発動中 ✓' : g.skillsLeft(this.mySlot) <= 0 ? '残り0回' : bsk === 'steal' && !g.bases.some(Boolean) ? '走者がいると使える' : `残り${g.skillsLeft(this.mySlot)}回・タップで使う`}</small>`;
     // 打つ番：画面をなぞってバットを動かす（スティックとボタンは隠す）
     this.ui.querySelector<HTMLElement>('.bb-drag')!.classList.toggle('on', role === 'bat');
-    this.hooks.setPad(role);
+    this.hooks.setPad(role === 'pitch' && before ? (this.selecting ? 'select' : 'aim') : role === 'bat' ? 'bat' : 'wait');
   }
 
   dispose(): void {
