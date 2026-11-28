@@ -146,8 +146,10 @@ export interface MatchRules {
   pvp?: boolean;
   /** 王冠うばい：王冠を合計何秒持ったら勝ちか */
   crownGoal?: number;
-  /** 金庫まもり：金庫の耐久 */
+  /** 金庫まもり（前の版）：金庫の耐久。今は使わない */
   vaultHp?: number;
+  /** 金塊どろぼう：先に何本運び込んだら勝ちか */
+  vaultGoal?: number;
 }
 
 /** 体力制のHP（未指定のとき） */
@@ -214,9 +216,15 @@ export type GameEvent =
   | { k: 'rewind'; x: number; y: number; tx: number; ty: number; s: number }
   /** 王冠うばい：王冠を手に入れた・奪った */
   | { k: 'crown'; s: number; x: number; y: number }
-  /** 金庫まもり：金庫に攻撃が当たった（t = 金庫の番号、p = ダメージ）・壊れた */
+  /** 金塊どろぼう：金庫の扉に攻撃が当たった（t = 金庫の番号、p = ダメージ）・扉が開いた・閉まった */
   | { k: 'vhit'; x: number; y: number; t: number; p: number }
-  | { k: 'vbreak'; x: number; y: number; t: number }
+  | { k: 'vopen'; x: number; y: number; t: number }
+  | { k: 'vclose'; x: number; y: number; t: number }
+  /** 金塊どろぼう：金塊を持った（t = どちらの金庫の金塊か）・落とした・持ち主の金庫へ戻った・運び込んで点が入った（t = 点が入ったチーム） */
+  | { k: 'vgrab'; x: number; y: number; s: number; t: number }
+  | { k: 'vdrop'; x: number; y: number; s: number }
+  | { k: 'vreturn'; x: number; y: number; t: number; s?: number }
+  | { k: 'vscore'; x: number; y: number; t: number; s: number }
   /** 賞金首：撃墜で点が入った（s = 倒した人、p = 入った点、b = 賞金首を倒した） */
   | { k: 'bpt'; s: number; x: number; y: number; p: number; b: boolean }
   /** 賞金首：新しい賞金首が決まった */
@@ -387,10 +395,18 @@ export interface CoinsView {
   held: [number, number][];
 }
 
-/** 金庫まもりの画面用の状態（0 = 赤チームの金庫、1 = 青チームの金庫） */
+/** 金塊どろぼうの画面用の状態（0 = 赤チームの金庫、1 = 青チームの金庫） */
 export interface VaultView {
-  hp: [number, number];
-  max: number;
+  /** 扉の残り（1 = 閉まったまま、0 = 開く） */
+  door: [number, number];
+  /** 扉が開いている残りフレーム（0 = 閉まっている） */
+  open: [number, number];
+  /** 運び込んだ金塊の数 */
+  score: [number, number];
+  /** 先に何本で勝ちか */
+  target: number;
+  /** 金塊（team = どちらの金庫のものか、holder = 持っている人。-1 = 落ちている） */
+  golds: { x: number; y: number; team: number; holder: number }[];
 }
 
 /** 玉入れの画面用の状態 */
@@ -446,10 +462,14 @@ export interface ResultEntry {
   teamGoals?: number;
   /** 王冠うばい：王冠を持っていた秒数（チーム戦はチームの合計） */
   crown?: number;
-  /** 金庫まもり：相手の金庫に与えたダメージ（自分） */
+  /** 金庫まもり（前の版）：相手の金庫に与えたダメージ */
   vaultDmg?: number;
-  /** 金庫まもり：相手の金庫をどれだけ壊したか（%。チーム） */
+  /** 金庫まもり（前の版）：相手の金庫をどれだけ壊したか（%） */
   vaultBroke?: number;
+  /** 金塊どろぼう：自分が運び込んだ金塊の数 */
+  gold?: number;
+  /** 金塊どろぼう：チームが運び込んだ金塊の数 */
+  teamGold?: number;
   /** 投げた回数 */
   throws?: number;
   /** 賞金首：点（自分） */

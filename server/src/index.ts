@@ -668,6 +668,7 @@ export class Room extends DurableObject<Env> {
           mode: (['time', 'stamina', 'area', 'ball', 'crown', 'vault', 'bounty', 'coins'] as const).find((m) => m === r?.mode) ?? 'stock',
           crownGoal: [20, 30, 45].includes(Number(r?.crownGoal)) ? Number(r.crownGoal) : 30,
           vaultHp: [250, 400, 600].includes(Number(r?.vaultHp)) ? Number(r.vaultHp) : 400,
+          vaultGoal: [3, 5, 7].includes(Number(r?.vaultGoal)) ? Number(r.vaultGoal) : 3,
           stocks: Math.max(1, Math.min(5, r?.stocks | 0 || 3)),
           area: r?.area === 'fix2' ? 'fix2' : r?.area === 'random' ? 'random' : 'move',
           goals: Math.max(1, Math.min(9, (Number(r?.goals) | 0) || 5)),

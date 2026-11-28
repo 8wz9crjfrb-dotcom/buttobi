@@ -139,6 +139,11 @@ export class CpuController {
       const go = this.areaMove(sim, f, lv);
       if (go) return go;
     }
+    // 金塊どろぼう：金塊を運ぶ・拾う・取り返す・開いた金庫に飛び込む
+    if (sim.setup.rules.mode === 'vault') {
+      const go = this.vaultMove(sim, f, lv);
+      if (go) return go;
+    }
     // 王冠うばい：中央に出た王冠を拾いに行く。持っているときは相手から離れる（はじめは相手を倒しに行く）
     if (sim.setup.rules.mode === 'crown') {
       const go = this.crownMove(sim, f, lv);
@@ -561,6 +566,56 @@ export class CpuController {
     return { mx: dir, my: 0, buttons: 0 };
   }
 
+  /** 金塊どろぼうの動き。null なら、ふつうに戦う（相手の金庫の扉を殴る・守る・運ぶ相手を追う） */
+  private vaultMove(sim: Sim, f: Fighter, lv: number): InputState | null {
+    if (sim.vaults.length !== 2) return null;
+    const m = sim.stage.main;
+    const team = f.team % 2;
+    const mine = sim.vaults[team];
+    const theirs = sim.vaults[1 - team];
+    const go = (tx: number, ty: number): InputState => {
+      const dx = tx - f.x;
+      const dir = Math.sign(dx) || 1;
+      // 上にある：近くまで来たらジャンプ
+      if (ty > f.y + 1.2 && Math.abs(dx) < 2.6 && (f.grounded || (f.jumpsLeft > 0 && f.vy < 0))) return { mx: dir * 0.6, my: 0, buttons: BTN_JUMP };
+      // 下の床にある：足場から降りる
+      if (ty < f.y - 0.6 && f.grounded && f.groundRef >= 0) return { mx: Math.abs(dx) > 1 ? dir * 0.5 : 0, my: -1, buttons: 0 };
+      // 途中に相手が立ちふさがっていたら、飛び越える（持っているときだけ）
+      if (f.gold && f.grounded) {
+        const block = sim.fighters.some((o) => o.alive && !o.out && !sim.sameTeam(o, f) && Math.sign(o.x - f.x) === dir && Math.abs(o.x - f.x) < 1.6 && Math.abs(o.y - f.y) < 1);
+        if (block && this.rng.chance(0.05 + lv * 0.02)) return { mx: dir, my: 0, buttons: BTN_JUMP };
+      }
+      return { mx: Math.abs(dx) < 0.3 ? 0 : dir, my: 0, buttons: 0 };
+    };
+    // 台の外：ふつうの復帰に任せる
+    if (f.x < m.x1 - 0.2 || f.x > m.x2 + 0.2) return null;
+    // 持っている：自分の金庫へまっすぐ運ぶ
+    if (f.gold) return go(mine.x, mine.y);
+    // 落ちている金塊：味方の金庫の金塊なら触って取り返す、相手の金庫の金塊なら拾う（近いものから）
+    let best: { x: number; y: number } | null = null;
+    let bd = Infinity;
+    for (const g of sim.golds) {
+      if (g.holder >= 0 || (g.noT > 0 && g.no === f.slot)) continue;
+      const d = Math.abs(g.x - f.x) + Math.abs(g.y - f.y);
+      // 自分のチームの金塊（取り返す）は少し優先する
+      const w = d - (g.team === team ? 2 : 0);
+      if (w < bd && d < 12) {
+        bd = w;
+        best = g;
+      }
+    }
+    if (best) return go(best.x, best.y);
+    // 相手が金塊を運んでいる：ふつうに戦って追いかける（ねらう相手は target で決める）
+    if (sim.fighters.some((o) => o.gold && o.alive && !sim.sameTeam(o, f))) return null;
+    // 相手の金庫が開いている：残り時間のうちに飛び込む（強いCPUほど反応が早い）
+    if (theirs.openT > 20 && this.rng.chance(0.4 + lv * 0.06)) {
+      const t = this.target(sim, f);
+      const blocked = t && Math.abs(t.x - f.x) < 1.4 && Math.abs(t.y - f.y) < 1.4 && Math.sign(t.x - f.x) === Math.sign(theirs.x - f.x);
+      if (!blocked) return go(theirs.x, theirs.y);
+    }
+    return null;
+  }
+
   /** いちばん近い相手。分身（ハルシネーション）にもだまされる */
   private target(sim: Sim, f: Fighter): Target | null {
     const rules = sim.setup.rules;
@@ -588,15 +643,31 @@ export class CpuController {
       const h = sim.fighter(sim.bountyHolder);
       if (h && h.alive && !h.out && !sim.sameTeam(h, f) && Math.abs(h.x - f.x) + Math.abs(h.y - f.y) < 9) return h;
     }
-    // 金庫まもり：近くに相手がいなければ、相手の金庫をねらう
+    // 金塊どろぼう：金塊を運んでいる相手を最優先。次に自分の金庫に近づく相手。だれもいなければ、相手の金庫の扉を殴りに行く
     if (rules.mode === 'vault' && sim.vaults.length === 2) {
       const v = sim.vaults[1 - (f.team % 2)];
       const mine = sim.vaults[f.team % 2];
-      // 守り：自分の金庫に相手が近づいていて、自分のほうが自分の金庫に近ければ、その相手をねらう
+      const carrier = sim.fighters.find((o) => o.gold && o.alive && !o.out && !sim.sameTeam(o, f));
+      if (carrier) return carrier;
+      // 味方が運んでいる：その味方にいちばん近い相手をねらって守る
+      const mate = sim.fighters.find((o) => o !== f && o.gold && o.alive && sim.sameTeam(o, f));
+      if (mate) {
+        let g: Fighter | null = null;
+        let gd = Infinity;
+        for (const o of sim.fighters) {
+          if (!o.alive || o.out || sim.sameTeam(o, f)) continue;
+          const d = Math.abs(o.x - mate.x);
+          if (d < gd) {
+            gd = d;
+            g = o;
+          }
+        }
+        if (g) return g;
+      }
       const raider = sim.fighters.find((o) => o.alive && !o.out && !sim.sameTeam(o, f) && Math.abs(o.x - mine.x) < 3.5);
       if (raider && Math.abs(f.x - mine.x) < Math.abs(f.x - v.x)) return raider;
       const foeNear = sim.fighters.some((o) => o !== f && o.alive && !o.out && !sim.sameTeam(o, f) && Math.abs(o.x - f.x) < 2.2 && Math.abs(o.y - f.y) < 1.6);
-      if (v.hp > 0 && !foeNear) return { x: v.x, y: v.y, state: 'idle', damage: 0, grounded: true };
+      if (v.openT <= 0 && !foeNear) return { x: v.x, y: v.y, state: 'idle', damage: 0, grounded: true };
     }
     let best: Target | null = null;
     let bestD = Infinity;

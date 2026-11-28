@@ -1,6 +1,6 @@
 // 対戦中の表示（ダメージ%・残機・タイマー・カウントダウン）
 
-import { BOUNTY } from '../shared/moves';
+import { BOUNTY, VAULT } from '../shared/moves';
 import { areaColor, ballTeamOf, getCharacter, playerColor, TEAM_COLORS, TEAM_NAMES } from '../shared/characters';
 import { COUNTDOWN_FRAMES, respawnWait } from '../shared/sim';
 import { ballStats } from '../shared/ballThrow';
@@ -37,8 +37,6 @@ export class Hud {
   private crownHud: { bars: Map<number, { root: HTMLElement; fill: HTMLElement; num: HTMLElement }>; notice: HTMLElement; names: Map<number, string>; teams: boolean; teamOf: Map<number, number>; last: string } | null = null;
   /** 賞金首・コイン集め：人（チーム）ごとの点・枚数 */
   private scoreHud: { mode: 'bounty' | 'coins'; bars: Map<number, { root: HTMLElement; fill: HTMLElement; num: HTMLElement }>; notice: HTMLElement; names: Map<number, string>; teams: boolean; teamOf: Map<number, number>; last: string; lastNotice: string } | null = null;
-  /** 金庫まもり：赤・青の金庫の耐久 */
-  private vaultHud: { fills: HTMLElement[]; nums: HTMLElement[] } | null = null;
   /** 自分の枠に出す、必殺技の待ち時間（B・横B・下B・上B） */
   private cdRow: { root: HTMLElement; bars: HTMLElement[] } | null = null;
   private lastCd = '';
@@ -146,7 +144,6 @@ export class Hud {
     this.ball = null;
     this.crownHud = null;
     this.scoreHud = null;
-    this.vaultHud = null;
     if (setup.rules.mode === 'bounty' || setup.rules.mode === 'coins') {
       // タイマーの下に、点（枚数）を横に並べる（チーム戦はチームごと、個人戦は人ごと）
       const box = document.createElement('div');
@@ -198,14 +195,12 @@ export class Hud {
       this.crownHud = { bars, notice, names, teams: !!setup.rules.teams, teamOf, last: '' };
     }
     if (setup.rules.mode === 'vault') {
-      // タイマーの下に、赤と青の金庫の耐久
-      const box = document.createElement('div');
-      box.className = 'hud-vault';
-      box.innerHTML = [0, 1]
-        .map((t) => `<div class="vb" style="--ac:${hex(TEAM_COLORS[t])}"><small>${TEAM_NAMES[t]}の金庫</small><div class="bar"><i></i><b>100.0%</b></div></div>`)
-        .join('');
-      this.el.appendChild(box);
-      this.vaultHud = { fills: [...box.querySelectorAll<HTMLElement>('.bar i')], nums: [...box.querySelectorAll<HTMLElement>('.bar b')] };
+      // タイマーの下に「赤 0 - 0 青」と、何本で勝ちか（玉入れと同じ形）
+      const root = document.createElement('div');
+      root.className = 'hud-ball';
+      root.innerHTML = `<b class="r" style="--tc:${hex(TEAM_COLORS[0])}">0</b><span>-</span><b class="b" style="--tc:${hex(TEAM_COLORS[1])}">0</b><small>金塊${setup.rules.vaultGoal ?? VAULT.goal}本先取</small>`;
+      this.el.appendChild(root);
+      this.ball = { root, red: root.querySelector('.r')!, blue: root.querySelector('.b')!, last: '' };
     }
     if (setup.rules.mode === 'ball') {
       // タイマーの下に「赤 0 - 0 青」と先取点
@@ -304,18 +299,6 @@ export class Hud {
       s.notice.textContent = msg;
       s.lastNotice = msg;
     }
-  }
-
-  /** 金庫まもり：赤と青の金庫の耐久 */
-  private updateVault(v: ViewState): void {
-    const h = this.vaultHud;
-    if (!h || !v.vault) return;
-    v.vault.hp.forEach((hp, t) => {
-      // 引き分けになりにくいよう、小数第1位まで出す（0 になるまでは 0.0% と出さない）
-      const pct = hp <= 0 ? 0 : Math.max(0.1, Math.ceil((hp / v.vault!.max) * 1000) / 10);
-      h.fills[t].style.width = `${pct}%`;
-      h.nums[t].textContent = `${pct.toFixed(1)}%`;
-    });
   }
 
   /** エリアバトル：ゲージとエリアの予告 */
@@ -421,15 +404,16 @@ export class Hud {
     this.updateArea(v);
     this.updateCrown(v);
     this.updateScore(v);
-    this.updateVault(v);
-    if (this.ball && v.ball) {
-      const key = v.ball.score.join('-');
+    // 玉入れ・金塊どろぼう：チームの点
+    const sc = v.ball?.score ?? v.vault?.score;
+    if (this.ball && sc) {
+      const key = sc.join('-');
       if (key !== this.ball.last) {
         // 点が入った側を弾ませる
         const [r0, b0] = this.ball.last ? this.ball.last.split('-').map(Number) : [0, 0];
-        this.ball.red.textContent = String(v.ball.score[0]);
-        this.ball.blue.textContent = String(v.ball.score[1]);
-        for (const [el, up] of [[this.ball.red, v.ball.score[0] > r0], [this.ball.blue, v.ball.score[1] > b0]] as const) {
+        this.ball.red.textContent = String(sc[0]);
+        this.ball.blue.textContent = String(sc[1]);
+        for (const [el, up] of [[this.ball.red, sc[0] > r0], [this.ball.blue, sc[1] > b0]] as const) {
           if (!up) continue;
           el.classList.remove('pop');
           void el.offsetWidth;

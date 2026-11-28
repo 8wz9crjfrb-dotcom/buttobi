@@ -130,7 +130,7 @@ const SNAPSHOT_KEYS = [
   'armor', 'armorCd', 'slamming', 'job', 'jobBuff', 'jobCd', 'rushQueued',
   'cdN', 'cdS', 'cdD', 'cdU', 'lockMeter', 'lockFree', 'ballHit', 'vaultHit', 'goals', 'closeCall', 'size', 'warpCd', 'warpSlow', 'moveAim',
   'leashT', 'leashBy', 'leashDmg', 'callT', 'callBy', 'awkward', 'lonely', 'dere', 'dereCd', 'floatT', 'heavyT',
-  'alarmT', 'alarmUsed', 'jobCdN', 'ballRaw', 'ballAimX', 'ballAimY', 'ballAiming', 'stealCd', 'ballSafe',
+  'alarmT', 'alarmUsed', 'jobCdN', 'ballRaw', 'ballAimX', 'ballAimY', 'ballAiming', 'stealCd', 'ballSafe', 'gold',
 ] as const;
 
 export type FighterSnapshot = { [K in (typeof SNAPSHOT_KEYS)[number]]: Fighter[K] } & { moveHit: number[] };
@@ -225,10 +225,12 @@ export class Fighter {
   stealCd = 0;
   /** 玉入れ：拾った・奪った直後は奪われない */
   ballSafe = 0;
-  /** 金庫まもり：今の技がもう金庫に当たった（1つの技で1回だけ） */
+  /** 金塊どろぼう：今の技がもう金庫の扉に当たった（1つの技で1回だけ） */
   vaultHit = false;
-  /** 金庫まもり：相手の金庫に与えたダメージ */
+  /** 金塊どろぼう：相手の金庫の扉に与えたダメージ */
   vaultDmg = 0;
+  /** 金塊どろぼう：金塊を持っている（1）。持っている間は遅く、攻撃・ガードができない */
+  gold = 0;
   /** 玉入れ：入れたゴールの数 */
   goals = 0;
   /** 課金の残り時間 */
@@ -910,18 +912,27 @@ export class Sim {
     return { list: this.coins.map((c) => ({ x: c.x, y: c.y, v: c.v })), held: [...this.coinsHeld.entries()] };
   }
 
-  // ---------------------------------------------------------------- 金庫まもり
-  /** 0 = 赤チーム（左）の金庫、1 = 青チーム（右）の金庫 */
-  vaults: { x: number; y: number; hp: number; max: number }[] = [];
+  // ---------------------------------------------------------------- 金塊どろぼう（ルール名は vault）
+  /** 0 = 赤チーム（左）の金庫、1 = 青チーム（右）の金庫。door = 扉を開けるまでに残っているダメージ、openT = 開いている残り時間 */
+  vaults: { x: number; y: number; door: number; max: number; openT: number }[] = [];
+  /** 金塊。team = どちらの金庫から持ち出されたか、holder = 持っている人（-1 = 落ちている） */
+  golds: { x: number; y: number; vx: number; vy: number; team: number; holder: number; idle: number; no: number; noT: number }[] = [];
+  /** 運び込んだ金塊の数（チームごと） */
+  vaultScore: [number, number] = [0, 0];
+  /** 点が入ってから試合を終えるまでの間（演出を見せる） */
+  private vaultDelay = 0;
+  get vaultTarget(): number {
+    return this.setup.rules.vaultGoal ?? VAULT.goal;
+  }
 
   private setupVaults(): void {
     const m = this.stage.main;
-    // 人数が多いほど早く壊れるので、多いほうのチームの人数に合わせて耐久を増やす
+    // 人数が多いほど早く開くので、多いほうのチームの人数に合わせて扉を固くする
     const size = Math.max(1, ...[0, 1].map((t) => this.fighters.filter((f) => f.team % 2 === t).length));
-    const hp = Math.round((this.setup.rules.vaultHp ?? VAULT.hp) * VAULT.scale * (1 + VAULT.perPlayer * (size - 1)));
+    const door = VAULT.door * (1 + VAULT.perPlayer * (size - 1));
     this.vaults = [
-      { x: m.x1 + VAULT.inset, y: m.top, hp, max: hp },
-      { x: m.x2 - VAULT.inset, y: m.top, hp, max: hp },
+      { x: m.x1 + VAULT.inset, y: m.top, door, max: door, openT: 0 },
+      { x: m.x2 - VAULT.inset, y: m.top, door, max: door, openT: 0 },
     ];
   }
 
@@ -932,22 +943,50 @@ export class Sim {
     const ny = Math.max(v.y, Math.min(cy, v.y + VAULT.h));
     return (cx - nx) ** 2 + (cy - ny) ** 2 <= r * r;
   }
-
-  private hitVault(i: number, dmg: number, by: number, x: number, y: number): void {
+  /** 体が金庫に触れているか */
+  private touchesVault(i: number, f: Fighter): boolean {
     const v = this.vaults[i];
-    if (v.hp <= 0 || dmg <= 0) return;
-    // 細かい数で数える（引き分けになりにくくする。運にならないよう、ぶれは付けない）
-    dmg = Math.max(1, Math.round(dmg * VAULT.scale));
-    dmg = Math.min(dmg, v.hp);
-    v.hp -= dmg;
+    return Math.abs(f.x - v.x) <= VAULT.w / 2 + f.hw + 0.05 && f.y < v.y + VAULT.h && f.y + f.h > v.y;
+  }
+
+  /** 閉まっている扉に攻撃が当たった。残りが 0 になったら開く */
+  private hitDoor(i: number, dmg: number, by: number, x: number, y: number): void {
+    const v = this.vaults[i];
+    if (v.openT > 0 || dmg <= 0) return;
+    v.door = Math.max(0, v.door - dmg);
     const f = this.fighter(by);
     if (f) f.vaultDmg += dmg;
-    this.events.push({ k: 'vhit', x, y, t: i, p: dmg });
-    if (v.hp <= 0) this.events.push({ k: 'vbreak', x: v.x, y: v.y + VAULT.h / 2, t: i });
+    this.events.push({ k: 'vhit', x, y, t: i, p: Math.round(dmg) });
+    if (v.door <= 0) {
+      v.openT = VAULT.openT;
+      this.events.push({ k: 'vopen', x: v.x, y: v.y + VAULT.h / 2, t: i });
+    }
+  }
+
+  /** 持っている金塊を落とす（少し跳ねる。本人はしばらく拾い直せない） */
+  private dropGold(f: Fighter): void {
+    const g = this.golds.find((o) => o.holder === f.slot);
+    f.gold = 0;
+    if (!g) return;
+    g.holder = -1;
+    g.vx = -f.facing * 1.5 + (f.vx || 0) * 0.3;
+    g.vy = 6;
+    g.idle = 0;
+    g.no = f.slot;
+    g.noT = VAULT.noPick;
+    this.events.push({ k: 'vdrop', x: g.x, y: g.y, s: f.slot });
+  }
+
+  /** 金塊を持つ */
+  private takeGold(f: Fighter, g: { holder: number; idle: number }): void {
+    g.holder = f.slot;
+    g.idle = 0;
+    f.gold = 1;
   }
 
   private updateVaults(): void {
-    // 攻撃が当たる：相手チームの金庫だけ（1つの技で1回）
+    if (this.vaultDelay > 0) this.vaultDelay--;
+    // 攻撃が当たる：相手チームの金庫の扉だけ（1つの技で1回）。開いている間は当たらない
     for (const a of this.fighters) {
       if (a.state !== 'attack' || !a.move || a.vaultHit || a.hitlag > 0 || !a.alive) continue;
       const md = this.moveDef(a);
@@ -955,29 +994,124 @@ export class Sim {
       const t = moveTiming(md, a);
       if (a.moveFrame < t.s || a.moveFrame >= t.s + t.a) continue;
       const i = 1 - (a.team % 2);
+      if (this.vaults[i].openT > 0) continue;
       const s = a.def.scale;
       for (const hb of md.hitboxes) {
         const cx = a.x + hb.x * a.facing * s;
         const cy = a.y + hb.y * s;
         if (!this.circleHitsVault(i, cx, cy, hb.r * s)) continue;
         a.vaultHit = true;
-        this.hitVault(i, md.dmg * this.powerMul(a).dmg, a.slot, cx, cy);
+        this.hitDoor(i, md.dmg * this.powerMul(a).dmg, a.slot, cx, cy);
         break;
       }
     }
-    // 飛び道具が当たる：相手チームの金庫に当たったら消える
+    // 飛び道具が当たる：相手チームの金庫が閉まっていれば、扉に当たって消える
     for (const p of this.projectiles) {
       const o = this.fighter(p.owner);
       if (!o || p.life <= 0) continue;
       const i = 1 - (o.team % 2);
-      if (!this.circleHitsVault(i, p.x, p.y, p.r)) continue;
-      this.hitVault(i, p.dmg, p.owner, p.x, p.y);
+      if (this.vaults[i].openT > 0 || !this.circleHitsVault(i, p.x, p.y, p.r)) continue;
+      this.hitDoor(i, p.dmg, p.owner, p.x, p.y);
       p.life = 0;
+    }
+    // 開いている時間が過ぎたら閉まる（扉は元どおりの固さに）
+    this.vaults.forEach((v, i) => {
+      if (v.openT > 0 && --v.openT === 0) {
+        v.door = v.max;
+        this.events.push({ k: 'vclose', x: v.x, y: v.y + VAULT.h / 2, t: i });
+      }
+    });
+    // 金塊を持っている人：ふっとばされたら落とす。自分の金庫に触れたら運び込んで1点
+    for (const f of this.fighters) {
+      if (!f.gold) continue;
+      if (!f.alive || f.out || f.state === 'hitstun' || f.state === 'grabbed' || f.state === 'dead') {
+        this.dropGold(f);
+        continue;
+      }
+      const g = this.golds.find((o) => o.holder === f.slot);
+      if (!g) {
+        f.gold = 0;
+        continue;
+      }
+      g.x = f.x;
+      g.y = f.y + f.h + 0.15;
+      const team = f.team % 2;
+      if (this.touchesVault(team, f)) {
+        this.golds.splice(this.golds.indexOf(g), 1);
+        f.gold = 0;
+        f.goals++;
+        this.vaultScore[team]++;
+        this.vaultDelay = VAULT.endDelay;
+        this.events.push({ k: 'vscore', x: this.vaults[team].x, y: this.vaults[team].y + VAULT.h, t: team, s: f.slot });
+      }
+    }
+    // 開いている相手の金庫に触れたら、金塊を1本持ち出す
+    for (const f of this.fighters) {
+      if (f.gold || !f.alive || f.out || f.state === 'hitstun' || f.state === 'grabbed' || f.state === 'dead') continue;
+      const i = 1 - (f.team % 2);
+      const v = this.vaults[i];
+      if (v.openT <= 0 || !this.touchesVault(i, f)) continue;
+      const g = { x: f.x, y: f.y + f.h + 0.15, vx: 0, vy: 0, team: i, holder: -1, idle: 0, no: -1, noT: 0 };
+      this.golds.push(g);
+      this.takeGold(f, g);
+      this.events.push({ k: 'vgrab', x: g.x, y: g.y, s: f.slot, t: i });
+    }
+    // 落ちている金塊：重力で落ちる。持ち主のチームが触れたら金庫へ戻る、相手チームが触れたら拾う
+    const m = this.stage.main;
+    const bl = this.stage.blast;
+    for (const g of [...this.golds]) {
+      if (g.holder >= 0) continue;
+      if (g.noT > 0) g.noT--;
+      g.idle++;
+      const py = g.y;
+      g.vy = Math.max(-14, g.vy - 25 * DT);
+      g.x += g.vx * DT;
+      g.y += g.vy * DT;
+      let landed = false;
+      if (g.x >= m.x1 && g.x <= m.x2 && py >= m.top && g.y <= m.top) {
+        g.y = m.top;
+        landed = true;
+      }
+      for (const sp of this.stage.platforms) {
+        const p = platformAt(sp, this.frame);
+        if (g.x >= p.x1 && g.x <= p.x2 && py >= p.prevY - 0.001 && g.y <= p.y) {
+          g.y = p.y;
+          landed = true;
+        }
+      }
+      if (landed) {
+        g.vy = 0;
+        g.vx = 0;
+      }
+      // 場外に落ちた・しばらくだれも触らなかった：持ち主の金庫へ戻る
+      if (g.y < bl.bottom || g.x < bl.left || g.x > bl.right || g.idle > VAULT.idleReturn) {
+        this.golds.splice(this.golds.indexOf(g), 1);
+        this.events.push({ k: 'vreturn', x: this.vaults[g.team].x, y: this.vaults[g.team].y + VAULT.h, t: g.team });
+        continue;
+      }
+      const toucher = this.fighters.find(
+        (f) => f.alive && !f.out && f.state !== 'hitstun' && f.state !== 'grabbed' && !(g.noT > 0 && f.slot === g.no) && circleHitsBox(g.x, g.y + 0.3, VAULT.r, f),
+      );
+      if (!toucher) continue;
+      if (toucher.team % 2 === g.team) {
+        // 取り返した：持ち主の金庫へ戻る
+        this.golds.splice(this.golds.indexOf(g), 1);
+        this.events.push({ k: 'vreturn', x: g.x, y: g.y, t: g.team, s: toucher.slot });
+      } else if (!toucher.gold) {
+        this.takeGold(toucher, g);
+        this.events.push({ k: 'vgrab', x: g.x, y: g.y, s: toucher.slot, t: g.team });
+      }
     }
   }
 
   private vaultView(): VaultView {
-    return { hp: [this.vaults[0]?.hp ?? 0, this.vaults[1]?.hp ?? 0], max: this.vaults[0]?.max ?? VAULT.hp };
+    return {
+      door: [0, 1].map((i) => (this.vaults[i] ? this.vaults[i].door / this.vaults[i].max : 1)) as [number, number],
+      open: [0, 1].map((i) => this.vaults[i]?.openT ?? 0) as [number, number],
+      score: [...this.vaultScore] as [number, number],
+      target: this.vaultTarget,
+      golds: this.golds.map((g) => ({ x: g.x, y: g.y, team: g.team, holder: g.holder })),
+    };
   }
 
   // ---------------------------------------------------------------- 玉入れ
@@ -1521,6 +1655,8 @@ export class Sim {
     if (f.confused > 0) inp = { ...inp, mx: -inp.mx };
     // 玉入れ：攻撃ボタンを「奪う」「投げる」に読みかえる（攻撃・必殺技は出ない）
     if (this.setup.rules.mode === 'ball' && !this.solo) inp = this.ballActions(f, inp);
+    // 金塊どろぼう：金塊を持っている間は、攻撃・必殺技・ガードができない（運ぶことに集中）
+    if (this.setup.rules.mode === 'vault' && f.gold) inp = { ...inp, buttons: inp.buttons & ~(BTN_A | BTN_B | BTN_SHIELD) };
     f.input = inp;
     // 「はじき」の判定：中央付近から FLICK_WINDOW フレーム以内に大きく倒したら、はじいたとみなす。
     // 指で操作する仮想スティックは倒し切るまで数フレームかかるため、1フレームでの判定にはしない。
@@ -1789,6 +1925,8 @@ export class Sim {
     if (f.dere > 0) m *= MENHERA.dereSpeed;
     // 玉入れ：ボールを持っている間は少し遅い（キャラの「速さ」で変わる）
     if (this.setup.rules.mode === 'ball' && this.ball.holder === f.slot) m *= THROW.holdSpeed + (ballStats(f.def.id).speed - 3) * THROW.perSpeed;
+    // 金塊どろぼう：金塊は重い
+    if (f.gold) m *= VAULT.carrySpeed;
     return m;
   }
 
@@ -2127,6 +2265,7 @@ export class Sim {
     let m = f.heavyT > 0 ? MENHERA.heavy.jump : 1;
     // 玉入れ：ジャンプの高さはキャラの「ジャンプ力」で決める（ふだんの高さではなく、みんな同じ基準から）
     if (this.setup.rules.mode === 'ball' && !this.solo) m *= (THROW.jumpBase * (1 + (ballStats(f.def.id).jump - 3) * THROW.perJump)) / f.def.jumpV;
+    if (f.gold) m *= VAULT.carryJump;
     return m;
   }
 
@@ -4351,7 +4490,8 @@ export class Sim {
     if (rules.mode === 'ball' && this.ballScore.some((v) => v >= this.ballTarget) && this.ball.timer < BALL.respawn - 45) over = true;
     // 王冠うばい：だれかが目標の時間まで持ったら終わり。金庫まもり：どちらかの金庫が壊れたら終わり
     if (rules.mode === 'crown' && [...this.crownPts.values()].some((v) => v >= this.crownGoalFrames)) over = true;
-    if (rules.mode === 'vault' && this.vaults.some((v) => v.hp <= 0)) over = true;
+    // 金塊どろぼう：どちらかのチームが決めた本数を運び込んだら終わり（運び込んだあと少し間をおく）
+    if (rules.mode === 'vault' && this.vaultScore.some((v) => v >= this.vaultTarget) && this.vaultDelay <= 0) over = true;
     if (!isNoStock(rules.mode) && this.fighters.length > 1) {
       // 残っているチーム（チーム戦でなければ選手）が1つ以下になったら終わり
       const teams = new Set(this.fighters.filter((f) => !f.out).map((f) => f.team));
@@ -4368,10 +4508,11 @@ export class Sim {
         return;
       }
       // 玉入れ：同点で時間切れなら、どちらかに1点入るまで延長（最長 OVERTIME_MAX。入らなければ引き分け）
-      if (rules.mode === 'ball' && !this.solo && !(this.overtime && this.frame - this.overtimeStart > OVERTIME_MAX)) {
-        const tied = this.ballScore[0] === this.ballScore[1];
+      if ((rules.mode === 'ball' || rules.mode === 'vault') && !this.solo && !(this.overtime && this.frame - this.overtimeStart > OVERTIME_MAX)) {
+        const sc = rules.mode === 'ball' ? this.ballScore : this.vaultScore;
+        const tied = sc[0] === sc[1];
         // 延長中に点が入った直後は、ふつうのゴールと同じく少し間をおいてから終わる
-        const justScored = this.overtime && !tied && this.ball.timer >= BALL.respawn - 45;
+        const justScored = this.overtime && !tied && (rules.mode === 'ball' ? this.ball.timer >= BALL.respawn - 45 : this.vaultDelay > 0);
         if (tied || justScored) {
           if (!this.overtime) {
             this.overtime = true;
@@ -4404,11 +4545,6 @@ export class Sim {
     const cn = (f: Fighter) => this.coinsHeld.get(f.slot) ?? 0;
     const gauge = (f: Fighter) => this.areaGauge.get(this.areaKey(f)) ?? 0;
     const held = (f: Fighter) => this.crownPts.get(this.crownKey(f)) ?? 0;
-    /** そのチームが相手の金庫に与えたダメージ */
-    const broke = (team: number) => {
-      const v = this.vaults[1 - (team % 2)];
-      return v ? v.max - v.hp : 0;
-    };
     const score = (f: Fighter) =>
       bounty
         ? bp(f) * 1000 + (f.kos - f.falls)
@@ -4417,7 +4553,7 @@ export class Sim {
         : crown
         ? held(f) * 1000 + (f.kos - f.falls)
         : vault
-        ? f.vaultDmg * 1000 + (f.kos - f.falls)
+        ? f.goals * 1000 + (f.kos - f.falls)
         : ball
         ? f.goals * 1000 + (f.kos - f.falls)
         : area
@@ -4436,7 +4572,7 @@ export class Sim {
         : crown
         ? held(f) * 1000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
         : vault
-        ? broke(f.team) * 100000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
+        ? this.vaultScore[f.team % 2] * 100000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
         : ball
         ? this.ballScore[f.team] * 100000 + members.reduce((n, o) => n + (o.kos - o.falls), 0)
         : area
@@ -4472,7 +4608,7 @@ export class Sim {
         ...(crown ? { crown: Math.floor(held(e.f) / 60) } : {}),
         ...(bounty ? { bounty: bp(e.f) } : {}),
         ...(coins ? { coins: cn(e.f) } : {}),
-        ...(vault ? { vaultDmg: Math.round(e.f.vaultDmg), vaultBroke: Math.floor((broke(e.f.team) / (this.vaults[0]?.max || 1)) * 1000) / 10 } : {}),
+        ...(vault ? { gold: e.f.goals, teamGold: this.vaultScore[e.f.team % 2] } : {}),
       };
     });
   }

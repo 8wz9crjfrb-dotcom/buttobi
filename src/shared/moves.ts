@@ -851,10 +851,12 @@ export const BOUNTY = { ko: 1, bonus: 2, min: 2, self: 1 };
  */
 export const COINS = { every: 40, max: 12, bigChance: 0.12, big: 5, r: 0.45, perDmg: 5, hitMax: 5, ko: 0.5, koToKiller: 0.5, noPick: 45 };
 /**
- * 金庫まもり：耐久（1対1のときの初期値。ルールの値）、大きさ、ステージの端からの距離、1チームの人数が1人増えるごとに増える耐久の割合、
- * 細かさ（耐久とダメージを何倍の数で数えるか。引き分けになりにくいように細かく数える）
+ * 金塊どろぼう（ルール名は vault のまま）：金庫の大きさ・ステージの端からの距離、
+ * 扉を開けるのに必要なダメージ（%。1対1のとき）と、1チームの人数が1人増えるごとに増える割合、
+ * 扉が開いている時間、金塊を持っている間の足の速さ・ジャンプの高さ、落ちた金塊が自分の金庫へ戻るまで、
+ * 落とした本人がすぐ拾い直せない時間（フレーム）、勝ちになる本数（初期値）、点が入ってから試合が終わるまでの間
  */
-export const VAULT = { hp: 400, w: 1.4, h: 1.8, inset: 1.7, perPlayer: 0.5, scale: 10 };
+export const VAULT = { w: 1.4, h: 1.8, inset: 1.7, door: 40, perPlayer: 0.5, openT: 240, carrySpeed: 0.72, carryJump: 0.85, idleReturn: 480, noPick: 40, goal: 3, endDelay: 45, r: 0.45 };
 /** ステージギミックの間隔（フレーム）と、予告から本番までの時間 */
 export const GIMMICK = { interval: 780, warn: 90 };
 

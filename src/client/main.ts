@@ -11,7 +11,7 @@ import { ITEM_COST, ITEM_DUP_REFUND, itemCounts, ownsBg, pullItems, stampTier, t
 import { MAX_PLAYERS, PREDICT_FRAMES, PREDICT_REWARD, predictCoins, predictOdds, STAMPS, isRoomCode, type LobbyInfo, type TourInfo } from '../shared/protocol';
 import { matchAt, nextMatch, roundName, THIRD } from '../shared/tournament';
 import { ballBaskets, COUNTDOWN_FRAMES, HORDE, Sim, type Fighter } from '../shared/sim';
-import { moveOf } from '../shared/moves';
+import { moveOf, VAULT } from '../shared/moves';
 import { RANDOM_STAGE, resolveStage, STAGES, getStage, stageForMatch } from '../shared/stages';
 import { BTN_B, BTN_JUMP, BTN_SHIELD, DEFAULT_HP, isTwoTeam, TEAM_COUNT, type GameEvent, type InputState, type MatchRules, type MatchSetup, type PlayerSetup, type ResultEntry, type ViewState } from '../shared/types';
 import { Music, Sfx, type TrackId } from './audio';
@@ -577,7 +577,12 @@ function playEvents(events: GameEvent[], mySlot: number | null, view: ViewState)
     else if (e.k === 'rewind') sfx.warp();
     else if (e.k === 'crown') sfx.buff();
     else if (e.k === 'vhit') sfx.hit(Math.min(20, e.p));
-    else if (e.k === 'vbreak') sfx.boom();
+    else if (e.k === 'vopen') sfx.boom();
+    else if (e.k === 'vclose') sfx.shield();
+    else if (e.k === 'vgrab') sfx.buff();
+    else if (e.k === 'vdrop') sfx.poof();
+    else if (e.k === 'vreturn') sfx.swap();
+    else if (e.k === 'vscore') sfx.goal();
     else if (e.k === 'bpt') (e.b ? sfx.goal() : sfx.buff());
     else if (e.k === 'bnew') sfx.notify();
     else if (e.k === 'ring') sfx.notify();
@@ -1688,7 +1693,7 @@ function ruleText(r: MatchRules): string {
             : r.mode === 'crown'
               ? `王冠うばい（${r.crownGoal ?? 30}秒持ったら勝ち）${r.timeLimit / 60}分`
               : r.mode === 'vault'
-                ? `金庫まもり（耐久${({ 250: '少ない', 600: '多い' } as Record<number, string>)[r.vaultHp ?? 400] ?? '普通'}）${r.timeLimit / 60}分`
+                ? `金塊どろぼう（${r.vaultGoal ?? VAULT.goal}本先取）${r.timeLimit / 60}分`
                 : r.mode === 'bounty'
                   ? `賞金首 ${r.timeLimit / 60}分`
                   : r.mode === 'coins'
@@ -1705,7 +1710,7 @@ const MODE_INFO: Record<MatchRules['mode'], { name: string; desc: string; player
   area: { name: 'エリアバトル', desc: 'エリアに自分（チーム）だけが立っている間ゲージがたまる。先に満タンにするか、時間切れで多い人の勝ち', players: '3〜4人' },
   ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを相手のかごに真上から投げ入れる（かごのふちに当たるとはね返る）。床の「2点」の線より遠くから入れると2点。アイテムは出ない。攻撃はできない。ボールに触れると拾う。「投げる」を押したまま引っ張って狙い、離すと投げる（薄い線が道筋）。引っ張らずに単押しすると、後ろにいる味方へパス。時間切れで同点なら、1点入るまで延長（最長60秒、入らなければ引き分け）。「奪う」で近くの相手からボールを奪える。「構える」の間は奪われない。キャラごとに投げる力・足の速さ・奪う力・ジャンプ力がちがう。チームはタップで選ぶ', players: '2人・4人' },
   crown: { name: '王冠うばい', desc: '最初に相手を倒した人が王冠を手に入れ、持っている間だけ時間がたまる。持っている人に攻撃を当て続け、合計20%のダメージで奪える（王冠の上に残りの耐久が出る）。決めた時間だけ持つか、時間切れで一番長く持っていた人の勝ち', players: '3〜4人' },
-  vault: { name: '金庫まもり', desc: '赤・青の2チームで自分の金庫を守り、相手の金庫を攻撃で壊す（飛び道具も当たる）。先に壊すか、時間切れで多く壊したチームの勝ち。チームはタップで選ぶ', players: '2人・4人' },
+  vault: { name: '金塊どろぼう', desc: '赤・青の2チームで、相手の金庫から金塊を盗んで自分の金庫に運び込む。相手の金庫の扉を攻撃すると開く（数秒で閉まる）。開いた金庫に触れると金塊を持ち出せる。持っている間は足が遅く、攻撃・ガードができない。攻撃を受けると落とす。落ちた金塊は、相手が触ると拾い、持ち主のチームが触ると金庫に戻る。先に決めた本数を運び込むか、時間切れで多く運んだチームの勝ち（同点なら1本入るまで延長）。チームはタップで選ぶ', players: '2人・4人' },
   bounty: { name: '賞金首', desc: '撃墜で1点、自分で落ちると1点減る。点が一番多い人（2点以上）は賞金首になり、倒すと3点。時間切れで点が一番多い人の勝ち', players: '3人以上（3人でも楽しめる）' },
   coins: { name: 'コイン集め', desc: '降ってくるコインを拾う。攻撃を受けるとコインを落とし、撃墜されると半分ばらまく。時間切れで一番多く持っている人の勝ち', players: '3人以上（3人でも楽しめる）' },
 };
@@ -1716,12 +1721,12 @@ function modeInfoHtml(mode: MatchRules['mode']): string {
 
 function ruleControls(rules: MatchRules): string {
   return `
-    <div class="opt opt-wide">モード ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ'], ['crown', '王冠'], ['vault', '金庫'], ['bounty', '賞金首'], ['coins', 'コイン']], rules.mode)}</div>
+    <div class="opt opt-wide">モード ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ'], ['crown', '王冠'], ['vault', '金塊'], ['bounty', '賞金首'], ['coins', 'コイン']], rules.mode)}</div>
     <div class="opt opt-wide mode-info" data-mode-info>${modeInfoHtml(rules.mode)}</div>
     <div class="opt" data-show="crown">勝ちになる時間 ${seg('cgoal', [[20, '20秒'], [30, '30秒'], [45, '45秒']], rules.crownGoal ?? 30)}</div>
     <div class="opt" data-show="crown">時間 ${seg('ctime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="bounty coins">時間 ${seg('stime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
-    <div class="opt" data-show="vault">金庫の耐久 ${seg('vhp', [[250, '少ない'], [400, '普通'], [600, '多い']], rules.vaultHp ?? 400)}</div>
+    <div class="opt" data-show="vault">先取 ${seg('vgoal', [[3, '3本'], [5, '5本'], [7, '7本']], rules.vaultGoal ?? VAULT.goal)}</div>
     <div class="opt" data-show="vault">時間 ${seg('vtime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
     <div class="opt" data-show="ball">先取点 ${seg('goals', [[3, '3点'], [5, '5点'], [7, '7点']], rules.goals ?? 5)}</div>
     <div class="opt" data-show="ball">時間 ${seg('btime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
@@ -1751,7 +1756,7 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     root.querySelectorAll<HTMLElement>('[data-items]').forEach((el) => el.classList.toggle('hidden', !rules.items || rules.mode === 'ball'));
     // 玉入れは「味方への攻撃」の設定を使わない（相手への攻撃の設定がある）
     root.querySelectorAll<HTMLElement>('[data-ff]').forEach((el) => el.classList.toggle('hidden', !rules.teams || rules.mode === 'ball'));
-    // 金庫まもりは「チーム戦 あり／なし」を選ばない（いつも2チーム）
+    // 金塊どろぼうは「チーム戦 あり／なし」を選ばない（いつも2チーム）
     root.querySelectorAll<HTMLElement>('[data-seg="teams"]').forEach((el) => el.closest('.opt')?.classList.toggle('hidden', isTwoTeam(rules.mode)));
   };
   sync();
@@ -1760,7 +1765,7 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     // ストック制は時間制限なし（0）。体力制は7分
     rules.timeLimit = rules.mode === 'time' ? 180 : rules.mode === 'area' || rules.mode === 'ball' || rules.mode === 'crown' || rules.mode === 'vault' || rules.mode === 'bounty' || rules.mode === 'coins' ? 120 : rules.mode === 'stock' ? 0 : 420;
     if (rules.mode === 'crown') rules.crownGoal ??= 30;
-    if (rules.mode === 'vault') rules.vaultHp ??= 400;
+    if (rules.mode === 'vault') rules.vaultGoal ??= VAULT.goal;
     if (rules.mode === 'area') rules.area ??= 'move';
     // 玉入れはいつも赤・青の2チーム（チームはタップで選ぶ）。玉入れから別のルールに変えたら、チーム戦は「なし」に戻す
     const wasBall = isTwoTeam(prevMode);
@@ -1808,8 +1813,8 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     rules.crownGoal = Number(v);
     onChange();
   });
-  bindSeg(root, 'vhp', (v) => {
-    rules.vaultHp = Number(v);
+  bindSeg(root, 'vgoal', (v) => {
+    rules.vaultGoal = Number(v);
     onChange();
   });
   for (const k of ['ctime', 'vtime', 'stime']) {
@@ -2489,14 +2494,11 @@ function resultTitle(results: ResultEntry[], setup: MatchSetup, winner: PlayerSe
     return `${TEAM_NAMES[red > blue ? 0 : 1]}チームの勝ち！ <small>${red} - ${blue}</small>`;
   }
   if (setup.rules.mode === 'vault') {
-    // 金庫まもり：どちらのチームの金庫が多く壊れたか（壊した%）
-    // 勝ち負けは順位で決める（表示は小数第1位までなので、表示が同じでも差があることがある）
-    const red = results.find((r) => ballTeamOf(setup, r.slot) === 0);
-    const blue = results.find((r) => ballTeamOf(setup, r.slot) === 1);
-    const pct = (r: ResultEntry | undefined) => (r?.vaultBroke ?? 0).toFixed(1);
-    const top = [red, blue].filter((r) => r?.rank === 1);
-    if (top.length !== 1) return `引き分け！ <small>${pct(red)}% - ${pct(blue)}%</small>`;
-    return `${TEAM_NAMES[top[0] === red ? 0 : 1]}チームの勝ち！ <small>壊した ${pct(red)}% - ${pct(blue)}%</small>`;
+    // 金塊どろぼう：運び込んだ金塊の数
+    const red = results.find((r) => ballTeamOf(setup, r.slot) === 0)?.teamGold ?? 0;
+    const blue = results.find((r) => ballTeamOf(setup, r.slot) === 1)?.teamGold ?? 0;
+    if (red === blue) return `引き分け！ <small>金塊 ${red} - ${blue}</small>`;
+    return `${TEAM_NAMES[red > blue ? 0 : 1]}チームの勝ち！ <small>金塊 ${red} - ${blue}</small>`;
   }
   if (!winner) return '結果';
   return setup.rules.teams ? `${TEAM_NAMES[(winner.team ?? 0) % TEAM_NAMES.length]}チームの勝ち！` : esc(winner.name) + ' の勝ち！';
@@ -3061,7 +3063,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
   };
   if (results.length >= 2) {
     if (setup.rules.mode === 'ball') award('ゴールゲッター', (r) => r.goals ?? 0);
-    if (setup.rules.mode === 'vault') award('金庫破り', (r) => r.vaultDmg ?? 0, 1);
+    if (setup.rules.mode === 'vault') award('大どろぼう', (r) => r.gold ?? 0, 1);
     if (setup.rules.mode === 'coins') award('コイン長者', (r) => r.coins ?? 0, 1);
     award('最多撃墜', (r) => r.kos);
     award('最大ダメージ', (r) => r.dealt ?? 0, 30);
@@ -3076,7 +3078,7 @@ function showResults(results: ResultEntry[], setup: MatchSetup, online: boolean)
       return `<div class="res-row ${r.rank === 1 ? 'first' : ''}">
         <div class="rank">${r.rank}</div>
         <div><span style="color:${hex(playerColor(setup, p.slot))}">●</span> ${isTwoTeam(setup.rules.mode) ? `<small>${TEAM_NAMES[ballTeamOf(setup, p.slot)]}</small> ` : setup.rules.teams ? `<small>${TEAM_NAMES[(p.team ?? 0) % TEAM_NAMES.length]}</small> ` : ''}${esc(p.name)} <small style="color:var(--muted)">${c.name}</small>${badges ? `<div class="awards">${badges}</div>` : ''}</div>
-        <div style="font-size:12px;color:var(--muted);text-align:right">${r.area !== undefined ? `<b class="res-area">エリア ${r.area}%</b><br/>` : ''}${r.goals !== undefined ? `<b class="res-area">ゴール ${r.goals}</b><br/>` : ''}${r.crown !== undefined ? `<b class="res-area">王冠 ${r.crown}秒</b><br/>` : ''}${r.vaultDmg !== undefined ? `<b class="res-area">金庫に ${r.vaultDmg}</b><br/>` : ''}${r.bounty !== undefined ? `<b class="res-area">${r.bounty}点</b><br/>` : ''}${r.coins !== undefined ? `<b class="res-area">コイン ${r.coins}枚</b><br/>` : ''}撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
+        <div style="font-size:12px;color:var(--muted);text-align:right">${r.area !== undefined ? `<b class="res-area">エリア ${r.area}%</b><br/>` : ''}${r.goals !== undefined ? `<b class="res-area">ゴール ${r.goals}</b><br/>` : ''}${r.crown !== undefined ? `<b class="res-area">王冠 ${r.crown}秒</b><br/>` : ''}${r.gold !== undefined ? `<b class="res-area">金塊 ${r.gold}本</b><br/>` : ''}${r.bounty !== undefined ? `<b class="res-area">${r.bounty}点</b><br/>` : ''}${r.coins !== undefined ? `<b class="res-area">コイン ${r.coins}枚</b><br/>` : ''}撃墜 ${r.kos} / 落下 ${r.falls}<br/>与ダメ ${r.dealt ?? 0}%${r.throws ? `・投げ ${r.throws}` : ''}</div></div>`;
     })
     .join('');
   const win = results.find((r) => r.rank === 1);
@@ -3255,7 +3257,7 @@ function showHowTo(): void {
        <p><b>ハメ防止：</b>攻撃を受け続けて、ほとんど動けない状態（少しだけ動けてもすぐまた当てられる状態を含む）が約1.5秒続くと、すぐに動けるようになり、少しの間（約0.75秒）無敵になって抜け出せます。また、突撃する技・引き寄せる技・入れ替える技・連射しやすい技には、使ったあと少しの待ち時間があります（キャラ選択で技を長押しすると確認できます）。</p>
        <p><b>エリアバトル：</b>エリアに自分（チーム）だけが立っている間ゲージが溜まり、先に満タンにするか、時間切れでゲージの多い人の勝ち。敵が1人でもエリアにいると止まります。味方が多いほど少し速く溜まります。ふっとばされても復活します。</p>
        <p><b>王冠うばい：</b>はじめは王冠はだれも持っていません。最初に相手を撃墜した人が王冠を手に入れ、持っている間だけ時間がたまります。持っている人に攻撃を当て続け、王冠を手に入れてから受けたダメージの合計が20%をこえると、最後に当てた人が王冠を奪えます（王冠の上に残りの耐久が出ます。奪われた直後は少しの間取り返せません）。持っている人を撃墜した人も王冠を手に入れます。持っている人が自分で落ちたときは、少しあとにステージの中央に王冠が出てくるので、触れた人が拾えます。決めた時間（20・30・45秒）だけ持つか、時間切れで一番長く持っていた人の勝ち。何人でも遊べます。チーム戦でも王冠は1つだけなので、持っていない仲間は持っている仲間を守りましょう。</p>
-       <p><b>金庫まもり：</b>赤と青の2チームに分かれ、ステージの端にある自分のチームの金庫を守りながら、相手の金庫を攻撃で壊します（飛び道具も当たります）。先に相手の金庫を壊すか、時間切れのときに多く壊していたチームの勝ち。金庫の耐久は人数が多いほど増えます。ふっとばされても復活します。</p>
+       <p><b>金塊どろぼう：</b>赤と青の2チームに分かれ、相手の金庫から金塊を盗んで、ステージの端にある自分のチームの金庫に運び込みます。相手の金庫の扉を攻撃すると開き（飛び道具も当たります）、数秒たつと閉まります。開いた金庫に触れると金塊を1本持ち出せます。金塊を持っている間は足が遅く、攻撃とガードができず、攻撃を受けると落とします。落ちた金塊は、相手チームが触ると拾い、持ち主のチームが触ると金庫に戻ります。先に決めた本数を運び込むか、時間切れのときに多く運んでいたチームの勝ち（同点なら1本入るまで最長60秒の延長）。扉の固さは人数が多いほど増えます。ふっとばされても復活します。</p>
        <p><b>賞金首：</b>相手を撃墜すると1点、自分で落ちると1点減ります。点が一番多い人（2点以上）は頭の上に賞金袋が出る「賞金首」になり、倒すと3点もらえます。時間切れのときに点が一番多い人の勝ち。何人でも遊べ、チーム戦にもできます。</p>
        <p><b>コイン集め：</b>ステージにコインが降ってくるので、触れて拾います（大きいコインは5枚分）。攻撃を受けるとダメージに合わせてコインを落とし（1回に最大5枚）、撃墜されると持っているコインの半分がステージの中央にばらまかれます。時間切れのときに一番多く持っている人の勝ち。何人でも遊べ、チーム戦にもできます。</p>
        <p><b>玉入れ：</b>赤と青の2チームに分かれ（タップで選べます）、ボールを攻撃でふっとばして、相手チームのかご（赤は右、青は左）に上から入れると1点。先取点（3・5・7点）か、時間切れで点の多いチームの勝ち。ルールで「相手への攻撃：当たらない」にすると、攻撃はボールにだけ当たります。弱攻撃はかごまで4〜6mくらい、横攻撃は8〜12mくらいから入りやすいです。<b>ねらい方：</b>スティックを斜め上に入れながら攻撃すると山なりに高く（かごに入れやすい）、斜め下に入れながら攻撃すると低く速く飛びます。</p>

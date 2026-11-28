@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 63;
+export const PROTOCOL_VERSION = 64;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -229,7 +229,7 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
     ...(v.crown ? { c: [Math.round(v.crown.x * 100), Math.round(v.crown.y * 100), v.crown.holder, v.crown.on ? 1 : 0, v.crown.goal, v.crown.armor ?? 0, v.crown.armorMax ?? 0, ...v.crown.pts.flat()] } : {}),
     ...(v.bounty ? { bo: [v.bounty.holder, ...v.bounty.pts.flat()] } : {}),
     ...(v.coins ? { co: [v.coins.list.length, ...v.coins.list.flatMap((c) => [Math.round(c.x * 100), Math.round(c.y * 100), c.v]), ...v.coins.held.flat()] } : {}),
-    ...(v.vault ? { v: [Math.round(v.vault.hp[0] * 10) / 10, Math.round(v.vault.hp[1] * 10) / 10, v.vault.max] } : {}),
+    ...(v.vault ? { v: [Math.round(v.vault.door[0] * 100), Math.round(v.vault.door[1] * 100), v.vault.open[0], v.vault.open[1], v.vault.score[0], v.vault.score[1], v.vault.target, ...v.vault.golds.flatMap((g) => [Math.round(g.x * 100), Math.round(g.y * 100), g.team, g.holder])] } : {}),
     ...(v.ball ? { b: [Math.round(v.ball.x * 100), Math.round(v.ball.y * 100), Math.round(v.ball.vx * 10), v.ball.on ? 1 : 0, v.ball.score[0], v.ball.score[1], v.ball.target, v.ball.holder ?? -1, v.ball.lock ?? -1] } : {}),
     ...(v.area
       ? {
@@ -288,7 +288,15 @@ export function decodeState(s: EncodedState): ViewState {
           pts: Array.from({ length: Math.floor((s.c.length - 7) / 2) }, (_, k) => [s.c![7 + k * 2], s.c![8 + k * 2]] as [number, number]),
         }
       : undefined,
-    vault: s.v ? { hp: [s.v[0], s.v[1]], max: s.v[2] } : undefined,
+    vault: s.v
+      ? {
+          door: [s.v[0] / 100, s.v[1] / 100],
+          open: [s.v[2], s.v[3]],
+          score: [s.v[4], s.v[5]],
+          target: s.v[6],
+          golds: Array.from({ length: Math.floor((s.v.length - 7) / 4) }, (_, k) => ({ x: s.v![7 + k * 4] / 100, y: s.v![8 + k * 4] / 100, team: s.v![9 + k * 4], holder: s.v![10 + k * 4] })),
+        }
+      : undefined,
     bounty: s.bo ? { holder: s.bo[0], pts: pairs(s.bo, 1) } : undefined,
     coins: s.co
       ? {

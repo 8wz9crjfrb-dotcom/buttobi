@@ -1240,16 +1240,47 @@ export class GameRenderer {
       }
       return;
     }
-    if (e.k === 'vbreak') {
-      // 金庫が壊れた：大きな爆発と、金貨が飛び散る
-      for (let i = 0; i < 22; i++) {
+    if (e.k === 'vopen') {
+      // 扉が開いた：金色の輪と火花、大きな文字
+      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.4, 20, 0.12);
+      for (let i = 0; i < 14; i++) {
         const a = Math.random() * Math.PI;
-        const sp = 4 + Math.random() * 7;
-        this.spawn(this.sparkGeo, i % 3 ? 0xffd23f : 0xffffff, e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.25, 30, -0.004);
+        const sp = 3 + Math.random() * 5;
+        this.spawn(this.sparkGeo, i % 3 ? 0xffd23f : 0xffffff, e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.2, 24, -0.004);
       }
-      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.5, 20, 0.14);
-      this.props.showText('金庫破壊！', '#ffd23f', e.x, e.y + 2, true, 90);
-      this.shake = Math.max(this.shake, 0.8);
+      this.props.showText(`${e.t === 0 ? '赤' : '青'}の金庫が開いた！`, '#ffd23f', e.x, e.y + 1.8, true, 80);
+      this.shake = Math.max(this.shake, 0.4);
+      return;
+    }
+    if (e.k === 'vclose') {
+      this.props.showText('ガチャン', '#c8cede', e.x, e.y + 1.4, false, 40);
+      return;
+    }
+    if (e.k === 'vgrab') {
+      this.props.showText('金塊ゲット！', '#ffd23f', e.x, e.y + 0.6, false, 50);
+      return;
+    }
+    if (e.k === 'vdrop') {
+      this.spawn(this.ringGeo, 0xffd23f, e.x, e.y, 0, 0, 0.2, 12, 0.06);
+      this.props.showText('落とした！', '#ffb347', e.x, e.y + 0.6, false, 45);
+      return;
+    }
+    if (e.k === 'vreturn') {
+      this.spawn(this.ringGeo, TEAM_COLORS[e.t], e.x, e.y, 0, 0, 0.3, 16, 0.08);
+      if (e.s !== undefined) this.props.showText('取り返した！', '#' + TEAM_COLORS[e.t].toString(16).padStart(6, '0'), e.x, e.y + 1, false, 55);
+      return;
+    }
+    if (e.k === 'vscore') {
+      // 運び込んだ：チームの色の紙ふぶきと、大きな文字
+      const col = TEAM_COLORS[e.t];
+      for (let i = 0; i < 3; i++) this.spawn(this.ringGeo, i % 2 ? 0xffd23f : col, e.x, e.y, 0, 0, 0.4 + i * 0.3, 28 + i * 4, 0.12 + i * 0.03, true);
+      for (let i = 0; i < 24; i++) {
+        const a = Math.random() * Math.PI;
+        const sp = 4 + Math.random() * 6;
+        this.spawn(this.sparkGeo, i % 3 ? 0xffd23f : col, e.x, e.y, Math.cos(a) * sp, Math.sin(a) * sp, 0.22, 30, -0.004);
+      }
+      this.props.showText(`${e.t === 0 ? '赤' : '青'}チーム 金塊ゲット！`, '#' + col.toString(16).padStart(6, '0'), e.x < 0 ? e.x + 3 : e.x - 3, e.y + 1.2, true, 90);
+      this.shake = Math.max(this.shake, 0.5);
       return;
     }
     if (e.k === 'rewind') {
@@ -1844,8 +1875,33 @@ export class GameRenderer {
     });
   }
 
-  // ---------------------------------------------------------------- 金庫まもりの金庫
-  private vaultObj: { root: THREE.Group; boxes: THREE.Group[]; bars: THREE.Mesh[]; dials: THREE.Mesh[]; hp: number[] } | null = null;
+  // ---------------------------------------------------------------- 金塊どろぼうの金庫と金塊
+  private vaultObj: {
+    root: THREE.Group;
+    boxes: THREE.Group[];
+    bars: THREE.Mesh[];
+    barMats: THREE.MeshBasicMaterial[];
+    dials: THREE.Mesh[];
+    doors: THREE.Group[];
+    door: number[];
+    golds: THREE.Group[];
+    goldGeo: THREE.BoxGeometry;
+    goldMat: THREE.MeshToonMaterial;
+    goldEdge: THREE.MeshBasicMaterial;
+  } | null = null;
+
+  /** 金塊（金色の延べ棒と黒いふち） */
+  private makeGold(): THREE.Group {
+    const o = this.vaultObj!;
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(o.goldGeo, o.goldMat);
+    g.add(body);
+    const edge = new THREE.Mesh(o.goldGeo, o.goldEdge);
+    edge.scale.setScalar(1.12);
+    g.add(edge);
+    o.root.add(g);
+    return g;
+  }
 
   private buildVaults(stage: StageDef): void {
     const root = new THREE.Group();
@@ -1853,12 +1909,17 @@ export class GameRenderer {
     const m = stage.main;
     const boxes: THREE.Group[] = [];
     const bars: THREE.Mesh[] = [];
+    const barMats: THREE.MeshBasicMaterial[] = [];
     const dials: THREE.Mesh[] = [];
+    const doors: THREE.Group[] = [];
+    const goldGeo = new THREE.BoxGeometry(0.5, 0.2, 0.26);
+    const goldMat = new THREE.MeshToonMaterial({ color: 0xffc928, emissive: 0x5a3c00 });
+    const goldEdge = new THREE.MeshBasicMaterial({ color: 0x3a2600, side: THREE.BackSide });
     [m.x1 + VAULT.inset, m.x2 - VAULT.inset].forEach((x, t) => {
       const col = TEAM_COLORS[t];
       const g = new THREE.Group();
       g.position.set(x, m.top, -0.3);
-      // 鉄の箱（チームの色の帯）、正面のダイヤル、取っ手、足
+      // 鉄の箱（チームの色の帯）、正面の扉（ダイヤル・取っ手付き。開くと横に回る）、中に積まれた金塊
       const body = new THREE.Mesh(new THREE.BoxGeometry(VAULT.w, VAULT.h, 1.1), new THREE.MeshToonMaterial({ color: 0x5a6070 }));
       body.position.y = VAULT.h / 2;
       g.add(body);
@@ -1870,58 +1931,91 @@ export class GameRenderer {
         stripe.position.y = y;
         g.add(stripe);
       }
+      // 扉の奥：暗い中に金塊の山（扉が開くと見える）
+      const hole = new THREE.Mesh(new THREE.PlaneGeometry(VAULT.w * 0.74, VAULT.h * 0.66), new THREE.MeshBasicMaterial({ color: 0x15161f }));
+      hole.position.set(0, VAULT.h / 2, 0.555);
+      g.add(hole);
+      for (let k = 0; k < 6; k++) {
+        const bar = new THREE.Mesh(goldGeo, goldMat);
+        const row = k < 3 ? 0 : k < 5 ? 1 : 2;
+        const col2 = row === 0 ? k - 1 : row === 1 ? k - 3.5 : 0;
+        bar.position.set(col2 * 0.3, VAULT.h / 2 - 0.42 + row * 0.2, 0.42);
+        bar.scale.setScalar(0.55);
+        g.add(bar);
+      }
+      // 扉：ちょうつがい（外側の端）を軸に回る
+      const hinge = new THREE.Group();
+      const side = t === 0 ? -1 : 1;
+      hinge.position.set((side * VAULT.w * 0.78) / 2, VAULT.h / 2, 0.57);
       const door = new THREE.Mesh(new THREE.BoxGeometry(VAULT.w * 0.78, VAULT.h * 0.7, 0.06), new THREE.MeshToonMaterial({ color: 0x737a8c }));
-      door.position.set(0, VAULT.h / 2, 0.57);
-      g.add(door);
+      door.position.set((-side * VAULT.w * 0.78) / 2, 0, 0);
+      hinge.add(door);
       const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 20), new THREE.MeshToonMaterial({ color: 0xd9b44a }));
       dial.rotation.x = Math.PI / 2;
-      dial.position.set(0, VAULT.h / 2 + 0.1, 0.62);
-      g.add(dial);
+      dial.position.set((-side * VAULT.w * 0.78) / 2, 0.1, 0.05);
+      hinge.add(dial);
       dials.push(dial);
       const knob = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.06), new THREE.MeshToonMaterial({ color: 0xd9b44a }));
-      knob.position.set(0.28 * (t === 0 ? 1 : -1), VAULT.h / 2 - 0.3, 0.62);
-      g.add(knob);
-      // 上に耐久のバー（チームの色）
+      knob.position.set(-side * VAULT.w * 0.78 + side * 0.12, -0.3, 0.05);
+      hinge.add(knob);
+      g.add(hinge);
+      doors.push(hinge);
+      // 上にバー：閉まっている間は扉の残り（チームの色）、開いている間は閉まるまでの残り時間（金色）
       // 背景は不透明にする（半透明だと、あとから描かれて色のバーを隠してしまう）
       const back = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.16), new THREE.MeshBasicMaterial({ color: 0x1b1b28 }));
       back.position.set(0, VAULT.h + 0.4, 0.6);
       g.add(back);
-      const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.44, 0.11), new THREE.MeshBasicMaterial({ color: col }));
+      const mat = new THREE.MeshBasicMaterial({ color: col });
+      const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.44, 0.11), mat);
       bar.position.set(0, VAULT.h + 0.4, 0.63);
       g.add(bar);
       bars.push(bar);
+      barMats.push(mat);
       root.add(g);
       boxes.push(g);
     });
-    this.vaultObj = { root, boxes, bars, dials, hp: [1, 1] };
+    this.vaultObj = { root, boxes, bars, barMats, dials, doors, door: [1, 1], golds: [], goldGeo, goldMat, goldEdge };
   }
 
   private updateVaults(view: ViewState): void {
     const o = this.vaultObj;
     const v = view.vault;
     if (!o || !v) return;
-    v.hp.forEach((hp, t) => {
-      const r = Math.max(0, hp / v.max);
-      // 耐久のバーは左から減る
-      o.bars[t].scale.x = Math.max(0.001, r);
-      o.bars[t].position.x = -0.72 * (1 - r);
-      // 当たったら少しゆれる・壊れたら傾いて沈む
-      const hit = r < o.hp[t];
-      o.hp[t] = r;
+    v.door.forEach((r, t) => {
+      const open = v.open[t];
+      // バー：閉まっている間は扉の残り、開いている間は閉まるまでの残り時間（金色で点滅）
+      const k = open > 0 ? open / VAULT.openT : Math.max(0, r);
+      o.bars[t].scale.x = Math.max(0.001, k);
+      o.bars[t].position.x = -0.72 * (1 - k);
+      o.barMats[t].color.setHex(open > 0 ? (open < 60 && Math.floor(this.time * 8) % 2 ? 0xffffff : 0xffd23f) : TEAM_COLORS[t]);
+      // 当たったら少しゆれる
+      const hit = r < o.door[t] - 0.001;
+      o.door[t] = r;
       const g = o.boxes[t];
       if (hit) g.userData.shake = 0.25;
       const sh = (g.userData.shake as number | undefined) ?? 0;
       g.userData.shake = Math.max(0, sh - 0.016);
       const base = this.stage ? (t === 0 ? this.stage.main.x1 + VAULT.inset : this.stage.main.x2 - VAULT.inset) : g.position.x;
       g.position.x = base + (sh > 0 ? Math.sin(this.time * 60) * 0.06 * (sh / 0.25) : 0);
-      if (r <= 0) {
-        g.rotation.z = (t === 0 ? 1 : -1) * 0.25;
-        g.scale.y = 0.6;
-      } else {
-        g.rotation.z = 0;
-        g.scale.y = 1;
-      }
+      // 扉：開いている間は外へ大きく開く（なめらかに）
+      const side = t === 0 ? -1 : 1;
+      const want = open > 0 ? side * 1.9 : 0;
+      const d = o.doors[t];
+      d.rotation.y += (want - d.rotation.y) * 0.2;
+      // ダイヤル：扉が削れるほど速く回る
       o.dials[t].rotation.y = this.time * (1 - r) * 4;
+    });
+    // 金塊：持っている人の頭の上・床に落ちているもの
+    while (o.golds.length < v.golds.length) o.golds.push(this.makeGold());
+    o.golds.forEach((m, i) => {
+      const gd = v.golds[i];
+      m.visible = !!gd;
+      if (!gd) return;
+      const loose = gd.holder < 0;
+      m.position.set(gd.x, gd.y + (loose ? 0.12 + Math.sin(this.time * 4 + i) * 0.05 : 0), 0);
+      m.rotation.set(0, loose ? this.time * 1.5 : 0, loose ? 0 : 0.15 * Math.sin(this.time * 6 + i));
+      // 持っている金塊は大きめに（だれが持っているか遠くからでも分かるように）
+      m.scale.setScalar(loose ? 1.1 : 1.5);
     });
   }
 
