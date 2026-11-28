@@ -1885,6 +1885,10 @@ export class GameRenderer {
     doors: THREE.Group[];
     door: number[];
     golds: THREE.Group[];
+    /** 削れ具合の見た目：扉の色・ひび（2段階）・てっぺんの警告ランプ */
+    doorMats: THREE.MeshToonMaterial[];
+    cracks: THREE.Group[][];
+    lamps: THREE.MeshBasicMaterial[];
     goldGeo: THREE.BoxGeometry;
     goldMat: THREE.MeshToonMaterial;
     goldEdge: THREE.MeshBasicMaterial;
@@ -1912,6 +1916,10 @@ export class GameRenderer {
     const barMats: THREE.MeshBasicMaterial[] = [];
     const dials: THREE.Mesh[] = [];
     const doors: THREE.Group[] = [];
+    const doorMats: THREE.MeshToonMaterial[] = [];
+    const cracks: THREE.Group[][] = [];
+    const lamps: THREE.MeshBasicMaterial[] = [];
+    const crackMat = new THREE.MeshBasicMaterial({ color: 0x15161f });
     const goldGeo = new THREE.BoxGeometry(0.5, 0.2, 0.26);
     const goldMat = new THREE.MeshToonMaterial({ color: 0xffc928, emissive: 0x5a3c00 });
     const goldEdge = new THREE.MeshBasicMaterial({ color: 0x3a2600, side: THREE.BackSide });
@@ -1947,9 +1955,40 @@ export class GameRenderer {
       const hinge = new THREE.Group();
       const side = t === 0 ? -1 : 1;
       hinge.position.set((side * VAULT.w * 0.78) / 2, VAULT.h / 2, 0.57);
-      const door = new THREE.Mesh(new THREE.BoxGeometry(VAULT.w * 0.78, VAULT.h * 0.7, 0.06), new THREE.MeshToonMaterial({ color: 0x737a8c }));
+      const doorMat = new THREE.MeshToonMaterial({ color: 0x737a8c });
+      doorMats.push(doorMat);
+      const door = new THREE.Mesh(new THREE.BoxGeometry(VAULT.w * 0.78, VAULT.h * 0.7, 0.06), doorMat);
       door.position.set((-side * VAULT.w * 0.78) / 2, 0, 0);
       hinge.add(door);
+      // ひび：折れ線を細い板で描く。1段目（半分くらい削れた）と2段目（もうすぐ開く）
+      const crackSet = (pts: [number, number][][]) => {
+        const cg = new THREE.Group();
+        for (const line of pts) {
+          for (let k = 0; k < line.length - 1; k++) {
+            const [x1, y1] = line[k];
+            const [x2, y2] = line[k + 1];
+            const len = Math.hypot(x2 - x1, y2 - y1);
+            const seg = new THREE.Mesh(new THREE.BoxGeometry(len, 0.035, 0.01), crackMat);
+            seg.position.set((x1 + x2) / 2, (y1 + y2) / 2, 0);
+            seg.rotation.z = Math.atan2(y2 - y1, x2 - x1);
+            cg.add(seg);
+          }
+        }
+        cg.position.set((-side * VAULT.w * 0.78) / 2, 0, 0.035);
+        cg.visible = false;
+        hinge.add(cg);
+        return cg;
+      };
+      const c1 = crackSet([
+        [[-0.42, 0.48], [-0.26, 0.36], [-0.3, 0.2], [-0.14, 0.12]],
+        [[0.44, -0.5], [0.3, -0.36], [0.34, -0.22]],
+      ]);
+      const c2 = crackSet([
+        [[0.1, 0.6], [0.2, 0.4], [0.08, 0.28], [0.26, 0.05], [0.16, -0.1]],
+        [[-0.44, -0.2], [-0.28, -0.26], [-0.18, -0.12], [0.0, -0.18], [0.12, -0.4], [0.06, -0.6]],
+        [[0.44, 0.2], [0.3, 0.28], [0.24, 0.42]],
+      ]);
+      cracks.push([c1, c2]);
       const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 20), new THREE.MeshToonMaterial({ color: 0xd9b44a }));
       dial.rotation.x = Math.PI / 2;
       dial.position.set((-side * VAULT.w * 0.78) / 2, 0.1, 0.05);
@@ -1965,6 +2004,12 @@ export class GameRenderer {
       const back = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.16), new THREE.MeshBasicMaterial({ color: 0x1b1b28 }));
       back.position.set(0, VAULT.h + 0.4, 0.6);
       g.add(back);
+      // てっぺんの警告ランプ（ふだんは消えていて、もうすぐ開くと赤く点滅）
+      const lampMat = new THREE.MeshBasicMaterial({ color: 0x3a3f4f });
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), lampMat);
+      lamp.position.set(0, VAULT.h + 0.1, 0.2);
+      g.add(lamp);
+      lamps.push(lampMat);
       const mat = new THREE.MeshBasicMaterial({ color: col });
       const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.44, 0.11), mat);
       bar.position.set(0, VAULT.h + 0.4, 0.63);
@@ -1974,7 +2019,7 @@ export class GameRenderer {
       root.add(g);
       boxes.push(g);
     });
-    this.vaultObj = { root, boxes, bars, barMats, dials, doors, door: [1, 1], golds: [], goldGeo, goldMat, goldEdge };
+    this.vaultObj = { root, boxes, bars, barMats, dials, doors, door: [1, 1], golds: [], doorMats, cracks, lamps, goldGeo, goldMat, goldEdge };
   }
 
   private updateVaults(view: ViewState): void {
@@ -1997,11 +2042,24 @@ export class GameRenderer {
       g.userData.shake = Math.max(0, sh - 0.016);
       const base = this.stage ? (t === 0 ? this.stage.main.x1 + VAULT.inset : this.stage.main.x2 - VAULT.inset) : g.position.x;
       g.position.x = base + (sh > 0 ? Math.sin(this.time * 60) * 0.06 * (sh / 0.25) : 0);
-      // 扉：開いている間は外へ大きく開く（なめらかに）
+      // 削れ具合の見た目（開いている間は閉まったときに元に戻る）：
+      // 2/3 より削れるとひびが入って扉がくすみ、1/3 より削れるとひびが増えて扉がゆがみ、ランプが赤く点滅して煙が出る
+      const dmg = open > 0 ? 0 : 1 - Math.max(0, r);
+      const stage = dmg >= 2 / 3 ? 2 : dmg >= 1 / 3 ? 1 : 0;
+      o.cracks[t][0].visible = stage >= 1;
+      o.cracks[t][1].visible = stage >= 2;
+      o.doorMats[t].color.setHex(0x737a8c).lerp(new THREE.Color(0x3e424f), dmg * 0.9);
+      const blink = stage >= 2 && Math.floor(this.time * (4 + dmg * 6)) % 2 === 0;
+      o.lamps[t].color.setHex(blink ? 0xff3b3b : stage >= 1 ? 0x8a2a2a : 0x3a3f4f);
+      if (stage >= 2 && Math.random() < 0.08) {
+        this.spawn(this.sparkGeo, Math.random() < 0.7 ? 0x8a8f9c : 0xffd84a, g.position.x + (Math.random() - 0.5) * VAULT.w * 0.6, g.position.y + VAULT.h * (0.3 + Math.random() * 0.5), (Math.random() - 0.5) * 0.6, 1 + Math.random(), 0.16, 30, -0.002);
+      }
+      // 扉：開いている間は外へ大きく開く（なめらかに）。大きく削れると少し傾いてガタガタ
       const side = t === 0 ? -1 : 1;
-      const want = open > 0 ? side * 1.9 : 0;
+      const want = open > 0 ? side * 1.9 : stage >= 2 ? side * 0.12 : stage >= 1 ? side * 0.04 : 0;
       const d = o.doors[t];
       d.rotation.y += (want - d.rotation.y) * 0.2;
+      d.rotation.z = open > 0 ? 0 : stage >= 2 ? side * -0.06 : 0;
       // ダイヤル：扉が削れるほど速く回る
       o.dials[t].rotation.y = this.time * (1 - r) * 4;
     });
