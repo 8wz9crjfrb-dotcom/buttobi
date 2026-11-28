@@ -735,6 +735,14 @@ export class GameRenderer {
     return { x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h };
   }
 
+  /** 別の場面（野球の球場など）を、このキャンバスにそのまま描く */
+  renderOther(scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+    this.checkSize();
+    camera.aspect = this.sizeW / Math.max(1, this.sizeH);
+    camera.updateProjectionMatrix();
+    this.renderer.render(scene, camera);
+  }
+
   render(view: ViewState | null, dt: number, newEvents: GameEvent[]): void {
     this.time += dt;
     this.checkSize();

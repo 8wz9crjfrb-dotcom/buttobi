@@ -6391,3 +6391,220 @@ table.rec td:first-child {
 .char-detail .ball-stats .bs-row {
   justify-content: space-between;
 }
+
+/* ---------------------------------------------------------------- 野球 */
+.bb-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  font-weight: 800;
+  color: #fff;
+}
+.bb-board {
+  position: absolute;
+  top: calc(8px + var(--safe-t));
+  left: calc(10px + var(--safe-l, 0px));
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(16, 20, 40, 0.82);
+}
+.bb-inn {
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  padding-right: 8px;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+.bb-teams div {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 120px;
+  font-size: 12px;
+  border-left: 4px solid var(--tc);
+  padding-left: 6px;
+  opacity: 0.75;
+}
+.bb-teams div.atbat {
+  opacity: 1;
+}
+.bb-teams div.atbat span::after {
+  content: ' ●';
+  color: #ffd23f;
+  font-size: 9px;
+}
+.bb-teams b {
+  font-size: 16px;
+}
+.bb-count {
+  position: absolute;
+  top: calc(8px + var(--safe-t));
+  right: calc(70px + var(--safe-r, 0px));
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(16, 20, 40, 0.82);
+}
+.bb-bso div {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  font-size: 11px;
+  line-height: 14px;
+}
+.bb-bso span {
+  width: 12px;
+}
+.bb-bso i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+.bb-bso i.b {
+  background: #4fd18b;
+}
+.bb-bso i.s {
+  background: #ffd23f;
+}
+.bb-bso i.o {
+  background: #ff5a5a;
+}
+.bb-bases {
+  position: relative;
+  width: 42px;
+  height: 34px;
+}
+.bb-bases i {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  transform: rotate(45deg);
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.bb-bases i.on {
+  background: #ffd23f;
+}
+.bb-bases .b2 {
+  left: 15px;
+  top: 2px;
+}
+.bb-bases .b3 {
+  left: 3px;
+  top: 15px;
+}
+.bb-bases .b1 {
+  left: 27px;
+  top: 15px;
+}
+.bb-pa {
+  font-size: 11px;
+}
+.bb-matchup {
+  position: absolute;
+  top: calc(64px + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+.bb-msg {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  font-size: 40px;
+  font-weight: 900;
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.15s;
+  text-shadow: 0 3px 0 #1b1b28, 0 0 12px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  white-space: nowrap;
+}
+.bb-msg small {
+  display: block;
+  font-size: 20px;
+}
+.bb-msg.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.bb-msg.strike {
+  color: #ffd23f;
+}
+.bb-msg.ball {
+  color: #8fe3ff;
+}
+.bb-msg.hit {
+  color: #7dffb0;
+}
+.bb-msg.homer {
+  color: #ff7eb6;
+  font-size: 54px;
+}
+.bb-msg.out {
+  color: #c8cede;
+}
+.bb-help {
+  position: absolute;
+  bottom: calc(8px + var(--safe-b, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 54%;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: rgba(16, 20, 40, 0.7);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.bb-help:empty {
+  display: none;
+}
+.bb-help b {
+  color: #ffd23f;
+}
+.bb-quit {
+  position: absolute;
+  top: calc(8px + var(--safe-t));
+  right: calc(10px + var(--safe-r, 0px));
+  pointer-events: auto;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(16, 20, 40, 0.82);
+  color: #fff;
+  font-weight: 800;
+  font-size: 12px;
+}
+.bb-line {
+  margin: 4px auto 10px;
+  border-collapse: collapse;
+  font-weight: 800;
+}
+.bb-line th,
+.bb-line td {
+  padding: 4px 10px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+.bb-line td.nm {
+  text-align: left;
+}
+.bb-line td.tot {
+  color: #ffd23f;
+}
+.bb-mine {
+  text-align: center;
+}

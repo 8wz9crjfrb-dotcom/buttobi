@@ -47,6 +47,8 @@ import { claimLogin, DUP_REFUND, GACHA_COST, LOGIN_REWARDS, loadWallet, PITY_LIM
 /** UR のカード・衣装ボタンの上に舞うキラキラの粒（中身は styles.css の .ur-sp） */
 const URSP = '<i class="ur-sp" aria-hidden="true"></i>';
 import { COSTUMES, GACHA_COSTUMES, getCostume, rarityName } from '../shared/costumes';
+import { BaseballScreen } from './baseballScreen';
+import type { Baseball } from '../shared/baseball';
 
 registerServiceWorker();
 preventZoomGestures();
@@ -396,6 +398,136 @@ function startSession(s: Session): void {
   void enterFullscreenLandscape();
 }
 
+// ---------------------------------------------------------------------------
+// 野球（CPUと1対1）
+let bbScreen: BaseballScreen | null = null;
+let bbLast: { me: MatchSetup['players'][number]; cpu: MatchSetup['players'][number]; innings: number } | null = null;
+const bbUiRoot = document.getElementById('app')!;
+
+/** ボタンの名前を、投げる・打つに合わせて変える（ジャンプ・ガードは使わない） */
+function setBaseballPad(role: 'bat' | 'pitch' | 'none'): void {
+  const label = (id: string, text: string) => {
+    const sm = document.querySelector<HTMLElement>(`#${id} small`);
+    if (sm && sm.textContent !== text) sm.textContent = text;
+  };
+  label('btn-a', role === 'pitch' ? 'ストレート' : '打つ');
+  label('btn-b', '変化球');
+  document.getElementById('btn-b')!.classList.toggle('hidden', role !== 'pitch');
+  document.getElementById('btn-jump')!.classList.toggle('hidden', true);
+  document.getElementById('btn-shield')!.classList.toggle('hidden', true);
+}
+function resetPadAfterBaseball(): void {
+  for (const id of ['btn-b', 'btn-jump', 'btn-shield']) document.getElementById(id)!.classList.remove('hidden');
+  setPadMode(false);
+}
+
+function startBaseball(me: MatchSetup['players'][number], cpu: MatchSetup['players'][number], innings: number): void {
+  bbLast = { me, cpu, innings };
+  stopBaseball();
+  clearScreen();
+  hud.show(false);
+  pauseBtn.classList.add('hidden');
+  trainingBtn.classList.add('hidden');
+  comboEl.classList.add('hidden');
+  // 先攻・後攻はランダム
+  const meFirst = Math.random() < 0.5;
+  const seed = (Math.random() * 1e9) | 0;
+  bbScreen = new BaseballScreen(
+    {
+      players: [
+        { slot: 0, name: me.name, charId: me.charId, costume: me.costume, cpu: false, level: 5, team: meFirst ? 0 : 1 },
+        { slot: 1, name: cpu.name, charId: cpu.charId, costume: cpu.costume, cpu: true, level: cpu.cpuLevel || 5, team: meFirst ? 1 : 0 },
+      ],
+      innings,
+      seed,
+    },
+    0,
+    {
+      sound: (k) => {
+        if (k === 'pitch') sfx.shot();
+        else if (k === 'swing') sfx.shield();
+        else if (k === 'hit') sfx.hit(16);
+        else if (k === 'strike') sfx.beep(true);
+        else if (k === 'ball') sfx.beep(false);
+        else if (k === 'homer') sfx.goal();
+        else if (k === 'cheer') sfx.buff();
+        else if (k === 'out') sfx.poof();
+        else if (k === 'end') sfx.finish();
+      },
+      onEnd: (g, mySlot) => showBaseballResult(g, mySlot),
+      setPad: setBaseballPad,
+    },
+    bbUiRoot,
+  );
+  input.reset();
+  input.takePressed();
+  touchEl.classList.toggle('hidden', input.gamepadConnected);
+  music.play('plain');
+  void keepAwake(true);
+  void enterFullscreenLandscape();
+  // やめるボタン
+  const quit = document.createElement('button');
+  quit.className = 'bb-quit';
+  quit.textContent = 'やめる';
+  quit.addEventListener('click', () => {
+    if (!confirm('試合をやめてメニューに戻りますか？')) return;
+    stopBaseball();
+    backFromBaseball();
+  });
+  bbUiRoot.querySelector('.bb-ui')?.appendChild(quit);
+}
+
+function stopBaseball(): void {
+  if (!bbScreen) return;
+  bbScreen.dispose();
+  bbScreen = null;
+  document.getElementById('bb-result')?.remove();
+  resetPadAfterBaseball();
+}
+
+function backFromBaseball(): void {
+  touchEl.classList.add('hidden');
+  void keepAwake(false);
+  startDemo();
+  showMenu('solo');
+}
+
+function showBaseballResult(g: Baseball, mySlot: number): void {
+  const me = g.setup.players.find((p) => p.slot === mySlot)!;
+  const myTeam = me.team % 2;
+  const w = g.winner;
+  const title = w < 0 ? '引き分け' : w === myTeam ? 'あなたの勝ち！' : 'あなたの負け…';
+  const mine = g.log.filter(([s]) => s === mySlot).map(([, r]) => r);
+  const hits = mine.filter((r) => r === 'single' || r === 'double' || r === 'triple' || r === 'homer').length;
+  const hr = mine.filter((r) => r === 'homer').length;
+  const ab = mine.filter((r) => r !== 'walk').length;
+  const names = [0, 1].map((t) => g.teamPlayers(t)[0]?.name ?? '');
+  const innings = g.lines[0].length;
+  const head = Array.from({ length: innings }, (_, i) => `<th>${i + 1}</th>`).join('');
+  const row = (t: number) => `<tr><td class="nm">${esc(names[t])}</td>${Array.from({ length: innings }, (_, i) => `<td>${g.lines[t][i] ?? 'x'}</td>`).join('')}<td class="tot">${g.score[t]}</td></tr>`;
+  const el = document.createElement('div');
+  el.className = 'modal';
+  el.id = 'bb-result';
+  el.innerHTML = `<div class="modal-box bb-res">
+      <h3>${title}</h3>
+      <div class="modal-body">
+        <table class="bb-line"><tr><th></th>${head}<th>計</th></tr>${row(0)}${row(1)}</table>
+        <p class="bb-mine">あなたの成績：${ab}打数 ${hits}安打${hr ? `（ホームラン ${hr}本）` : ''}</p>
+      </div>
+      <div class="footer"><button class="btn" data-menu>メニューへ</button><button class="btn primary" data-again>もう一度</button></div>
+    </div>`;
+  document.body.appendChild(el);
+  el.querySelector('[data-menu]')!.addEventListener('click', () => {
+    el.remove();
+    stopBaseball();
+    backFromBaseball();
+  });
+  el.querySelector('[data-again]')!.addEventListener('click', () => {
+    el.remove();
+    if (bbLast) startBaseball(bbLast.me, bbLast.cpu, bbLast.innings);
+  });
+}
+
 function updateTouchVisibility(): void {
   // 観戦中（自分の選手がいない）はボタンを出さない
   const inGame = session && session.kind !== 'demo' && !(session.kind === 'net' && (session.mySlot ?? -1) < 0);
@@ -469,6 +601,14 @@ let lastTickSec = -1;
 function loop(t: number): void {
   const dt = Math.min(0.1, (t - prevT) / 1000);
   prevT = t;
+  // 野球：専用の球場を描く（ふつうの試合・裏の戦闘は止める）
+  if (bbScreen) {
+    bbScreen.frame(dt, readInput());
+    if (bbScreen) renderer.renderOther(bbScreen.scene, bbScreen.camera);
+    updateFps(t);
+    requestAnimationFrame(loop);
+    return;
+  }
   let events: GameEvent[] = [];
   if (session) {
     const r = session.frame(dt);
@@ -1694,7 +1834,9 @@ function ruleText(r: MatchRules): string {
               ? `王冠うばい（${r.crownGoal ?? 30}秒持ったら勝ち）${r.timeLimit / 60}分`
               : r.mode === 'vault'
                 ? `金塊どろぼう（${r.vaultGoal ?? VAULT.goal}本先取）${r.timeLimit / 60}分`
-                : r.mode === 'bounty'
+                : r.mode === 'baseball'
+                  ? `野球（${r.innings ?? 2}イニング・1イニング3打席）`
+                  : r.mode === 'bounty'
                   ? `賞金首 ${r.timeLimit / 60}分`
                   : r.mode === 'coins'
                     ? `コイン集め ${r.timeLimit / 60}分`
@@ -1711,6 +1853,7 @@ const MODE_INFO: Record<MatchRules['mode'], { name: string; desc: string; player
   ball: { name: '玉入れ', desc: '赤・青の2チームで、ボールを相手のかごに真上から投げ入れる（かごのふちに当たるとはね返る）。床の「2点」の線より遠くから入れると2点。アイテムは出ない。攻撃はできない。ボールに触れると拾う。「投げる」を押したまま引っ張って狙い、離すと投げる（薄い線が道筋）。引っ張らずに単押しすると、後ろにいる味方へパス。時間切れで同点なら、1点入るまで延長（最長60秒、入らなければ引き分け）。「奪う」で近くの相手からボールを奪える。「構える」の間は奪われない。キャラごとに投げる力・足の速さ・奪う力・ジャンプ力がちがう。チームはタップで選ぶ', players: '2人・4人' },
   crown: { name: '王冠うばい', desc: '最初に相手を倒した人が王冠を手に入れ、持っている間だけ時間がたまる。持っている人に攻撃を当て続け、合計20%のダメージで奪える（王冠の上に残りの耐久が出る）。決めた時間だけ持つか、時間切れで一番長く持っていた人の勝ち', players: '3〜4人' },
   vault: { name: '金塊どろぼう', desc: '赤・青の2チームで、相手の金庫から金塊を盗んで自分の金庫に運び込む。相手の金庫の扉を攻撃すると開く（数秒で閉まる）。開いた金庫に触れると金塊を持ち出せる。持っている間は足が遅く、攻撃・ガードができない。攻撃を受けると落とす。落ちた金塊は、相手が触ると拾い、持ち主のチームが触ると金庫に戻る。先に決めた本数を運び込むか、時間切れで多く運んだチームの勝ち（同点なら1本入るまで延長）。チームはタップで選ぶ', players: '2人・4人' },
+  baseball: { name: '野球', desc: 'CPUと1対1の野球。投げるときはピッチャーの後ろ、打つときはバッターの後ろから見る。投げる：スティックでコースを決めて、A でストレート・B で変化球。打つ：スティックでミートの丸を球に合わせて、A で打つ。1イニングは3打席で攻守交代（アウトの数では交代しない）。決めたイニングが終わって点の多いほうの勝ち', players: '1人（CPUと対戦）' },
   bounty: { name: '賞金首', desc: '撃墜で1点、自分で落ちると1点減る。点が一番多い人（2点以上）は賞金首になり、倒すと3点。時間切れで点が一番多い人の勝ち', players: '3人以上（3人でも楽しめる）' },
   coins: { name: 'コイン集め', desc: '降ってくるコインを拾う。攻撃を受けるとコインを落とし、撃墜されると半分ばらまく。時間切れで一番多く持っている人の勝ち', players: '3人以上（3人でも楽しめる）' },
 };
@@ -1719,9 +1862,13 @@ function modeInfoHtml(mode: MatchRules['mode']): string {
   return `<b>${m.name}</b><span class="mi-players">おすすめ ${m.players}</span><span class="mi-desc">${m.desc}</span>`;
 }
 
-function ruleControls(rules: MatchRules): string {
+/** online = オンラインのルーム（野球はまだCPU戦だけ） */
+function ruleControls(rules: MatchRules, online = false): string {
+  const modes: [string, string][] = [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ'], ['crown', '王冠'], ['vault', '金塊'], ['bounty', '賞金首'], ['coins', 'コイン']];
+  if (!online) modes.push(['baseball', '野球']);
   return `
-    <div class="opt opt-wide">モード ${seg('mode', [['stock', 'ストック'], ['time', 'タイム'], ['stamina', '体力制'], ['area', 'エリア'], ['ball', '玉入れ'], ['crown', '王冠'], ['vault', '金塊'], ['bounty', '賞金首'], ['coins', 'コイン']], rules.mode)}</div>
+    <div class="opt opt-wide">モード ${seg('mode', modes, rules.mode)}</div>
+    <div class="opt" data-show="baseball">イニング ${seg('innings', [[1, '1回'], [2, '2回'], [3, '3回'], [5, '5回']], rules.innings ?? 2)}</div>
     <div class="opt opt-wide mode-info" data-mode-info>${modeInfoHtml(rules.mode)}</div>
     <div class="opt" data-show="crown">勝ちになる時間 ${seg('cgoal', [[20, '20秒'], [30, '30秒'], [45, '45秒']], rules.crownGoal ?? 30)}</div>
     <div class="opt" data-show="crown">時間 ${seg('ctime', [[120, '2分'], [180, '3分']], rules.timeLimit)}</div>
@@ -1735,11 +1882,11 @@ function ruleControls(rules: MatchRules): string {
     <div class="opt" data-show="stock stamina">残機 ${seg('stocks', [[1, '1'], [2, '2'], [3, '3'], [5, '5']], rules.stocks)}</div>
     <div class="opt" data-show="stamina">HP ${seg('hp', [[100, '100'], [150, '150'], [200, '200'], [300, '300']], rules.hp ?? DEFAULT_HP)}</div>
     <div class="opt" data-show="time">時間 ${seg('time', [[120, '2分'], [180, '3分'], [300, '5分']], rules.timeLimit)}</div>
-    <div class="opt" data-hide="ball">チーム戦 ${seg('teams', [['on', 'あり'], ['off', 'なし']], rules.teams ? 'on' : 'off')}</div>
-    <div class="opt" data-hide="ball">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
+    <div class="opt" data-hide="ball baseball">チーム戦 ${seg('teams', [['on', 'あり'], ['off', 'なし']], rules.teams ? 'on' : 'off')}</div>
+    <div class="opt" data-hide="ball baseball">アイテム ${seg('items', [['on', 'あり'], ['off', 'なし']], rules.items ? 'on' : 'off')}</div>
     <div class="opt" data-items>アイテムの頻度 ${seg('irate', [['low', '少ない'], ['mid', '普通'], ['high', '多い']], rules.itemRate ?? 'mid')}</div>
     <div class="opt opt-wide" data-items>出るアイテム（乱入アイテムも同じ）<div class="item-chips">${ITEM_NAMES.map((n, i) => `<button type="button" class="ichip ${(rules.itemKinds ?? ITEM_NAMES.map((_, k) => k)).includes(i) ? 'on' : ''}" data-ikind="${i}"><b>${n}</b><small>${ITEM_INFO[i].short}</small></button>`).join('')}</div></div>
-    <div class="opt">ステージギミック ${seg('gim', [['on', 'あり'], ['off', 'なし']], rules.gimmicks ? 'on' : 'off')}</div>`;
+    <div class="opt" data-hide="baseball">ステージギミック ${seg('gim', [['on', 'あり'], ['off', 'なし']], rules.gimmicks ? 'on' : 'off')}</div>`;
 }
 
 function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): void {
@@ -1752,9 +1899,9 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     root.querySelectorAll<HTMLElement>('[data-hide]').forEach((el) => el.classList.toggle('hidden', el.dataset.hide!.split(' ').includes(rules.mode)));
     root.querySelectorAll<HTMLElement>('[data-team]').forEach((el) => el.classList.toggle('hidden', !rules.teams));
     // 玉入れではアイテムを使わないので、アイテムの設定は出さない
-    root.querySelectorAll<HTMLElement>('[data-items]').forEach((el) => el.classList.toggle('hidden', !rules.items || rules.mode === 'ball'));
+    root.querySelectorAll<HTMLElement>('[data-items]').forEach((el) => el.classList.toggle('hidden', !rules.items || rules.mode === 'ball' || rules.mode === 'baseball'));
     // 金塊どろぼうは「チーム戦 あり／なし」を選ばない（いつも2チーム）
-    root.querySelectorAll<HTMLElement>('[data-seg="teams"]').forEach((el) => el.closest('.opt')?.classList.toggle('hidden', isTwoTeam(rules.mode)));
+    root.querySelectorAll<HTMLElement>('[data-seg="teams"]').forEach((el) => el.closest('.opt')?.classList.toggle('hidden', isTwoTeam(rules.mode) || rules.mode === 'baseball'));
   };
   sync();
   bindSeg(root, 'mode', (v) => {
@@ -1764,6 +1911,7 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     if (rules.mode === 'crown') rules.crownGoal ??= 30;
     if (rules.mode === 'vault') rules.vaultGoal ??= VAULT.goal;
     if (rules.mode === 'area') rules.area ??= 'move';
+    if (rules.mode === 'baseball') rules.innings ??= 2;
     // 玉入れはいつも赤・青の2チーム（チームはタップで選ぶ）。玉入れから別のルールに変えたら、チーム戦は「なし」に戻す
     const wasBall = isTwoTeam(prevMode);
     if (isTwoTeam(rules.mode)) {
@@ -1775,6 +1923,10 @@ function bindRules(root: HTMLElement, rules: MatchRules, onChange: () => void): 
     // 時間の選択肢の表示を、選び直した時間に合わせる
     root.querySelectorAll<HTMLElement>('[data-seg="time"] button, [data-seg="atime"] button, [data-seg="btime"] button, [data-seg="ctime"] button, [data-seg="vtime"] button, [data-seg="stime"] button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === rules.timeLimit));
     sync();
+    onChange();
+  });
+  bindSeg(root, 'innings', (v) => {
+    rules.innings = Number(v);
     onChange();
   });
   bindSeg(root, 'hp', (v) => {
@@ -2212,6 +2364,8 @@ function bindTabs(root: HTMLElement, onPick: (k: string) => void): void {
 /** 選んだ内容のまとめ（対戦開始ボタンの横に出す） */
 function ruleSummary(rules: MatchRules, stageId: string, cpu: number | null, cpuLevel: number): string {
   const st = stageId === RANDOM_STAGE ? 'ステージおまかせ' : getStage(stageId).name;
+  // 野球：ステージ・アイテムは使わない。CPUは1人（強さだけ）
+  if (rules.mode === 'baseball') return [ruleText(rules), `CPUの強さ${cpuLevel}`].join('・');
   return [st, ruleText(rules), cpu === null ? '' : `CPU${cpu}人（強さ${cpuLevel}）`, rules.mode === 'ball' ? '' : `アイテム${rules.items ? 'あり' : 'なし'}`].filter(Boolean).join('・');
 }
 let localRulesTab = 'stage';
@@ -2317,6 +2471,13 @@ function showLocalRules(): void {
         }
         cpuSpec = players.map((p) => p.charId);
         rollCpuChars(players);
+        // 野球：CPUと1対1（CPUは1人目を使う。いなければおまかせのキャラ）
+        if (rules.mode === 'baseball') {
+          const cpu = players[1] ?? { slot: 1, name: `CPU ${settings.cpuLevel}`, charId: CHARACTERS[(Math.random() * CHARACTERS.length) | 0].id, cpu: true, cpuLevel: settings.cpuLevel || 5 };
+          if (cpu.charId === 'random') cpu.charId = CHARACTERS[(Math.random() * CHARACTERS.length) | 0].id;
+          startBaseball(players[0], cpu, rules.innings ?? 2);
+          return;
+        }
         const seed = (Math.random() * 1e9) | 0;
         lastSetup = { players, stageId: resolveStage(settings.stageId, seed), rules: settings.rules, seed };
         const setup = lastSetup;
@@ -4872,7 +5033,7 @@ function showLobby(): void {
         <div class="opt opt-wide" data-fmt-help ${tourOn ? '' : 'hidden'}><span class="muted">ルームの全員（CPUも）で1対1の勝ち抜き戦。3人から。人数が半端ならシード（1回戦なし）ができます。始める前に組み合わせ表が出ます。試合に出ない人は勝敗を予想して観戦し、全員が予想すると次の試合が始まります（予想する人がいなければ15秒後、予想を待つのは最長30秒）。全員が「OK！」を押すと、待たずにすぐ始まります。3位決定戦（4人以上のとき）は、決勝の前に準決勝で負けた2人で戦います（次に始めるトーナメントから）。チーム戦の設定は使いません</span></div>
       </div></div>
       <div data-pane="rule"><div class="setup-grid wide">
-        ${ruleControls(rules)}</div></div>
+        ${ruleControls(rules, true)}</div></div>
       <div data-pane="cpu"><div class="setup-grid wide">
         <div class="opt">CPUの人数 ${seg('cpu', cpuOpts, cpus.length)}</div>
         <div class="opt">CPUの強さ ${seg('lv', [[1, '1'], [3, '3'], [5, '5'], [7, '7'], [9, '9']], cpuLevel)}</div>
@@ -5107,6 +5268,13 @@ requestAnimationFrame(loop);
   /** 確認用：オンライン対戦の通信 */
   get net() {
     return net;
+  },
+  /** 確認用：野球（CPUと1対1）を始める */
+  startBaseball(me: MatchSetup['players'][number], cpu: MatchSetup['players'][number], innings: number) {
+    startBaseball(me, cpu, innings);
+  },
+  get baseball() {
+    return bbScreen;
   },
   /** 確認用：指定した組み合わせでCPU戦を始める */
   startLocal(setup: MatchSetup) {

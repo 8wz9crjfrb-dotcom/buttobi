@@ -103,7 +103,7 @@ export const MOVE_IDS: MoveId[] = [
 ];
 
 /** stock = 残機制、time = タイム制、stamina = 体力制（HPが0になるか場外で撃墜） */
-export type RuleMode = 'stock' | 'time' | 'stamina' | 'area' | 'ball' | 'crown' | 'vault' | 'bounty' | 'coins';
+export type RuleMode = 'stock' | 'time' | 'stamina' | 'area' | 'ball' | 'crown' | 'vault' | 'bounty' | 'coins' | 'baseball';
 
 /** 赤・青の2チームで戦うルール（玉入れ・金庫まもり）。チームはいつも2つで、選んだ番号を2で割った余りで決まる */
 export function isTwoTeam(mode: RuleMode | undefined): boolean {
@@ -151,6 +151,8 @@ export interface MatchRules {
   vaultHp?: number;
   /** 金塊どろぼう：先に何本運び込んだら勝ちか */
   vaultGoal?: number;
+  /** 野球：イニング数 */
+  innings?: number;
 }
 
 /** 体力制のHP（未指定のとき） */
