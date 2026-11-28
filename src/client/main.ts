@@ -502,7 +502,7 @@ function showBaseballResult(g: Baseball, mySlot: number): void {
   const mine = g.log.filter(([s]) => s === mySlot).map(([, r]) => r);
   const hits = mine.filter((r) => r === 'single' || r === 'double' || r === 'triple' || r === 'homer').length;
   const hr = mine.filter((r) => r === 'homer').length;
-  const ab = mine.filter((r) => r !== 'walk').length;
+  const ab = mine.filter((r) => r !== 'walk' && r !== 'hbp').length;
   const names = [0, 1].map((t) => g.teamPlayers(t)[0]?.name ?? '');
   const innings = g.lines[0].length;
   const head = Array.from({ length: innings }, (_, i) => `<th>${i + 1}</th>`).join('');

@@ -48,6 +48,10 @@ export const BB = {
   zone: { x: 0.27, y1: 0.48, y2: 1.12 },
   /** 狙い・ミートの丸を動かせる範囲 */
   aimX: 0.62,
+  /** ここより内側（バッター側）に来た球はバッターに当たる（デッドボール） */
+  hbpX: 0.6,
+  /** ボール球を打ったときの弱まり方（ゾーンから1メートル外れるごと） */
+  ballWeak: 3.2,
   aimY1: 0.12,
   aimY2: 1.55,
   /** 球の速さ（1フレームに進む距離。速さ3のとき）と、1段階ごとの差。変化球は少し遅い */
@@ -59,6 +63,8 @@ export const BB = {
   perBrk: 0.07,
   /** 変化球が曲がり始める所（投げてからホームベースまでの割合）。手元で曲がるほど打ちにくい */
   breakStart: 0.42,
+  /** 打つとき、球が来る所の予告を出し始める所（投げてからホームベースまでの割合） */
+  arriveShow: 0.5,
   /** バットの当たる範囲（横長のだ円）：ミートの丸の半径に対する横・縦の大きさと、芯（いちばん強く飛ぶ所）の大きさ */
   batW: 2.1,
   batH: 0.72,
@@ -120,7 +126,7 @@ export const PITCH_SPECS: Record<PitchKind, { speed: number; x: number; y: numbe
 };
 
 export type BBPhase = 'ready' | 'aim' | 'pitch' | 'call' | 'hit' | 'result' | 'change' | 'end';
-export type BBResult = 'single' | 'double' | 'triple' | 'homer' | 'walk' | 'strikeout' | 'groundout' | 'flyout' | 'lineout';
+export type BBResult = 'single' | 'double' | 'triple' | 'homer' | 'walk' | 'hbp' | 'strikeout' | 'groundout' | 'flyout' | 'lineout';
 export type BBCall = 'strike' | 'ball' | 'foul' | 'whiff';
 
 export interface BBPlayer {
@@ -256,10 +262,19 @@ export class Baseball {
     this.aimV = { x: 0, y: 0 };
   }
   setCursor(slot: number, x: number, y: number): void {
-    if (this.batter.slot !== slot || this.swingAt >= 0) return;
+    if (this.batter.slot !== slot || !this.cursorFree) return;
     this.cursor.x = clamp(x, -BB.aimX, BB.aimX);
     this.cursor.y = clamp(y, BB.aimY1, BB.aimY2);
     this.cursorV = { x: 0, y: 0 };
+  }
+  /** バットを動かせるとき：次の球を待っている間（ピッチャーが球種を選んでいる・投げる前）と、球が来ていてまだ振っていない間 */
+  get cursorFree(): boolean {
+    const ph = this.phase;
+    return ph === 'ready' || ph === 'aim' || ph === 'call' || (ph === 'pitch' && this.swingAt < 0);
+  }
+  /** 変化球が曲がり始めるフレーム（画面の予告に使う） */
+  get breakFrame(): number {
+    return this.breakT;
   }
   private swingReq = -1;
   requestSwing(slot: number): void {
@@ -288,7 +303,7 @@ export class Baseball {
     const sb = bbStats(bat.charId);
     const sp = bbStats(pit.charId);
     // バッター：投げる前と、球が来ている間はミートの丸を動かせる
-    if (this.phase === 'ready' || this.phase === 'aim' || (this.phase === 'pitch' && this.swingAt < 0)) {
+    if (this.cursorFree) {
       moveCursor(this.cursor, this.cursorV, bi);
     }
     switch (this.phase) {
@@ -386,6 +401,11 @@ export class Baseball {
   private judge(s: BBStats): void {
     const p = this.plate;
     const inZone = Math.abs(p.x) <= BB.zone.x && p.y >= BB.zone.y1 && p.y <= BB.zone.y2;
+    // 振らずにバッターの体に当たった：デッドボール（1塁へ）
+    if (this.swingAt < 0 && hitsBatter(p)) {
+      this.finishAtBat('hbp');
+      return;
+    }
     if (this.swingAt < 0) {
       this.setCall(inZone ? 'strike' : 'ball');
       return;
@@ -404,11 +424,15 @@ export class Baseball {
     }
     // 当たった：当たりの良さ（芯に近く、タイミングが合うほど良い。芯の中なら満点）
     const core = Math.max(0, (e - BB.sweet * 0.5) / (1 - BB.sweet * 0.5));
-    const q = Math.pow(1 - core, 0.6) * (1 - Math.pow(Math.abs(diff) / BB.timingWin, 2));
+    // ボール球は芯でとらえても強く飛ばない（ゾーンから外れるほど弱い当たり）
+    const out = zoneOut(p);
+    const q = Math.pow(1 - core, 0.6) * (1 - Math.pow(Math.abs(diff) / BB.timingWin, 2)) * clamp(1 - out * BB.ballWeak, 0.2, 1);
     const speed = (BB.exitBase + BB.exitRange * q) * (1 + (s.power - 3) * BB.perPower);
     // バットが球より上 = 球の上をたたく（ゴロ）、下 = 下をすくう（フライ）
     const dy = ey * 0.75;
-    const launch = clamp(16 - dy * 38 + (this.rng.next() - 0.5) * 8, -12, 62);
+    // 低いボール球はゴロ、高いボール球はポップフライになりやすい
+    const lowHigh = p.y < BB.zone.y1 ? -(BB.zone.y1 - p.y) * 45 : p.y > BB.zone.y2 ? (p.y - BB.zone.y2) * 60 : 0;
+    const launch = clamp(16 - dy * 38 + lowHigh + (this.rng.next() - 0.5) * 8, -12, 62);
     // タイミングが早いと引っ張り（左）、遅いと流し（右）
     const spray = diff * 7 + (this.rng.next() - 0.5) * 10;
     this.events.push({ k: 'contact', q });
@@ -546,7 +570,7 @@ export class Baseball {
     else if (r === 'double') adv(2);
     else if (r === 'triple') adv(3);
     else if (r === 'homer') adv(4);
-    else if (r === 'walk') {
+    else if (r === 'walk' || r === 'hbp') {
       // 押し出し：詰まっているところだけ進む
       if (b[0]) {
         if (b[1]) {
@@ -641,7 +665,7 @@ export class BBCpu {
         // コースを決める：ゾーンの中が多め。強いほど隅を狙う
         const inside = this.rng.chance(0.72);
         const edge = 0.4 + lv * 0.05;
-        const x = inside ? this.rng.range(-BB.zone.x, BB.zone.x) * edge * 1.4 : this.rng.range(-0.5, 0.5);
+        const x = inside ? this.rng.range(-BB.zone.x, BB.zone.x) * edge * 1.4 : this.rng.range(-0.5, 0.42);
         const y = inside ? this.rng.range(BB.zone.y1 + 0.05, BB.zone.y2 - 0.05) : this.rng.chance(0.5) ? BB.zone.y1 - 0.18 : BB.zone.y2 + 0.15;
         const type: PitchKind = this.rng.chance(0.45) ? 'straight' : PITCH_KINDS[1 + Math.floor(this.rng.next() * 4)];
         const side = 0;
@@ -650,8 +674,9 @@ export class BBCpu {
       }
       // 狙いは「投げ出す向き」なので、球が来てほしい所から曲がるぶんを引く
       const sh = pitchShift(pl.type, bbStats(g.pitcher.charId).brk);
-      const dx = pl.x - sh.x - g.aim.x;
-      const dy = pl.y - sh.y - g.aim.y;
+      // 狙える範囲の外なら、範囲の端で投げる（いつまでも投げないことがないように）
+      const dx = clamp(pl.x - sh.x, -BB.aimX, BB.aimX) - g.aim.x;
+      const dy = clamp(pl.y - sh.y, BB.aimY1, BB.aimY2) - g.aim.y;
       const mx = Math.abs(dx) > 0.02 ? Math.sign(dx) : 0;
       const my = Math.abs(dy) > 0.02 ? Math.sign(dy) : 0;
       if (--pl.wait <= 0 && !mx && !my) {
@@ -669,8 +694,10 @@ export class BBCpu {
         // 来るコースを読む（弱いほどずれる）。ゾーンの外はたまに振る
         const err = 0.04 + (10 - lv) * 0.025;
         const inZone = Math.abs(info.x) <= BB.zone.x + 0.04 && info.y >= BB.zone.y1 - 0.04 && info.y <= BB.zone.y2 + 0.04;
-        const swing = inZone ? this.rng.chance(0.72 + lv * 0.02) : this.rng.chance(0.3 - lv * 0.02);
-        pl = { wait: 0, x: 0, y: 0, type: 'straight', side: 0, swing, at: -g.frame + g.pitchT, ex: this.rng.range(-err, err), ey: this.rng.range(-err, err) };
+        // ゾーンの外は、外れるほど振らない（明らかなボール球はほとんど見送る）。振ってもねらいが甘い
+        const out = zoneOut(info);
+        const swing = inZone ? this.rng.chance(0.72 + lv * 0.02) : this.rng.chance(Math.max(0.01, (0.3 - lv * 0.02) * (1 - out / 0.16)));
+        pl = { wait: 0, x: 0, y: 0, type: 'straight', side: 0, swing, at: -g.frame + g.pitchT, ex: this.rng.range(-err, err) * (inZone ? 1 : 2), ey: this.rng.range(-err, err) * (inZone ? 1 : 2) };
         pl.wait = Math.round(BB.swingDelay + this.rng.range(-1, 1) * (1 + (10 - lv) * 0.5));
         this.plan.set(slot, pl);
       }
@@ -725,6 +752,17 @@ export function pitchKmh(speedPerFrame: number): number {
   return Math.round(60 + speedPerFrame * 300);
 }
 
+/** ストライクゾーンからどれだけ外れているか（メートル。中なら 0） */
+export function zoneOut(p: { x: number; y: number }): number {
+  const ox = Math.max(0, Math.abs(p.x) - BB.zone.x);
+  const oy = Math.max(0, BB.zone.y1 - p.y, p.y - BB.zone.y2);
+  return Math.hypot(ox, oy);
+}
+/** 球がバッター（右打ち。x のプラス側に立つ）の体に当たるか */
+export function hitsBatter(p: { x: number; y: number }): boolean {
+  return p.x >= BB.hbpX && p.y >= 0.15 && p.y <= 1.7;
+}
+
 function clamp(v: number, a: number, b: number): number {
   return Math.max(a, Math.min(b, v));
 }
@@ -736,6 +774,7 @@ export const BB_RESULT_NAMES: Record<BBResult, string> = {
   triple: 'スリーベース',
   homer: 'ホームラン',
   walk: 'フォアボール',
+  hbp: 'デッドボール',
   strikeout: '三振',
   groundout: 'ゴロアウト',
   flyout: 'フライアウト',

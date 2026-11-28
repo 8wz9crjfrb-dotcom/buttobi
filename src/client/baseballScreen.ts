@@ -41,6 +41,8 @@ export class BaseballScreen {
   /** 変化の道筋（狙いの印から、曲がって来る所まで）の点と、来る所のボール */
   private breakDots: THREE.Mesh[] = [];
   private breakEnd!: THREE.Mesh;
+  /** 打つとき：球がホームベースに来る所の予告（来る直前に出る） */
+  private arrive!: THREE.Group;
   /** 球種を選んでいるところ（投げる番の最初と、「球種選択」を押したとき） */
   private selecting = false;
   private lastAimPa = '';
@@ -263,6 +265,18 @@ export class BaseballScreen {
     this.breakEnd.renderOrder = 7;
     this.disposables.push(this.breakEnd.geometry, this.breakEnd.material as THREE.Material);
     s.add(this.breakEnd);
+    this.arrive = new THREE.Group();
+    const arMat = new THREE.MeshBasicMaterial({ color: 0xffe14d, depthTest: false, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+    const arRing = new THREE.Mesh(new THREE.RingGeometry(0.1, 0.125, 32), arMat);
+    const arDot = new THREE.Mesh(new THREE.CircleGeometry(0.025, 12), arMat);
+    for (const m of [arRing, arDot]) {
+      m.renderOrder = 8;
+      this.arrive.add(m);
+      this.disposables.push(m.geometry);
+    }
+    this.disposables.push(arMat);
+    this.arrive.visible = false;
+    s.add(this.arrive);
     // 選手
     for (const p of setup.players) {
       const def = getCharacter(p.charId);
@@ -418,7 +432,7 @@ export class BaseballScreen {
         break;
       case 'result': {
         const name = BB_RESULT_NAMES[e.r];
-        const hit = e.r === 'single' || e.r === 'double' || e.r === 'triple' || e.r === 'homer' || e.r === 'walk';
+        const hit = e.r === 'single' || e.r === 'double' || e.r === 'triple' || e.r === 'homer' || e.r === 'walk' || e.r === 'hbp';
         say(`${name}${e.r === 'homer' ? '！！' : hit ? '！' : ''}${e.runs > 0 ? `<small>${e.runs}点！</small>` : ''}`, e.r === 'homer' ? 'homer' : hit ? 'hit' : 'out');
         this.hooks.sound(e.r === 'homer' ? 'homer' : hit ? 'cheer' : 'out');
         break;
@@ -490,7 +504,7 @@ export class BaseballScreen {
     if (this.pitchAnimT > 24) this.pitchAnimT = -1;
     // ボール
     const bp = g.ballPos;
-    const showBall = g.phase === 'pitch' || g.phase === 'call' || g.phase === 'hit' || (g.phase === 'result' && !!g.hitBall.speed && g.lastResult !== 'walk' && g.lastResult !== 'strikeout');
+    const showBall = g.phase === 'pitch' || g.phase === 'call' || g.phase === 'hit' || (g.phase === 'result' && !!g.hitBall.speed && g.lastResult !== 'walk' && g.lastResult !== 'hbp' && g.lastResult !== 'strikeout');
     this.ball.visible = showBall;
     this.ballShadow.visible = showBall;
     this.ball.position.set(bp.x, Math.max(0.07, bp.y), bp.z);
@@ -554,12 +568,23 @@ export class BaseballScreen {
     });
     this.breakEnd.visible = bend;
     this.breakEnd.position.set(g.aim.x + sh.x, g.aim.y + sh.y, 0);
+    // 球が来る所の予告（打つとき。半分くらい来たところで出て、来るにつれて小さくなる）
+    const showAt = Math.round(g.pitchF * BB.arriveShow);
+    const showArrive = role === 'bat' && g.phase === 'pitch' && g.pitchT >= showAt && g.pitchT <= g.pitchF;
+    this.arrive.visible = showArrive;
+    if (showArrive) {
+      const info = g.pitchInfo();
+      const t = Math.min(1, (g.pitchT - showAt) / Math.max(1, g.pitchF - showAt));
+      this.arrive.position.set(info.x, info.y, 0);
+      this.arrive.scale.setScalar(2.2 - 1.2 * t);
+      (this.arrive.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>).material.opacity = 0.55 + 0.4 * t;
+    }
     this.zoneFrame.visible = atBat || g.phase === 'call';
     // カメラ：打つときはバッターの後ろ、投げるときはピッチャーの後ろ、打球は追いかける
     const cp = new THREE.Vector3();
     const look = new THREE.Vector3();
     let fov = 45;
-    if (g.phase === 'hit' || (g.phase === 'result' && g.hitBall.speed > 0 && g.lastResult !== 'walk' && g.lastResult !== 'strikeout')) {
+    if (g.phase === 'hit' || (g.phase === 'result' && g.hitBall.speed > 0 && g.lastResult !== 'walk' && g.lastResult !== 'hbp' && g.lastResult !== 'strikeout')) {
       const b = g.hitBall;
       cp.set(b.x * 0.4, 7 + b.y * 0.3, -9 + b.z * 0.35);
       look.set(b.x, Math.max(1, b.y * 0.8), b.z);
@@ -630,7 +655,7 @@ export class BaseballScreen {
     const help = this.ui.querySelector<HTMLElement>('.bb-help')!;
     help.innerHTML =
       role === 'bat'
-        ? 'あなたが打つ番：画面を<b>指でなぞってバット</b>を球に合わせ、<b>指を離すと振る</b>（紫が当たる所・緑の丸が芯）'
+        ? 'あなたが打つ番：画面を<b>指でなぞってバット</b>を球に合わせ、<b>指を離すと振る</b>（紫が当たる所・緑の丸が芯・黄色の丸が球の来る所）'
         : role === 'pitch'
           ? this.selecting
             ? '<b>球種</b>を選ぶ（曲がる向きに並んでいます）'

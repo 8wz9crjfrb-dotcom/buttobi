@@ -1,5 +1,5 @@
 // 野球（CPUと1対1）の計算が意図どおりに動くかを確かめる
-import { Baseball, BBCpu, BB, type BBSetup, type PitchKind } from '../src/shared/baseball';
+import { Baseball, BBCpu, BB, zoneOut, type BBSetup, type PitchKind } from '../src/shared/baseball';
 import { BTN_A, type InputState } from '../src/shared/types';
 
 let fail = 0;
@@ -37,7 +37,7 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
   check('見送り：真ん中はストライク', g.lastCall === 'strike', `${g.lastCall}`);
   until(g, () => g.phase === 'ready');
   check('ストライクが1つ増える', g.strikes === 1 && g.balls === 0);
-  until(g, () => g.phase === 'call', pitchAt(0.6, 1.5));
+  until(g, () => g.phase === 'call', pitchAt(-0.6, 1.5));
   check('見送り：大きく外れるとボール', g.lastCall === 'ball', `${g.lastCall}`);
 }
 // ---- 3ストライクで三振、4ボールでフォアボール（押し出しで点）
@@ -51,7 +51,7 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
   until(g, () => g.phase === 'ready' && g.pa === 1);
   check('三振のあと、次の打席（2打席目）へ', g.pa === 1 && g.strikes === 0 && g.balls === 0);
   for (let i = 0; i < 4; i++) {
-    until(g, () => g.phase === 'call', pitchAt(0.6, 1.5));
+    until(g, () => g.phase === 'call', pitchAt(-0.6, 1.5));
     until(g, () => g.phase !== 'call');
   }
   check('4ボールでフォアボール（1塁へ）', g.lastResult === 'walk' && g.bases[0]);
@@ -211,6 +211,73 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
   check('球種：バッターは球種を選べない', g.choice === 'straight');
   g.step(new Map([[g.pitcher.slot, { mx: 0, my: 0, buttons: 2 }]]));
   check('球種：B で球種が切りかわる', g.choice === 'slider');
+}
+
+// ---- デッドボール：振らずに体（内側）に当たると1塁へ
+{
+  const g = new Baseball(setup());
+  until(g, () => g.phase === 'pitch', pitchAt(BB.aimX, 0.9));
+  until(g, () => g.phase !== 'pitch');
+  const px = g.plate.x;
+  if (px >= BB.hbpX) check('内側に大きく外れて体に当たるとデッドボール（1塁へ）', g.lastResult === 'hbp' && g.bases[0] && g.balls === 0, `x ${px.toFixed(2)} ${g.lastResult}`);
+  else check('内側に大きく外れて体に当たるとデッドボール（1塁へ）', false, `x ${px.toFixed(2)} が体まで届いていない`);
+  const h = new Baseball(setup());
+  until(h, () => h.phase === 'call', pitchAt(-0.6, 1.5));
+  check('外側に外れた球はデッドボールにならない', h.lastCall === 'ball');
+}
+// ---- 振ったあとも、次の球を待っている間（ピッチャーが投げる前）にバットを動かせる
+{
+  const g = new Baseball(setup());
+  until(g, () => g.phase === 'pitch', pitchAt(0, 0.8));
+  until(g, () => g.phase !== 'pitch', (gg) => new Map([[gg.batter.slot, { mx: 0, my: 0, buttons: gg.pitchT === 2 ? BTN_A : 0 }]]));
+  until(g, () => g.phase === 'ready');
+  g.setCursor(g.batter.slot, 0.3, 0.5);
+  const okReady = Math.abs(g.cursor.x - 0.3) < 1e-9;
+  until(g, () => g.phase === 'aim');
+  g.setCursor(g.batter.slot, -0.2, 1.0);
+  const okAim = Math.abs(g.cursor.x + 0.2) < 1e-9;
+  check('振ったあとでも、次の球の前（待ち・ピッチャーが選んでいる間）にバットを動かせる', okReady && okAim);
+}
+// ---- ボール球は芯でとらえても強く飛ばない
+{
+  const avg = (x: number, y: number) => {
+    let sum = 0;
+    let n = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const g = new Baseball(setup(1, seed));
+      until(g, () => g.phase === 'pitch', pitchAt(x, y));
+      const info = g.pitchInfo();
+      g.cursor.x = Math.max(-BB.aimX, Math.min(BB.aimX, info.x));
+      g.cursor.y = info.y;
+      until(g, () => g.phase !== 'pitch', (gg) => new Map([[gg.batter.slot, { mx: 0, my: 0, buttons: gg.pitchInfo().left === BB.swingDelay ? BTN_A : 0 }]]));
+      if (g.phase === 'hit') {
+        sum += g.hitBall.speed;
+        n++;
+      }
+    }
+    return n ? sum / n : 0;
+  };
+  const mid = avg(0, 0.8);
+  const low = avg(-0.1, 0.18);
+  check('ボール球（低め）を芯で打っても、真ん中より弱い当たり', low > 0 && low < mid * 0.8, `打球の速さ 真ん中 ${mid.toFixed(1)} / 低いボール ${low.toFixed(1)}`);
+}
+// ---- CPU：明らかなボール球はほとんど振らない
+{
+  let swings = 0;
+  let tries = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    const s = setup(1, seed);
+    s.players[0].cpu = true;
+    s.players[1].cpu = true;
+    const g = new Baseball(s);
+    const cpu = new BBCpu(seed);
+    until(g, () => g.phase === 'pitch', pitchAt(-0.6, 1.5));
+    if (zoneOut(g.pitchInfo()) < 0.2) continue;
+    tries++;
+    until(g, () => g.phase !== 'pitch', (gg) => new Map([[gg.batter.slot, cpu.think(gg, gg.batter.slot)]]));
+    if (g.swingAt >= 0) swings++;
+  }
+  check('CPU：明らかなボール球はほとんど振らない', tries > 20 && swings <= Math.ceil(tries * 0.05), `${swings}/${tries}回 振った`);
 }
 
 void N;
