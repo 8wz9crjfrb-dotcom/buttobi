@@ -185,7 +185,7 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
     // コントロールのぶれをなくして比べる
     (g as unknown as { rng: { next(): number } }).rng.next = () => 0;
     g.step(new Map([[g.pitcher.slot, { mx: 0, my: 0, buttons: BTN_A }]]));
-    const F = g.pitchInfo().left;
+    const F = g.pitchF;
     const end = g.pitchPos(F);
     // 曲がり始める前（前半）は、狙いに向かってまっすぐ
     const early = g.pitchPos(Math.round(F * 0.3));
@@ -278,6 +278,20 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
     if (g.swingAt >= 0) swings++;
   }
   check('CPU：明らかなボール球はほとんど振らない', tries > 20 && swings <= Math.ceil(tries * 0.05), `${swings}/${tries}回 振った`);
+}
+
+// ---- 投球モーション：A を押してからしばらくは球が手の中（その間は振れない）
+{
+  const g = new Baseball(setup());
+  until(g, () => g.phase === 'pitch', pitchAt(0, 0.8));
+  const z0 = g.ballPos.z;
+  for (let i = 0; i < BB.windup - 1; i++) {
+    g.requestSwing(g.batter.slot);
+    g.step(new Map());
+  }
+  const held = g.ballPos.z === z0 && g.swingAt < 0;
+  for (let i = 0; i < 3; i++) g.step(new Map());
+  check('投球モーション中は球が手の中で、振れない。終わると球が飛ぶ', held && g.ballPos.z < z0, `モーション ${BB.windup}フレーム`);
 }
 
 void N;

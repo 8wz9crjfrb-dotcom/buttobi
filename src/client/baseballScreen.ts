@@ -498,7 +498,9 @@ export class BaseballScreen {
       pose(g.batter.slot, 0.95, 0.15, -Math.PI / 2, sw >= 0 ? 'side' : null, sw);
       // ピッチャー（キャッチャーの方を向く）。投げたら前へ突く動き
       const pt = this.pitchAnimT >= 0 && this.pitchAnimT < 20 ? Math.floor(this.pitchAnimT) : -1;
-      pose(g.pitcher.slot, 0.15, BB.releaseZ + 0.6, Math.PI, pt >= 0 ? 'jab' : null, pt);
+      // 投球モーション：大きく振りかぶる → 手を離すと前へ突く
+      const winding = g.phase === 'pitch' && g.windup > 0;
+      pose(g.pitcher.slot, 0.15, BB.releaseZ + 0.6, Math.PI, winding ? 'charge' : pt >= 0 ? 'jab' : null, winding ? 0 : pt);
     }
     if (this.swingT > 30) this.swingT = -1;
     if (this.pitchAnimT > 24) this.pitchAnimT = -1;
@@ -510,7 +512,7 @@ export class BaseballScreen {
     this.ball.position.set(bp.x, Math.max(0.07, bp.y), bp.z);
     this.ballShadow.position.set(bp.x, 0.02, bp.z);
     // 回転：ストレートは縦の強い逆回転、横に曲がる球は横回転、落ちる球はほとんど回らない（ゆらゆら）
-    if (g.phase === 'pitch') {
+    if (g.phase === 'pitch' && g.windup <= 0) {
       const step = dt * 60;
       const k = g.pitchType;
       if (k === 'straight') this.ball.rotateX(-0.55 * step);
@@ -525,7 +527,7 @@ export class BaseballScreen {
       } else this.ball.rotateY(0.5 * (k === 'shoot' ? 1 : -1) * step);
     } else if (g.phase === 'hit') this.ball.rotateX(0.4 * dt * 60);
     // 残像：投げた球の通り道
-    if (g.phase === 'pitch') {
+    if (g.phase === 'pitch' && g.windup <= 0) {
       this.trailPos.unshift(this.ball.position.clone());
       if (this.trailPos.length > this.trail.length * 2) this.trailPos.length = this.trail.length * 2;
     } else if (g.phase !== 'call') this.trailPos = [];
@@ -569,8 +571,8 @@ export class BaseballScreen {
     this.breakEnd.visible = bend;
     this.breakEnd.position.set(g.aim.x + sh.x, g.aim.y + sh.y, 0);
     // 球が来る所の予告（打つとき。半分くらい来たところで出て、来るにつれて小さくなる）
-    const showAt = Math.round(g.pitchF * BB.arriveShow);
-    const showArrive = role === 'bat' && g.phase === 'pitch' && g.pitchT >= showAt && g.pitchT <= g.pitchF;
+    const showAt = Math.max(0, Math.round(g.pitchF * BB.arriveShow) - BB.arriveEarly);
+    const showArrive = role === 'bat' && g.phase === 'pitch' && g.windup <= 0 && g.pitchT >= showAt && g.pitchT <= g.pitchF;
     this.arrive.visible = showArrive;
     if (showArrive) {
       const info = g.pitchInfo();

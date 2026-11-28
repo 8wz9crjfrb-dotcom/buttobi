@@ -65,6 +65,10 @@ export const BB = {
   breakStart: 0.42,
   /** 打つとき、球が来る所の予告を出し始める所（投げてからホームベースまでの割合） */
   arriveShow: 0.5,
+  /** 予告をそれよりさらに早く出すフレーム数（0.5秒） */
+  arriveEarly: 30,
+  /** 投球モーション：A を押してから球が手を離れるまで（フレーム） */
+  windup: 40,
   /** バットの当たる範囲（横長のだ円）：ミートの丸の半径に対する横・縦の大きさと、芯（いちばん強く飛ぶ所）の大きさ */
   batW: 2.1,
   batH: 0.72,
@@ -148,6 +152,7 @@ export interface BBSetup {
 }
 
 export type BBEvent =
+  | { k: 'windup' }
   | { k: 'pitch'; type: PitchKind }
   | { k: 'swing' }
   | { k: 'contact'; q: number }
@@ -277,8 +282,10 @@ export class Baseball {
     return this.breakT;
   }
   private swingReq = -1;
+  /** 投球モーションの残り（フレーム）。0 になると球が手を離れる */
+  windup = 0;
   requestSwing(slot: number): void {
-    if (this.batter.slot === slot && this.phase === 'pitch' && this.swingAt < 0) this.swingReq = slot;
+    if (this.batter.slot === slot && this.phase === 'pitch' && this.windup <= 0 && this.swingAt < 0) this.swingReq = slot;
   }
   /** 今の球の位置（投げていなければピッチャーの手元） */
   get ballPos(): Vec {
@@ -325,6 +332,11 @@ export class Baseball {
         break;
       }
       case 'pitch': {
+        // 投球モーション中：球はまだ手の中（バットは動かせる・振れない）
+        if (this.windup > 0) {
+          if (--this.windup === 0) this.events.push({ k: 'pitch', type: this.pitchType });
+          break;
+        }
         this.pitchT++;
         if (this.swingAt < 0 && (this.pressed(bat.slot, bi, BTN_A) || this.swingReq === bat.slot)) {
           this.swingReq = -1;
@@ -393,8 +405,10 @@ export class Baseball {
     this.pitchF = F;
     this.pitchT = 0;
     this.swingAt = -1;
+    this.swingReq = -1;
     this.phase = 'pitch';
-    this.events.push({ k: 'pitch', type });
+    this.windup = BB.windup;
+    this.events.push({ k: 'windup' });
   }
 
   /** 球がホームベースに来た：見送り（ストライク・ボール）・空振り・当たり */
@@ -642,7 +656,7 @@ export class Baseball {
   /** 今、球がホームベースに来るまでのフレーム数と、来る場所（CPU と画面の予告に使う） */
   pitchInfo(): { left: number; x: number; y: number } {
     const p = this.pitchPos(this.pitchF);
-    return { left: this.pitchF - this.pitchT, x: p.x, y: p.y };
+    return { left: this.windup + this.pitchF - this.pitchT, x: p.x, y: p.y };
   }
 }
 
