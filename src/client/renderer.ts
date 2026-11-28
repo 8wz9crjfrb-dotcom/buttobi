@@ -767,6 +767,7 @@ export class GameRenderer {
       });
       this.updateEntrances(view);
       this.updateAreaZones(view);
+      this.updateLeader(view);
       this.updateBall(view, dt);
       this.updateCrown(view);
       this.updateVaults(view);
@@ -1292,6 +1293,13 @@ export class GameRenderer {
         this.spawn(this.sparkGeo, 0x39ff88, e.x + (e.tx - e.x) * t, e.y + (e.ty - e.y) * t, 0, 1.5, 0.15, 16 + i, -0.004);
       }
       this.props.showText('Ctrl+Z', '#39ff88', e.tx, e.ty + 1.1, false, 60);
+      return;
+    }
+    if (e.k === 'arush') {
+      // エリアバトルのラストスパート：画面の上に大きく出す
+      const m = this.stage?.main;
+      const x = m ? (m.x1 + m.x2) / 2 : 0;
+      this.props.showText('ラストスパート！ ゲージ2倍', '#ffd23f', x, (m?.top ?? 0) + 1.2, true, 150);
       return;
     }
     if (e.k === 'sudden') {
@@ -1872,6 +1880,76 @@ export class GameRenderer {
       g.position.set(c.x, c.y + (big ? 0.42 : 0.3) + Math.sin(t * 3 + i) * 0.04, 0.25);
       g.rotation.y = t * 3 + i;
       g.scale.setScalar(big ? 1.7 : 1);
+    });
+  }
+
+  // ---------------------------------------------------------------- エリアバトルの1位の印
+  /** 1位の人（チーム戦なら1位のチームの全員）の頭の上に出す「1位」の札（狙われやすくする） */
+  private leaderTags: THREE.Sprite[] = [];
+  private leaderTex: THREE.CanvasTexture | null = null;
+  private updateLeader(view: ViewState): void {
+    const a = view.area;
+    const setup = this.setup;
+    let lead: number | null = null;
+    if (a && setup) {
+      let best = 0;
+      let n = 0;
+      for (const [k, v] of a.gauges) {
+        if (v > best) {
+          best = v;
+          lead = k;
+          n = 1;
+        } else if (v === best && v > 0) n++;
+      }
+      // 同点の1位が何人もいるとき・だれもたまっていないときは出さない
+      if (n !== 1) lead = null;
+    }
+    const keyOf = (slot: number) => (setup?.rules.teams ? (setup.players.find((p) => p.slot === slot)?.team ?? 0) : slot);
+    const who = lead === null || view.ended ? [] : view.fighters.filter((f) => keyOf(f.slot) === lead && f.state !== 'dead' && !f.out);
+    if (!this.leaderTex) {
+      this.leaderTex = canvasTex(128, (c) => {
+        // 金色の札に「1位」、上に小さな三つの山（オリジナルの王冠の形）
+        c.fillStyle = '#1b1b28';
+        c.beginPath();
+        c.roundRect(14, 40, 100, 62, 18);
+        c.fill();
+        c.fillStyle = '#ffd23f';
+        c.beginPath();
+        c.roundRect(19, 45, 90, 52, 14);
+        c.fill();
+        c.beginPath();
+        c.moveTo(38, 42);
+        c.lineTo(44, 18);
+        c.lineTo(54, 34);
+        c.lineTo(64, 12);
+        c.lineTo(74, 34);
+        c.lineTo(84, 18);
+        c.lineTo(90, 42);
+        c.closePath();
+        c.lineWidth = 6;
+        c.strokeStyle = '#1b1b28';
+        c.stroke();
+        c.fill();
+        c.fillStyle = '#1b1b28';
+        c.font = '900 40px sans-serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText('1位', 64, 73);
+      });
+    }
+    while (this.leaderTags.length < who.length) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.leaderTex, transparent: true, depthWrite: false, depthTest: false }));
+      sp.scale.set(0.85, 0.85, 1);
+      sp.renderOrder = 9;
+      this.scene.add(sp);
+      this.leaderTags.push(sp);
+    }
+    this.leaderTags.forEach((sp, i) => {
+      const f = who[i];
+      sp.visible = !!f;
+      if (!f) return;
+      const scale = getCharacter(setup!.players.find((p) => p.slot === f.slot)?.charId ?? 'hacker').scale;
+      sp.position.set(f.x, f.y + 2.55 * scale + Math.sin(this.time * 4) * 0.06, 0.5);
     });
   }
 

@@ -533,6 +533,12 @@ input[inputmode='numeric'] {
   color: #ffd23f;
   animation: blink-notice 0.5s steps(2) infinite;
 }
+.hud-area-notice.rush {
+  color: #1b1f3b;
+  background: linear-gradient(90deg, #ffd23f, #ff9f3f);
+  padding: 1px 10px;
+  border-radius: 999px;
+}
 .hud-area-notice.fight {
   /* チームの色（赤など）と見まちがえないよう、白い文字に灰色の帯 */
   color: #ffffff;

@@ -426,6 +426,9 @@ export const AREA = {
   fixWidth: 3.8,
   /** エリアの高さ（床から。上の足場に乗ると外れる） */
   height: 2.3,
+  /** ラストスパート：残りこの時間（と延長中）は、ゲージが rushMul 倍の速さでたまる */
+  rushFrames: 30 * 60,
+  rushMul: 2,
 };
 
 /** 玉入れの数値 */
@@ -1487,11 +1490,23 @@ export class Sim {
       const n = this.fighters.filter((f) => this.inZone(f, z)).length;
       count.set(k, (count.get(k) ?? 0) + n);
     });
+    const rush = this.areaRush;
+    if (rush && !this.areaRushSaid) {
+      this.areaRushSaid = true;
+      this.events.push({ k: 'arush' });
+    }
+    const mul = rush ? AREA.rushMul : 1;
     for (const [k, n] of count) {
-      const v = Math.min(this.areaGoal, (this.areaGauge.get(k) ?? 0) + 1 + AREA.perAlly * (n - 1));
+      const v = Math.min(this.areaGoal, (this.areaGauge.get(k) ?? 0) + (1 + AREA.perAlly * (n - 1)) * mul);
       this.areaGauge.set(k, v);
     }
   }
+
+  /** ラストスパート中か（残り30秒・延長中は、ゲージが2倍の速さでたまる） */
+  get areaRush(): boolean {
+    return this.overtime || (this.setup.rules.timeLimit > 0 && this.frame > COUNTDOWN_FRAMES && this.timeLeftFrames <= AREA.rushFrames);
+  }
+  private areaRushSaid = false;
 
   private areaView(): AreaView {
     const holders = this.areaHolders();
@@ -1502,6 +1517,7 @@ export class Sim {
       nextIn: nx.nextIn,
       gauges: [...this.areaGauge.entries()].map(([k, v]) => [k, Math.floor(v)] as [number, number]),
       goal: this.areaGoal,
+      ...(this.areaRush ? { rush: true } : {}),
     };
   }
 

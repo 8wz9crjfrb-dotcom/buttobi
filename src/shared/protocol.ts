@@ -13,7 +13,7 @@ import {
 } from './types';
 import type { TourMatch } from './tournament';
 
-export const PROTOCOL_VERSION = 64;
+export const PROTOCOL_VERSION = 65;
 
 /** 勝敗予想：試合が始まってから予想できる時間（フレーム。カウントダウンを含む） */
 export const PREDICT_FRAMES = COUNTDOWN_FRAMES + 300;
@@ -176,7 +176,7 @@ export interface EncodedState {
   n: number[][]; // entities
   ev: GameEvent[];
   /** エリアバトル：[x1,x2,y1,y2,holder] のエリア、次のエリア、移るまで、ゲージ [番号,値...]、満タン */
-  a?: { z: number[][]; x: number[][]; i: number; g: number[]; o: number };
+  a?: { z: number[][]; x: number[][]; i: number; g: number[]; o: number; r?: 1 };
   /** 玉入れ：[x, y, vx, 出ている(1/0), 赤の点, 青の点, 先取点] */
   b?: number[];
   /** サドンデス中 */
@@ -239,6 +239,7 @@ export function encodeState(v: ViewState, events: GameEvent[]): EncodedState {
             i: v.area.nextIn,
             g: v.area.gauges.flat(),
             o: v.area.goal,
+            ...(v.area.rush ? { r: 1 as const } : {}),
           },
         }
       : {}),
@@ -312,6 +313,7 @@ export function decodeState(s: EncodedState): ViewState {
           nextIn: s.a.i,
           gauges: Array.from({ length: Math.floor(s.a.g.length / 2) }, (_, k) => [s.a!.g[k * 2], s.a!.g[k * 2 + 1]] as [number, number]),
           goal: s.a.o,
+          ...(s.a.r ? { rush: true } : {}),
         }
       : undefined,
   };

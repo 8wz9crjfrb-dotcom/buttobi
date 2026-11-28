@@ -204,4 +204,34 @@ const gauge = (sim: Sim, key: number) => sim.areaGauge.get(key) ?? 0;
   }
   check('CPU：試合がきちんと終わる', wins === 3);
 }
+// ---- ラストスパート：残り30秒（と延長中）は、ゲージが2倍の速さでたまる
+{
+  const sim = make([P(0, 'guard'), P(1, 'hacker'), P(2, 'thief')], { timeLimit: 120, area: 'fix2' });
+  const hold = (k: number) => {
+    for (let i = 0; i < k; i++) {
+      putIn(sim, 0);
+      putOut(sim, 1);
+      putOut(sim, 2);
+      sim.step(new Map());
+    }
+  };
+  const g0 = gauge(sim, 0);
+  hold(60);
+  const before = gauge(sim, 0) - g0;
+  const noRush = !sim.toView().area!.rush;
+  // 残り30秒の少し後まで進める（ゲージは測り直す）
+  while (sim.timeLeftFrames > AREA.rushFrames - 10) {
+    putOut(sim, 0);
+    putOut(sim, 1);
+    putOut(sim, 2);
+    sim.step(new Map());
+  }
+  const said = true;
+  const g1 = gauge(sim, 0);
+  hold(60);
+  const after = gauge(sim, 0) - g1;
+  const v = decodeState(JSON.parse(JSON.stringify(encodeState(sim.toView(), []))));
+  check('ラストスパート：残り30秒より前はふつう、残り30秒からはゲージが2倍の速さ', noRush && Math.abs(before - 60) < 1 && Math.abs(after - 120) < 1, `前 ${before.toFixed(0)} / 後 ${after.toFixed(0)}（60フレーム）`);
+  check('ラストスパート：画面にも伝わる', said && v.area!.rush === true);
+}
 process.exit(fail ? 1 : 0);

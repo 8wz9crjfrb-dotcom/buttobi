@@ -318,12 +318,13 @@ export class Hud {
     // 取り合い中・エリアの移動の予告
     const contested = holders.has(-2);
     const sec = Math.ceil(v.area.nextIn / 60);
-    const msg = v.ended ? '' : v.area.next.length ? `エリア移動まで ${sec}` : contested ? '取り合い中（カウント停止）' : '';
+    const rush = !!v.area.rush && !v.ended;
+    const msg = v.ended ? '' : v.area.next.length ? `エリア移動まで ${sec}` : contested ? '取り合い中（カウント停止）' : rush ? 'ラストスパート！ ゲージ2倍' : '';
     if (msg !== a.last) {
       // 取り合い中は、オリジナルの「ぶつかる矢印」の印を付ける
       if (contested && !v.area.next.length && msg) a.notice.innerHTML = `${clashMark()}${msg}`;
       else a.notice.textContent = msg;
-      a.notice.className = `hud-area-notice ${v.area.next.length ? 'move' : contested ? 'fight' : ''}`;
+      a.notice.className = `hud-area-notice ${v.area.next.length ? 'move' : contested ? 'fight' : rush ? 'rush' : ''}`;
       a.last = msg;
     }
   }

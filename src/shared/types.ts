@@ -220,6 +220,8 @@ export type GameEvent =
   /** 金塊どろぼう：金庫の扉に攻撃が当たった（t = 金庫の番号、p = ダメージ）・扉が開いた・閉まった */
   | { k: 'vhit'; x: number; y: number; t: number; p: number }
   | { k: 'vopen'; x: number; y: number; t: number }
+  /** エリアバトル：ラストスパートが始まった（ゲージ2倍） */
+  | { k: 'arush' }
   | { k: 'vclose'; x: number; y: number; t: number }
   /** 金塊どろぼう：金塊を持った（t = どちらの金庫の金塊か）・落とした・持ち主の金庫へ戻った・運び込んで点が入った（t = 点が入ったチーム） */
   | { k: 'vgrab'; x: number; y: number; s: number; t: number }
@@ -445,6 +447,8 @@ export interface AreaView {
   /** ゲージ：[番号, 値] の並び。番号はチーム戦ならチーム、個人戦なら slot。値は 0〜goal */
   gauges: [number, number][];
   goal: number;
+  /** ラストスパート中（ゲージが2倍の速さでたまる） */
+  rush?: boolean;
 }
 
 export interface ResultEntry {
