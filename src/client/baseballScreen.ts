@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { getCharacter, TEAM_COLORS } from '../shared/characters';
 import { getCostume } from '../shared/costumes';
-import { Baseball, BB, BBCpu, BB_RESULT_NAMES, bbStats, pitchKmh, pitchShift, pitchSpeedOf, PITCH_KINDS, PITCH_NAMES, type BBPlayer, type BBSetup, type PitchKind } from '../shared/baseball';
+import { Baseball, BAT_SKILLS, BB, BBCpu, BB_RESULT_NAMES, bbRep, bbStats, pitchKmh, pitchShift, PITCH_KINDS, PITCH_NAMES, PITCH_SKILLS, type BBPlayer, type BBSetup, type PitchKind } from '../shared/baseball';
 import { BTN_B } from '../shared/types';
 import type { InputState, ViewFighter } from '../shared/types';
 import { FighterModel } from './fighterModel';
@@ -296,7 +296,10 @@ export class BaseballScreen {
       <div class="bb-pick"><div class="bb-pick-ball"></div>${PITCH_KINDS.map((k) => `<i class="bb-ray" data-ray="${k}"></i><button type="button" data-pk="${k}"><b>${PITCH_NAMES[k]}</b><small></small></button>`).join('')}</div>
       <div class="bb-pname"></div>
       <button type="button" class="bb-repick">球種選択</button>
+      <button type="button" class="bb-pskill"></button>
       <div class="bb-drag"></div>
+      <button type="button" class="bb-bskill"></button>
+      <div class="bb-rep"></div>
       <div class="bb-msg"></div>
       <div class="bb-help"></div>`;
     uiRoot.appendChild(this.ui);
@@ -314,6 +317,21 @@ export class BaseballScreen {
       ev.preventDefault();
       ev.stopPropagation();
       this.selecting = true;
+      this.updateUi(true);
+    });
+    // 固有技のボタン（ピッチャー：次の球を固有球にする／バッター：この球で使う）
+    this.ui.querySelector('.bb-pskill')!.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.game.toggleSkill(this.mySlot);
+      this.updateUi(true);
+    });
+    this.ui.querySelector('.bb-bskill')!.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.game.useBatSkill(this.mySlot);
+      for (const e of this.game.events) if (e.k === 'skill') this.onEvent(e);
+      this.game.events = [];
       this.updateUi(true);
     });
     // 打つ：画面を指でなぞるとバットが同じだけ動き、指を離すと振る
@@ -437,6 +455,13 @@ export class BaseballScreen {
         this.hooks.sound(e.r === 'homer' ? 'homer' : hit ? 'cheer' : 'out');
         break;
       }
+      case 'skill': {
+        const who = e.slot === this.mySlot ? '' : '相手：';
+        say(`${who}${e.bat ? '固有' : '固有球'}「${e.name}」<small>${e.desc}</small>`, 'skill');
+        this.msgT = 2.2;
+        this.hooks.sound('cheer');
+        break;
+      }
       case 'change': {
         const g = this.game;
         say(`${g.inning}回${g.half === 0 ? '表' : '裏'}`, 'change');
@@ -454,7 +479,7 @@ export class BaseballScreen {
   /** 球速と球種（投げた球がホームベースに来たあとに出す） */
   private showSpeed(): void {
     const g = this.game;
-    const name = PITCH_NAMES[g.pitchType];
+    const name = g.pitchSkill === 'gacha' ? `ガチャ球（${g.gachaWin ? `当たり！${PITCH_NAMES[g.pitchType]}` : 'はずれ'}）` : g.pitchSkill ? `${PITCH_SKILLS[g.pitchSkill].name}` : PITCH_NAMES[g.pitchType];
     const el = this.ui.querySelector<HTMLElement>('.bb-speed')!;
     el.innerHTML = `<b>${pitchKmh(g.pitchSpeed)}</b><small>km/h</small><span>${name}</span>`;
     el.classList.add('show');
@@ -507,8 +532,8 @@ export class BaseballScreen {
     // ボール
     const bp = g.ballPos;
     const showBall = g.phase === 'pitch' || g.phase === 'call' || g.phase === 'hit' || (g.phase === 'result' && !!g.hitBall.speed && g.lastResult !== 'walk' && g.lastResult !== 'hbp' && g.lastResult !== 'strikeout');
-    this.ball.visible = showBall;
-    this.ballShadow.visible = showBall;
+    this.ball.visible = showBall && !g.ballHidden;
+    this.ballShadow.visible = showBall && !g.ballHidden;
     this.ball.position.set(bp.x, Math.max(0.07, bp.y), bp.z);
     this.ballShadow.position.set(bp.x, 0.02, bp.z);
     // 回転：ストレートは縦の強い逆回転、横に曲がる球は横回転、落ちる球はほとんど回らない（ゆらゆら）
@@ -533,7 +558,7 @@ export class BaseballScreen {
     } else if (g.phase !== 'call') this.trailPos = [];
     this.trail.forEach((m, i) => {
       const p = this.trailPos[(i + 1) * 2];
-      m.visible = !!p && (g.phase === 'pitch' || g.phase === 'call');
+      m.visible = !!p && (g.phase === 'pitch' || g.phase === 'call') && !g.ballHidden;
       if (p) m.position.copy(p);
     });
     if (this.speedT > 0) {
@@ -561,8 +586,10 @@ export class BaseballScreen {
     this.aimMark.position.set(g.aim.x, g.aim.y, 0);
     this.aimMark.scale.setScalar(1.5);
     this.aimMark.rotation.y = 0;
-    const sh = pitchShift(g.choice, bbStats(g.pitcher.charId).brk);
-    const bend = aiming && g.choice !== 'straight';
+    const ps = g.choiceSkill ? bbRep(g.pitcher.charId).ps : null;
+    const sh = ps === 'swap' ? { x: 0, y: pitchShift('fork', bbStats(g.pitcher.charId).brk).y * 1.4 } : g.shiftOf(g.pitcher.charId, ps === 'full' || ps === 'express' ? 'straight' : g.choice);
+    // ロックオン・学習球・ガチャ球は、狙いと関係なく決まるので点線は出さない
+    const bend = aiming && (sh.x !== 0 || sh.y !== 0) && ps !== 'lockon' && ps !== 'learn' && ps !== 'gacha';
     this.breakDots.forEach((d, i) => {
       const t = (i + 1) / (this.breakDots.length + 1);
       d.visible = bend;
@@ -571,13 +598,17 @@ export class BaseballScreen {
     this.breakEnd.visible = bend;
     this.breakEnd.position.set(g.aim.x + sh.x, g.aim.y + sh.y, 0);
     // 球が来る所の予告（打つとき。半分くらい来たところで出て、来るにつれて小さくなる）
-    const showAt = Math.max(0, Math.round(g.pitchF * BB.arriveShow) - BB.arriveEarly);
-    const showArrive = role === 'bat' && g.phase === 'pitch' && g.windup <= 0 && g.pitchT >= showAt && g.pitchT <= g.pitchF;
+    // 速達便はぎりぎりまで出ない。打者の「予測」なら投球モーション中から出る
+    const predict = g.batSkill === 'predict';
+    const showAt = g.pitchSkill === 'express' && !predict ? g.pitchF - 15 : Math.max(0, Math.round(g.pitchF * BB.arriveShow) - BB.arriveEarly);
+    const showArrive = role === 'bat' && g.phase === 'pitch' && (predict ? g.pitchT <= g.pitchF : g.windup <= 0 && g.pitchT >= showAt && g.pitchT <= g.pitchF);
     this.arrive.visible = showArrive;
     if (showArrive) {
       const info = g.pitchInfo();
-      const t = Math.min(1, (g.pitchT - showAt) / Math.max(1, g.pitchF - showAt));
-      this.arrive.position.set(info.x, info.y, 0);
+      const t = g.windup > 0 ? 0 : Math.min(1, Math.max(0, g.pitchT - (predict ? 0 : showAt)) / Math.max(1, g.pitchF - (predict ? 0 : showAt)));
+      // バグ球：予告もずれる
+      const off = g.pitchSkill === 'bug' ? g.fakeOff : { x: 0, y: 0 };
+      this.arrive.position.set(info.x + off.x, info.y + off.y, 0);
       this.arrive.scale.setScalar(2.2 - 1.2 * t);
       (this.arrive.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>).material.opacity = 0.55 + 0.4 * t;
     }
@@ -616,6 +647,66 @@ export class BaseballScreen {
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
+    // ピッチャーの頭の上：持ち球と曲がる量（打つときだけ）
+    const rep = this.ui.querySelector<HTMLElement>('.bb-rep')!;
+    const showRep = role === 'bat' && (g.phase === 'ready' || g.phase === 'aim' || (g.phase === 'pitch' && g.windup > 0));
+    rep.classList.toggle('show', showRep);
+    // 頭の上の表と重なるので、そのあいだ上の対戦表示は隠す（固有の残りは表とボタンで見える）
+    this.ui.querySelector<HTMLElement>('.bb-matchup')!.style.visibility = showRep ? 'hidden' : '';
+    if (showRep) {
+      this.camera.updateMatrixWorld();
+      const v = new THREE.Vector3(0.15, 2.45, BB.releaseZ + 0.6).project(this.camera);
+      const w = this.ui.clientWidth || window.innerWidth;
+      const h = this.ui.clientHeight || window.innerHeight;
+      rep.style.left = `${((v.x + 1) / 2) * w}px`;
+      rep.style.top = `${((1 - v.y) / 2) * h}px`;
+    }
+  }
+
+  /** ピッチャーの頭の上に出す表：持ち球を曲がる向きの矢印で（長いほどよく曲がる）、ストレートの球速、固有球と残り回数 */
+  private repHtml(): string {
+    const g = this.game;
+    const id = g.pitcher.charId;
+    const r = bbRep(id);
+    const short: Record<PitchKind, string> = { straight: '直', slider: 'スラ', curve: 'カーブ', fork: 'フォーク', shoot: 'シュート' };
+    const cx = 55;
+    const cy = 22;
+    const k = 36;
+    let arrows = '';
+    for (const kind of r.pitches) {
+      if (kind === 'straight') continue;
+      const sh = g.shiftOf(id, kind);
+      // バッター視点では、画面の右が x のマイナス側
+      let dx = -sh.x * k;
+      let dy = -sh.y * k;
+      const len = Math.hypot(dx, dy);
+      if (len > 30) {
+        dx *= 30 / len;
+        dy *= 30 / len;
+      }
+      const ex = cx + dx;
+      const ey = cy + dy;
+      const fav = r.fav === kind;
+      const col = fav ? '#ffd23f' : '#ffffff';
+      const ux = dx / (Math.hypot(dx, dy) || 1);
+      const uy = dy / (Math.hypot(dx, dy) || 1);
+      // 真下・真上の矢印の名前は左に寄せる（斜めの矢印の名前と重ならないように）
+      const side = ux > 0.35 ? 1 : ux < -0.35 ? -1 : 0;
+      const lx = side ? ex + ux * 6 : ex - 5;
+      const ly = side ? ey + uy * 6 + 3 : ey + 4;
+      const anchor = side > 0 ? 'start' : 'end';
+      arrows += `<line x1="${cx}" y1="${cy}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="${col}" stroke-width="2.4" marker-end="url(#bbah${fav ? 'f' : ''})"/>`;
+      arrows += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" fill="${col}">${fav ? '★' : ''}${short[kind]}</text>`;
+    }
+    const st = pitchKmh(g.speedOf(id, 'straight'));
+    const left = g.skillsLeft(g.pitcher.slot);
+    const dots = Array.from({ length: BB.skillUses }, (_, i) => `<i class="${i < left ? 'on' : ''}"></i>`).join('');
+    return `<div class="bb-rep-st">${r.fav === 'straight' ? '★' : ''}ストレート ${st}km/h</div>
+      <svg viewBox="0 0 110 62" width="110" height="62"><defs>
+        <marker id="bbah" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#fff"/></marker>
+        <marker id="bbahf" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#ffd23f"/></marker>
+      </defs><circle cx="${cx}" cy="${cy}" r="5" fill="#fff" stroke="#c33" stroke-width="1"/>${arrows}</svg>
+      <div class="bb-rep-sk">固有球「${PITCH_SKILLS[r.ps].name}」<span class="bb-dots">${dots}</span></div>`;
   }
 
   private lastKey = '';
@@ -633,7 +724,7 @@ export class BaseballScreen {
       this.selecting = true;
     }
     const picking = role === 'pitch' && (g.phase === 'ready' || g.phase === 'aim') && this.selecting;
-    const key = [g.inning, g.half, g.pa, g.balls, g.strikes, g.outs, g.bases.join(), g.score.join(), role, g.phase === 'aim' ? 1 : 0, g.finished, picking, g.choice].join('|');
+    const key = [g.inning, g.half, g.pa, g.balls, g.strikes, g.outs, g.bases.join(), g.score.join(), role, g.phase, g.finished, picking, g.choice, g.choiceSkill, g.batSkill, g.setup.players.map((p) => g.skillsLeft(p.slot)).join()].join('|');
     if (key === this.lastKey && !force) return;
     this.lastKey = key;
     const names = [0, 1].map((t) => g.teamPlayers(t)[0]?.name ?? (t === 0 ? '先攻' : '後攻'));
@@ -651,9 +742,12 @@ export class BaseballScreen {
       el.classList.toggle('on', g.bases[i]);
     });
     this.ui.querySelector<HTMLElement>('.bb-pa')!.textContent = `打席 ${Math.min(g.pa + 1, BB.paPerHalf)}/${BB.paPerHalf}`;
+    // 固有技の残り回数（お互いに見える）
+    const sk = (slot: number) => `<span class="bb-dots">${Array.from({ length: BB.skillUses }, (_, i) => `<i class="${i < g.skillsLeft(slot) ? 'on' : ''}"></i>`).join('')}</span>`;
     this.ui.querySelector<HTMLElement>('.bb-matchup')!.innerHTML = g.finished
       ? ''
-      : `<span>投 ${esc(g.pitcher.name)}（${esc(getCharacter(g.pitcher.charId).name)}）</span><span>打 ${esc(g.batter.name)}（${esc(getCharacter(g.batter.charId).name)}）</span>`;
+      : `<span>投 ${esc(g.pitcher.name)}（${esc(getCharacter(g.pitcher.charId).name)}）固有${sk(g.pitcher.slot)}</span><span>打 ${esc(g.batter.name)}（${esc(getCharacter(g.batter.charId).name)}）固有${sk(g.batter.slot)}</span>`;
+    this.ui.querySelector<HTMLElement>('.bb-rep')!.innerHTML = g.finished ? '' : this.repHtml();
     const help = this.ui.querySelector<HTMLElement>('.bb-help')!;
     help.innerHTML =
       role === 'bat'
@@ -665,18 +759,42 @@ export class BaseballScreen {
           : '';
     const pick = this.ui.querySelector<HTMLElement>('.bb-pick')!;
     pick.classList.toggle('show', picking);
-    const ps = bbStats(g.pitcher.charId);
+    // 持ち球だけ出す。得意球には★
+    const own = bbRep(g.pitcher.charId);
     pick.querySelectorAll<HTMLElement>('[data-pk]').forEach((b) => {
-      b.classList.toggle('on', b.dataset.pk === g.choice);
+      const kind = b.dataset.pk as PitchKind;
+      const has = own.pitches.includes(kind);
+      b.style.display = has ? '' : 'none';
+      b.classList.toggle('on', kind === g.choice);
+      b.classList.toggle('fav', own.fav === kind);
+      b.querySelector('b')!.textContent = `${own.fav === kind ? '★' : ''}${PITCH_NAMES[kind]}`;
       const sm = b.querySelector('small')!;
-      const kmh = `${pitchKmh(pitchSpeedOf(b.dataset.pk as PitchKind, ps.speed))} km/h`;
+      const kmh = `${pitchKmh(g.speedOf(g.pitcher.charId, kind))} km/h`;
       if (sm.textContent !== kmh) sm.textContent = kmh;
+    });
+    pick.querySelectorAll<HTMLElement>('[data-ray]').forEach((r) => {
+      r.style.display = own.pitches.includes(r.dataset.ray as PitchKind) ? '' : 'none';
     });
     const aimingNow = role === 'pitch' && g.phase === 'aim' && !this.selecting;
     const pn = this.ui.querySelector<HTMLElement>('.bb-pname')!;
-    pn.textContent = aimingNow ? PITCH_NAMES[g.choice] : '';
+    pn.textContent = aimingNow ? `${PITCH_NAMES[g.choice]}${g.choiceSkill ? ` ＋ 固有球「${PITCH_SKILLS[own.ps].name}」` : ''}` : '';
     pn.classList.toggle('show', aimingNow);
     this.ui.querySelector<HTMLElement>('.bb-repick')!.classList.toggle('show', role === 'pitch' && (g.phase === 'aim' || g.phase === 'ready') && !this.selecting);
+    // 固有技のボタン
+    const before = g.phase === 'ready' || g.phase === 'aim';
+    const pBtn = this.ui.querySelector<HTMLElement>('.bb-pskill')!;
+    const pLeft = g.skillsLeft(this.mySlot);
+    pBtn.classList.toggle('show', role === 'pitch' && before);
+    pBtn.classList.toggle('on', g.choiceSkill);
+    pBtn.classList.toggle('off', !g.choiceSkill && pLeft <= 0);
+    pBtn.innerHTML = `固有球「${PITCH_SKILLS[own.ps].name}」<em>${PITCH_SKILLS[own.ps].desc}</em><small>${g.choiceSkill ? '次の球で使う ✓' : pLeft > 0 ? `残り${pLeft}回・タップで使う` : '残り0回'}</small>`;
+    pBtn.title = PITCH_SKILLS[own.ps].desc;
+    const bBtn = this.ui.querySelector<HTMLElement>('.bb-bskill')!;
+    const bsk = bbRep(g.batter.charId).bs;
+    bBtn.classList.toggle('show', role === 'bat' && (before || (g.phase === 'pitch' && g.batSkill !== null)));
+    bBtn.classList.toggle('on', g.batSkill !== null);
+    bBtn.classList.toggle('off', g.batSkill === null && !g.canBatSkill(this.mySlot));
+    bBtn.innerHTML = `固有「${BAT_SKILLS[bsk].name}」<em>${BAT_SKILLS[bsk].desc}</em><small>${g.batSkill ? '発動中 ✓' : g.skillsLeft(this.mySlot) <= 0 ? '残り0回' : bsk === 'steal' && !g.bases.some(Boolean) ? '走者がいると使える' : `残り${g.skillsLeft(this.mySlot)}回・タップで使う`}</small>`;
     // 打つ番：画面をなぞってバットを動かす（スティックとボタンは隠す）
     this.ui.querySelector<HTMLElement>('.bb-drag')!.classList.toggle('on', role === 'bat');
     this.hooks.setPad(role);

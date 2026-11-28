@@ -1,5 +1,5 @@
 // 野球（CPUと1対1）の計算が意図どおりに動くかを確かめる
-import { Baseball, BBCpu, BB, zoneOut, type BBSetup, type PitchKind } from '../src/shared/baseball';
+import { Baseball, BBCpu, BB, zoneOut, bbRep, pitchShift, bbStats, type BBSetup, type PitchKind } from '../src/shared/baseball';
 import { BTN_A, type InputState } from '../src/shared/types';
 
 let fail = 0;
@@ -177,7 +177,10 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
 // ---- 球種：選んだ球種で曲がる向きが変わる（狙いは曲がったあとの場所。途中の位置で曲がり方を見る）
 {
   const mid = (kind: PitchKind) => {
-    const g = new Baseball(setup(1, 3));
+    // 全部の球種を持つキャラ（ガチャ廃人・得意球なし）で比べる
+    const su = setup(1, 3);
+    for (const p of su.players) p.charId = 'gacha';
+    const g = new Baseball(su);
     until(g, () => g.phase === 'aim');
     g.choosePitch(g.pitcher.slot, kind);
     g.aim.x = 0;
@@ -292,6 +295,91 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
   const held = g.ballPos.z === z0 && g.swingAt < 0;
   for (let i = 0; i < 3; i++) g.step(new Map());
   check('投球モーション中は球が手の中で、振れない。終わると球が飛ぶ', held && g.ballPos.z < z0, `モーション ${BB.windup}フレーム`);
+}
+
+// ---- 持ち球・得意球・固有技
+const withChars = (pitcherChar: string, batterChar: string) => {
+  const su = setup(1, 5);
+  // 1回表：チーム1が投げ、チーム0が打つ
+  su.players[0].charId = batterChar;
+  su.players[1].charId = pitcherChar;
+  return new Baseball(su);
+};
+const throwNow = (g: Baseball, kind: string, x = 0, y = 0.8) => {
+  until(g, () => g.phase === 'aim');
+  g.choosePitch(g.pitcher.slot, kind as never);
+  g.aim.x = x;
+  g.aim.y = y;
+  g.step(new Map([[g.pitcher.slot, { mx: 0, my: 0, buttons: BTN_A }]]));
+};
+{
+  const g = withChars('guard', 'thief');
+  until(g, () => g.phase === 'aim');
+  g.choosePitch(g.pitcher.slot, 'slider');
+  check('持ち球：持っていない球種は選べない（警備員はスライダーなし）', g.choice === 'straight' && !bbRep('guard').pitches.includes('slider'));
+  const fav = g.shiftOf('hacker', 'slider').x / pitchShift('slider', bbStats('hacker').brk).x;
+  check('得意球：変化球はよく曲がる（ハッカーのスライダー）', Math.abs(fav - BB.favBreak) < 1e-9, `${fav}倍`);
+  check('得意球：ストレートが得意なら速い（トレーナー）', g.speedOf('trainer', 'straight') > g.speedOf('guard', 'straight'));
+}
+{
+  // ロックオン：ゾーンの隅へ
+  const g = withChars('guard', 'thief');
+  until(g, () => g.phase === 'aim');
+  g.toggleSkill(g.pitcher.slot);
+  throwNow(g, 'straight', 0.1, 0.9);
+  const e = g.pitchInfo();
+  check('固有球ロックオン：ゾーンの隅に来る', Math.abs(Math.abs(e.x) - (BB.zone.x - 0.03)) < 0.02 && Math.abs(e.y - (BB.zone.y2 - 0.04)) < 0.02, `x ${e.x.toFixed(2)} y ${e.y.toFixed(2)}`);
+  check('固有球を使うと残りが1つ減る', g.skillsLeft(g.pitcher.slot) === BB.skillUses - 1 && g.pitchSkill === 'lockon');
+}
+{
+  // ハッキング：曲がらない・固有球も消える
+  const g = withChars('hacker', 'hacker');
+  until(g, () => g.phase === 'aim');
+  g.useBatSkill(g.batter.slot);
+  g.toggleSkill(g.pitcher.slot);
+  throwNow(g, 'slider', 0, 0.8);
+  const e = g.pitchInfo();
+  check('打者の固有ハッキング：変化球が曲がらず、相手の固有球も消える', Math.abs(e.x) < 0.12 && g.pitchSkill === null && g.batSkill === 'hack', `x ${e.x.toFixed(2)}`);
+}
+{
+  // 回数：投打合わせて2回まで
+  const g = withChars('guard', 'guard');
+  until(g, () => g.phase === 'aim');
+  const me = g.batter.slot;
+  g.useBatSkill(me);
+  until(g, () => g.phase === 'call', pitchAt(-0.6, 1.5));
+  until(g, () => g.phase === 'ready');
+  check('打者の固有技は1球ごとに消える', g.batSkill === null);
+  g.useBatSkill(me);
+  until(g, () => g.phase === 'call', pitchAt(-0.6, 1.5));
+  until(g, () => g.phase === 'ready');
+  g.useBatSkill(me);
+  check('固有技は1試合2回まで', g.skillsLeft(me) === 0 && g.batSkill === null);
+}
+{
+  // 盗塁：走者がいないと使えない、いると1つ進む
+  const g = withChars('guard', 'thief');
+  until(g, () => g.phase === 'aim');
+  const me = g.batter.slot;
+  check('盗塁：走者がいないと使えない', !g.canBatSkill(me));
+  g.bases = [true, false, true];
+  const before = g.score[g.half];
+  g.useBatSkill(me);
+  check('盗塁：走者が1つずつ進み、3塁の人はかえる', g.bases.join() === 'false,true,false' && g.score[g.half] === before + 1);
+}
+{
+  // CPUどうしでも固有技を使う
+  let used = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    const su = setup(2, seed);
+    su.players[0].cpu = true;
+    su.players[1].cpu = true;
+    const g = new Baseball(su);
+    const cpu = new BBCpu(seed);
+    until(g, () => g.finished, (gg) => new Map([[0, cpu.think(gg, 0)], [1, cpu.think(gg, 1)]]), 60 * 60 * 30);
+    used += 4 - g.skillsLeft(0) - g.skillsLeft(1);
+  }
+  check('CPU：固有技を使う（2回まで）', used > 5, `10試合で ${used} 回`);
 }
 
 void N;

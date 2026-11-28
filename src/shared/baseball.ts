@@ -39,6 +39,61 @@ export function bbStats(charId: string): BBStats {
   return BB_STATS[charId] ?? { speed: 3, brk: 3, control: 3, meet: 3, power: 3 };
 }
 
+/** 固有技（ピッチャー） */
+export type PitchSkill = 'lockon' | 'bug' | 'swap' | 'buzz' | 'full' | 'gacha' | 'express' | 'learn' | 'heavy' | 'shake' | 'chase';
+/** 固有技（バッター） */
+export type BatSkill = 'wall' | 'hack' | 'steal' | 'god' | 'tension' | 'gacha' | 'dash' | 'predict' | 'fullswing' | 'adlib' | 'cling';
+/** キャラごとの持ち球・得意球（ストレートが得意なら球が速い、変化球が得意ならよく曲がる）・固有技 */
+export interface BBRep {
+  pitches: PitchKind[];
+  fav: PitchKind | null;
+  ps: PitchSkill;
+  bs: BatSkill;
+}
+const ALL_PITCHES: PitchKind[] = ['straight', 'slider', 'curve', 'fork', 'shoot'];
+export const BB_REP: Record<string, BBRep> = {
+  guard: { pitches: ['straight', 'shoot', 'fork'], fav: 'shoot', ps: 'lockon', bs: 'wall' },
+  hacker: { pitches: ['straight', 'slider', 'curve', 'fork'], fav: 'slider', ps: 'bug', bs: 'hack' },
+  thief: { pitches: ['straight', 'slider', 'fork'], fav: 'fork', ps: 'swap', bs: 'steal' },
+  streamer: { pitches: ['straight', 'slider', 'curve'], fav: 'straight', ps: 'buzz', bs: 'god' },
+  dopa: { pitches: ['straight', 'shoot', 'fork'], fav: 'straight', ps: 'full', bs: 'tension' },
+  gacha: { pitches: ALL_PITCHES, fav: null, ps: 'gacha', bs: 'gacha' },
+  courier: { pitches: ['straight', 'shoot'], fav: 'straight', ps: 'express', bs: 'dash' },
+  ai: { pitches: ['straight', 'slider', 'curve', 'fork'], fav: 'fork', ps: 'learn', bs: 'predict' },
+  trainer: { pitches: ['straight', 'fork'], fav: 'straight', ps: 'heavy', bs: 'fullswing' },
+  threeb: { pitches: ['straight', 'slider', 'shoot'], fav: 'shoot', ps: 'shake', bs: 'adlib' },
+  menhera: { pitches: ['straight', 'slider', 'curve', 'fork'], fav: 'curve', ps: 'chase', bs: 'cling' },
+};
+export function bbRep(charId: string): BBRep {
+  return BB_REP[charId] ?? { pitches: ALL_PITCHES, fav: null, ps: 'lockon', bs: 'wall' };
+}
+export const PITCH_SKILLS: Record<PitchSkill, { name: string; desc: string }> = {
+  lockon: { name: 'ロックオン', desc: 'ゾーンの四隅に吸い寄せられる（ぶれない）' },
+  bug: { name: 'バグ球', desc: '途中で一瞬消え、球の来る所の予告もずれる' },
+  swap: { name: 'すり替え', desc: 'ストレートに見せて、手元で大きく落ちる' },
+  buzz: { name: 'バズ球', desc: '途中から急に加速する' },
+  full: { name: '全開', desc: 'とても速いストレート。ただしどこへ行くか分からない' },
+  gacha: { name: 'ガチャ球', desc: '投げるまで分からない。当たりは大きく曲がり、はずれは遅い棒球' },
+  express: { name: '速達便', desc: '速いストレート。球の来る所の予告がぎりぎりまで出ない' },
+  learn: { name: '学習球', desc: 'この試合で相手が空振りしたコースへ向かう（ぶれない）' },
+  heavy: { name: '重い球', desc: '当てられても打球が飛ばない' },
+  shake: { name: 'シェイク', desc: '左右にゆらゆら揺れながら来る' },
+  chase: { name: '追いかけ球', desc: 'バットから逃げるように曲がる' },
+};
+export const BAT_SKILLS: Record<BatSkill, { name: string; desc: string }> = {
+  wall: { name: '鉄壁ブロック', desc: 'バットの当たる範囲が1.5倍' },
+  hack: { name: 'ハッキング', desc: 'この球は曲がらない（相手の固有球も消える）' },
+  steal: { name: '盗塁', desc: '塁にいる走者が全員1つ進む（走者がいるときだけ）' },
+  god: { name: '神回', desc: 'バットの芯が2倍の大きさ' },
+  tension: { name: 'ハイテンション', desc: '振るタイミングの幅が2倍' },
+  gacha: { name: 'ガチャ打法', desc: '当たると、3回に1回は大当たり（打球1.6倍）、ほかは少し弱い' },
+  dash: { name: '快足', desc: 'ゴロがヒットになりやすい' },
+  predict: { name: '予測', desc: '球の来る所が投げる前から分かる' },
+  fullswing: { name: 'フルスイング', desc: '打球が1.4倍速い' },
+  adlib: { name: 'アドリブ', desc: 'バットが球の方へ少し寄る' },
+  cling: { name: '粘着', desc: '少し外れた空振りもファウルにする' },
+};
+
 /** 野球の決まりと数値 */
 export const BB = {
   /** ピッチャーが投げる位置と、ホームベースまでの距離 */
@@ -69,6 +124,11 @@ export const BB = {
   arriveEarly: 30,
   /** 投球モーション：A を押してから球が手を離れるまで（フレーム） */
   windup: 40,
+  /** 固有技を使える回数（1試合・投打合わせて） */
+  skillUses: 2,
+  /** 得意球：変化球は曲がりがこの倍、ストレートは速さがこの倍 */
+  favBreak: 1.5,
+  favSpeed: 1.06,
   /** バットの当たる範囲（横長のだ円）：ミートの丸の半径に対する横・縦の大きさと、芯（いちばん強く飛ぶ所）の大きさ */
   batW: 2.1,
   batH: 0.72,
@@ -153,6 +213,7 @@ export interface BBSetup {
 
 export type BBEvent =
   | { k: 'windup' }
+  | { k: 'skill'; slot: number; bat: boolean; name: string; desc: string }
   | { k: 'pitch'; type: PitchKind }
   | { k: 'swing' }
   | { k: 'contact'; q: number }
@@ -206,8 +267,24 @@ export class Baseball {
   pitchT = 0;
   pitchF = 60;
   pitchType: PitchKind = 'straight';
-  /** ピッチャーが選んでいる球種（投げる前に選ぶ） */
+  /** ピッチャーが選んでいる球種（投げる前に選ぶ）と、固有球を使うか */
   choice: PitchKind = 'straight';
+  choiceSkill = false;
+  /** 固有技の残り回数（slot ごと。投打合わせて） */
+  private skillLeft = new Map<number, number>();
+  /** 投げている球の固有球（なければ null）と、この球でバッターが使っている固有技 */
+  pitchSkill: PitchSkill | null = null;
+  batSkill: BatSkill | null = null;
+  /** ガチャ球の当たり・はずれ */
+  gachaWin = false;
+  /** バグ球：球が消えるフレームと、予告のずれ */
+  vanish: [number, number] | null = null;
+  fakeOff = { x: 0, y: 0 };
+  private warp = false;
+  private shakeAmp = 0;
+  private chaseOn = false;
+  /** バッターごとの空振りした所（学習球が使う） */
+  private whiffs = new Map<number, { x: number; y: number }[]>();
   /** バットを振ったフレーム（振っていなければ -1） */
   swingAt = -1;
   /** 打球 */
@@ -231,6 +308,79 @@ export class Baseball {
     this.setup = setup;
     this.rng = new Rng(setup.seed);
     for (let t = 0; t < 2; t++) this.lines[t] = [];
+    for (const p of setup.players) this.skillLeft.set(p.slot, BB.skillUses);
+  }
+
+  /** 固有技の残り回数 */
+  skillsLeft(slot: number): number {
+    return this.skillLeft.get(slot) ?? 0;
+  }
+  private spendSkill(slot: number): boolean {
+    const n = this.skillsLeft(slot);
+    if (n <= 0) return false;
+    this.skillLeft.set(slot, n - 1);
+    return true;
+  }
+  /** キャラの持ち球ごとの、ホームベースでの曲がり（得意球は大きい） */
+  shiftOf(charId: string, kind: PitchKind): { x: number; y: number } {
+    const r = bbRep(charId);
+    const sh = pitchShift(kind, bbStats(charId).brk);
+    const k = r.fav === kind && kind !== 'straight' ? BB.favBreak : 1;
+    return { x: sh.x * k, y: sh.y * k };
+  }
+  /** キャラの球種ごとの速さ（ストレートが得意なら速い） */
+  speedOf(charId: string, kind: PitchKind): number {
+    const r = bbRep(charId);
+    return pitchSpeedOf(kind, bbStats(charId).speed) * (r.fav === 'straight' && kind === 'straight' ? BB.favSpeed : 1);
+  }
+  /** ピッチャー：固有球を使うかを切りかえる（投げる前だけ。残りがあるとき） */
+  toggleSkill(slot: number): void {
+    if (this.pitcher.slot !== slot || (this.phase !== 'ready' && this.phase !== 'aim')) return;
+    if (!this.choiceSkill && this.skillsLeft(slot) <= 0) return;
+    this.choiceSkill = !this.choiceSkill;
+  }
+  /** バッター：固有技を使う（ピッチャーが投げる前だけ。1球に1つ） */
+  canBatSkill(slot: number): boolean {
+    if (this.batter.slot !== slot || (this.phase !== 'ready' && this.phase !== 'aim') || this.batSkill || this.skillsLeft(slot) <= 0) return false;
+    if (bbRep(this.batter.charId).bs === 'steal' && !this.bases.some(Boolean)) return false;
+    return true;
+  }
+  useBatSkill(slot: number): void {
+    if (!this.canBatSkill(slot)) return;
+    const bs = bbRep(this.batter.charId).bs;
+    this.spendSkill(slot);
+    this.batSkill = bs;
+    this.events.push({ k: 'skill', slot, bat: true, name: BAT_SKILLS[bs].name, desc: BAT_SKILLS[bs].desc });
+    if (bs === 'steal') {
+      // 走者が全員1つ進む（3塁の人はかえって1点）
+      const b = this.bases;
+      let runs = 0;
+      for (let i = 2; i >= 0; i--) {
+        if (!b[i]) continue;
+        b[i] = false;
+        if (i === 2) runs++;
+        else b[i + 1] = true;
+      }
+      this.addRuns(runs);
+    }
+  }
+  private addRuns(runs: number): void {
+    const team = this.half;
+    this.score[team] += runs;
+    const ln = this.lines[team];
+    while (ln.length < this.inning) ln.push(0);
+    ln[this.inning - 1] += runs;
+  }
+  /** 次の球を待つ（1球ごとの固有技は消える） */
+  private toReady(): void {
+    this.phase = 'ready';
+    this.timer = BB.readyT;
+    this.batSkill = null;
+    this.choiceSkill = this.choiceSkill && this.skillsLeft(this.pitcher.slot) > 0;
+  }
+  /** 球が見えないとき（バグ球） */
+  get ballHidden(): boolean {
+    return this.phase === 'pitch' && this.windup <= 0 && !!this.vanish && this.pitchT >= this.vanish[0] && this.pitchT < this.vanish[1];
   }
 
   teamPlayers(team: number): BBPlayer[] {
@@ -248,12 +398,17 @@ export class Baseball {
 
   /** 投げた球の、t フレーム後の位置 */
   pitchPos(t: number): Vec {
+    // バズ球：前半は遅く、後半は速い（道筋は同じで、進み方だけ変える）
+    const F = this.pitchF;
+    const s = this.warp ? (t < F * 0.5 ? t * 0.7 : F * 0.35 + (t - F * 0.5) * 1.3) : t;
     // 曲がり始めるまではまっすぐ、そこから曲がる
-    const u = Math.max(0, t - this.breakT);
+    const u = Math.max(0, s - this.breakT);
+    // シェイク：左右に揺れる（ホームベースではもとの所に戻る）
+    const sh = this.shakeAmp ? this.shakeAmp * Math.sin((3 * Math.PI * s) / F) * Math.min(1, s / F + 0.2) : 0;
     return {
-      x: this.p0.x + this.v0.x * t + 0.5 * this.acc.x * u * u,
-      y: this.p0.y + this.v0.y * t + 0.5 * this.acc.y * u * u,
-      z: this.p0.z + this.v0.z * t,
+      x: this.p0.x + this.v0.x * s + 0.5 * this.acc.x * u * u + sh,
+      y: this.p0.y + this.v0.y * s + 0.5 * this.acc.y * u * u,
+      z: this.p0.z + this.v0.z * s,
     };
   }
   /** 変化球が曲がり始めるフレーム */
@@ -327,7 +482,10 @@ export class Baseball {
         const a = this.pressed(pit.slot, pi, BTN_A);
         const b = this.pressed(pit.slot, pi, BTN_B);
         // ピッチャー：狙いを動かし、A で選んだ球種を投げる（B で球種を順に切りかえ。画面のボタンでも選べる）
-        if (b) this.choice = PITCH_KINDS[(PITCH_KINDS.indexOf(this.choice) + 1) % PITCH_KINDS.length];
+        if (b) {
+          const own = bbRep(pit.charId).pitches;
+          this.choice = own[(own.indexOf(this.choice) + 1) % own.length];
+        }
         if (a || --this.timer <= 0) this.throwPitch(this.choice, sp);
         break;
       }
@@ -338,6 +496,17 @@ export class Baseball {
           break;
         }
         this.pitchT++;
+        if (this.chaseOn && this.pitchT === this.breakT) {
+          const est = this.pitchPos(this.pitchF);
+          let dx = est.x - this.cursor.x;
+          let dy = est.y - this.cursor.y;
+          const len = Math.hypot(dx, dy) || 1;
+          dx /= len;
+          dy /= len;
+          const n = this.pitchF - this.breakT;
+          this.acc.x += (2 * 0.34 * dx) / (n * n);
+          this.acc.y += (2 * 0.34 * dy) / (n * n);
+        }
         if (this.swingAt < 0 && (this.pressed(bat.slot, bi, BTN_A) || this.swingReq === bat.slot)) {
           this.swingReq = -1;
           this.swingAt = this.pitchT;
@@ -364,10 +533,7 @@ export class Baseball {
         if (--this.timer <= 0) this.nextBatter();
         break;
       case 'change':
-        if (--this.timer <= 0) {
-          this.phase = 'ready';
-          this.timer = BB.readyT;
-        }
+        if (--this.timer <= 0) this.toReady();
         break;
       case 'end':
         break;
@@ -378,25 +544,85 @@ export class Baseball {
   /** 球種を選ぶ（投げる番のピッチャーだけ。投げる前なら何度でも選び直せる） */
   choosePitch(slot: number, kind: PitchKind): void {
     if (this.pitcher.slot !== slot || (this.phase !== 'ready' && this.phase !== 'aim')) return;
-    if (PITCH_KINDS.includes(kind)) this.choice = kind;
+    if (bbRep(this.pitcher.charId).pitches.includes(kind)) this.choice = kind;
   }
 
   private throwPitch(type: PitchKind, s: BBStats): void {
+    const pit = this.pitcher;
+    const rep = bbRep(pit.charId);
+    if (!rep.pitches.includes(type)) type = 'straight';
+    // 固有球（バッターのハッキング中は、使っても普通の球になる）
+    let ps: PitchSkill | null = null;
+    if (this.choiceSkill && this.spendSkill(pit.slot)) {
+      ps = rep.ps;
+      this.events.push({ k: 'skill', slot: pit.slot, bat: false, name: PITCH_SKILLS[ps].name, desc: PITCH_SKILLS[ps].desc });
+    }
+    this.choiceSkill = false;
+    const hacked = this.batSkill === 'hack';
+    if (hacked) ps = null;
+    this.pitchSkill = ps;
+    this.vanish = null;
+    this.warp = ps === 'buzz';
+    this.shakeAmp = ps === 'shake' ? 0.26 : 0;
+    this.chaseOn = ps === 'chase';
+    this.gachaWin = false;
+    let gachaBad = false;
+    if (ps === 'gacha') {
+      this.gachaWin = this.rng.next() < 0.5;
+      gachaBad = !this.gachaWin;
+      type = this.gachaWin ? rep.pitches[1 + Math.floor(this.rng.next() * (rep.pitches.length - 1))] : 'straight';
+    }
+    if (ps === 'swap' || ps === 'full' || ps === 'express') type = 'straight';
     this.pitchType = type;
     const spec = PITCH_SPECS[type];
     this.pitchSide = Math.sign(spec.x);
-    const speed = pitchSpeedOf(type, s.speed);
+    const speed = this.speedOf(pit.charId, type) * (ps === 'full' || ps === 'express' ? 1.12 : gachaBad ? 0.8 : ps === 'buzz' ? 0.95 : 1);
     const F = Math.round(BB.releaseZ / speed);
     this.pitchSpeed = speed;
+    // 変化球：狙い（投げ出す向き）に向かってまっすぐ飛び、途中から球種ごとの向きへ曲がる（ホームベースで shift だけずれる）
+    let shift = this.shiftOf(pit.charId, type);
+    let start = BB.breakStart;
+    if (this.gachaWin) shift = { x: shift.x * 2, y: shift.y * 2 };
+    if (ps === 'swap') {
+      shift = { x: 0, y: pitchShift('fork', s.brk).y * 1.4 };
+      start = 0.62;
+    }
+    if (hacked) shift = { x: 0, y: 0 };
     // 狙いから、コントロールのぶんだけぶれる
-    const wild = Math.max(0.02, BB.wild - (s.control - 3) * BB.perControl);
+    let wild = Math.max(0.02, BB.wild - (s.control - 3) * BB.perControl);
+    if (ps === 'full') wild *= 2.5;
+    if (ps === 'lockon' || ps === 'learn' || gachaBad) wild = 0;
     const ang = this.rng.next() * Math.PI * 2;
     const r = wild * Math.sqrt(this.rng.next());
-    const tx = this.aim.x + Math.cos(ang) * r;
-    const ty = this.aim.y + Math.sin(ang) * r;
-    // 変化球：狙い（投げ出す向き）に向かってまっすぐ飛び、途中から球種ごとの向きへ曲がる（ホームベースで shift だけずれる）
-    const shift = pitchShift(type, s.brk);
-    const tb = Math.round(F * BB.breakStart);
+    let tx = this.aim.x + Math.cos(ang) * r;
+    let ty = this.aim.y + Math.sin(ang) * r;
+    if (ps === 'lockon') {
+      // 狙った所にいちばん近い、ゾーンの隅へ
+      const ex = this.aim.x + shift.x;
+      const ey = this.aim.y + shift.y;
+      const cx = (ex >= 0 ? 1 : -1) * (BB.zone.x - 0.03);
+      const cy = ey >= (BB.zone.y1 + BB.zone.y2) / 2 ? BB.zone.y2 - 0.04 : BB.zone.y1 + 0.04;
+      tx = cx - shift.x;
+      ty = cy - shift.y;
+    } else if (ps === 'learn') {
+      // 相手が空振りした所のまん中へ（まだなければ外角低め）
+      const w = this.whiffs.get(this.batter.slot) ?? [];
+      const gx = w.length ? w.reduce((a, q) => a + q.x, 0) / w.length : -(BB.zone.x - 0.04);
+      const gy = w.length ? w.reduce((a, q) => a + q.y, 0) / w.length : BB.zone.y1 + 0.04;
+      tx = gx - shift.x;
+      ty = gy - shift.y;
+    } else if (gachaBad) {
+      // はずれ：真ん中寄りの遅い棒球
+      tx = this.aim.x * 0.4;
+      ty = 0.8 + (this.aim.y - 0.8) * 0.4;
+    }
+    if (ps === 'bug') {
+      const v0 = Math.round(F * 0.42);
+      this.vanish = [v0, v0 + 18];
+      const a = this.rng.next() * Math.PI * 2;
+      this.fakeOff = { x: Math.cos(a) * 0.22, y: Math.sin(a) * 0.22 };
+    }
+    const tb = Math.round(F * start);
     const n = F - tb;
     this.breakT = tb;
     this.acc = { x: (2 * shift.x) / (n * n), y: (2 * shift.y) / (n * n), z: 0 };
@@ -426,22 +652,40 @@ export class Baseball {
     }
     const diff = this.swingAt + BB.swingDelay - this.pitchF; // マイナス = 早い
     // バット：横長のだ円。真ん中（芯）に近いほど強い当たり
-    const r = BB.meetR + (s.meet - 3) * BB.perMeet;
+    const bs = this.batSkill;
+    const r = (BB.meetR + (s.meet - 3) * BB.perMeet) * (bs === 'wall' ? 1.5 : 1);
     const rw = r * BB.batW;
     const rh = r * BB.batH;
-    const ex = (this.cursor.x - p.x) / rw;
-    const ey = (this.cursor.y - p.y) / rh;
+    // アドリブ：バットが球の方へ少し寄る
+    const cx = bs === 'adlib' ? this.cursor.x + (p.x - this.cursor.x) * 0.4 : this.cursor.x;
+    const cy = bs === 'adlib' ? this.cursor.y + (p.y - this.cursor.y) * 0.4 : this.cursor.y;
+    const ex = (cx - p.x) / rw;
+    const ey = (cy - p.y) / rh;
     const e = Math.hypot(ex, ey);
-    if (Math.abs(diff) > BB.timingWin || e > 1) {
+    const win = BB.timingWin * (bs === 'tension' ? 2 : 1);
+    if (Math.abs(diff) > win || e > 1) {
+      // 粘着：少し外れただけならファウル
+      if (bs === 'cling' && Math.abs(diff) <= win && e <= 2) {
+        this.setCall('foul');
+        return;
+      }
+      const w = this.whiffs.get(this.batter.slot) ?? [];
+      w.push({ x: p.x, y: p.y });
+      this.whiffs.set(this.batter.slot, w);
       this.setCall('whiff');
       return;
     }
     // 当たった：当たりの良さ（芯に近く、タイミングが合うほど良い。芯の中なら満点）
-    const core = Math.max(0, (e - BB.sweet * 0.5) / (1 - BB.sweet * 0.5));
+    const sweet = Math.min(0.9, BB.sweet * (bs === 'god' ? 2 : 1));
+    const core = Math.max(0, (e - sweet * 0.5) / (1 - sweet * 0.5));
     // ボール球は芯でとらえても強く飛ばない（ゾーンから外れるほど弱い当たり）
     const out = zoneOut(p);
-    const q = Math.pow(1 - core, 0.6) * (1 - Math.pow(Math.abs(diff) / BB.timingWin, 2)) * clamp(1 - out * BB.ballWeak, 0.2, 1);
-    const speed = (BB.exitBase + BB.exitRange * q) * (1 + (s.power - 3) * BB.perPower);
+    const q = Math.pow(1 - core, 0.6) * (1 - Math.pow(Math.abs(diff) / win, 2)) * clamp(1 - out * BB.ballWeak, 0.2, 1);
+    let mul = 1;
+    if (this.pitchSkill === 'heavy') mul *= 0.5;
+    if (bs === 'fullswing') mul *= 1.4;
+    if (bs === 'gacha') mul *= this.rng.next() < 1 / 3 ? 1.6 : 0.85;
+    const speed = (BB.exitBase + BB.exitRange * q) * (1 + (s.power - 3) * BB.perPower) * mul;
     // バットが球より上 = 球の上をたたく（ゴロ）、下 = 下をすくう（フライ）
     const dy = ey * 0.75;
     // 低いボール球はゴロ、高いボール球はポップフライになりやすい
@@ -531,7 +775,7 @@ export class Baseball {
     const r = this.rng.next();
     if (launch < 8) {
       // ゴロ：速い当たりほど抜ける
-      const p = clamp((speed - 22) / 22, 0.08, 0.55);
+      const p = this.batSkill === 'dash' ? 0.9 : clamp((speed - 22) / 22, 0.08, 0.55);
       return r < p ? 'single' : 'groundout';
     }
     const liner = launch < 24;
@@ -559,8 +803,7 @@ export class Baseball {
       this.strikes++;
       if (this.strikes >= 3) return this.finishAtBat('strikeout');
     }
-    this.phase = 'ready';
-    this.timer = BB.readyT;
+    this.toReady();
   }
 
   /** 打席の結果：塁を進めて点を入れる */
@@ -595,10 +838,7 @@ export class Baseball {
       }
       b[0] = true;
     } else this.outs++;
-    this.score[team] += runs;
-    const ln = this.lines[team];
-    while (ln.length < this.inning) ln.push(0);
-    ln[this.inning - 1] += runs;
+    this.addRuns(runs);
     this.lastResult = r;
     this.lastRuns = runs;
     this.log.push([this.batter.slot, r]);
@@ -618,8 +858,7 @@ export class Baseball {
     // サヨナラ：最終回の裏に、後攻のチームが勝ち越したら終わり
     if (last && this.half === 1 && this.score[1] > this.score[0]) return this.endGame();
     if (this.pa < BB.paPerHalf) {
-      this.phase = 'ready';
-      this.timer = BB.readyT;
+      this.toReady();
       return;
     }
     // 攻守交代
@@ -663,7 +902,9 @@ export class Baseball {
 /** CPU の操作（ピッチャー・バッター） */
 export class BBCpu {
   private rng: Rng;
-  private plan = new Map<number, { wait: number; x: number; y: number; type: PitchKind; side: number; swing: boolean; at: number; ex: number; ey: number }>();
+  private plan = new Map<number, { wait: number; x: number; y: number; type: PitchKind; side: number; swing: boolean; at: number; ex: number; ey: number; skill?: boolean }>();
+  /** バッターが固有技を使うか決めた球（1球に1回だけ考える） */
+  private batPlan = new Map<number, number>();
   constructor(seed: number) {
     this.rng = new Rng(seed ^ 0x5bd1e995);
   }
@@ -681,13 +922,20 @@ export class BBCpu {
         const edge = 0.4 + lv * 0.05;
         const x = inside ? this.rng.range(-BB.zone.x, BB.zone.x) * edge * 1.4 : this.rng.range(-0.5, 0.42);
         const y = inside ? this.rng.range(BB.zone.y1 + 0.05, BB.zone.y2 - 0.05) : this.rng.chance(0.5) ? BB.zone.y1 - 0.18 : BB.zone.y2 + 0.15;
-        const type: PitchKind = this.rng.chance(0.45) ? 'straight' : PITCH_KINDS[1 + Math.floor(this.rng.next() * 4)];
+        // 持ち球から選ぶ（得意球が多め）
+        const rep = bbRep(g.pitcher.charId);
+        const brk = rep.pitches.filter((k) => k !== 'straight');
+        let type: PitchKind = this.rng.chance(0.4) || !brk.length ? 'straight' : brk[Math.floor(this.rng.next() * brk.length)];
+        if (rep.fav && this.rng.chance(0.25)) type = rep.fav;
         const side = 0;
-        pl = { wait: 30 + Math.floor(this.rng.range(0, 70)), x, y, type, side, swing: false, at: g.pa * 100 + g.balls * 10 + g.strikes + g.inning * 1000 + g.half * 500, ex: 0, ey: 0 };
+        // 固有球：追い込んだときや、ピンチのときに使う
+        const pinch = g.strikes === 2 || g.bases[1] || g.bases[2];
+        const skill = g.skillsLeft(slot) > 0 && pinch && this.rng.chance(0.3);
+        pl = { wait: 30 + Math.floor(this.rng.range(0, 70)), x, y, type, side, swing: false, at: g.pa * 100 + g.balls * 10 + g.strikes + g.inning * 1000 + g.half * 500, ex: 0, ey: 0, skill };
         this.plan.set(slot, pl);
       }
       // 狙いは「投げ出す向き」なので、球が来てほしい所から曲がるぶんを引く
-      const sh = pitchShift(pl.type, bbStats(g.pitcher.charId).brk);
+      const sh = g.shiftOf(g.pitcher.charId, pl.type);
       // 狙える範囲の外なら、範囲の端で投げる（いつまでも投げないことがないように）
       const dx = clamp(pl.x - sh.x, -BB.aimX, BB.aimX) - g.aim.x;
       const dy = clamp(pl.y - sh.y, BB.aimY1, BB.aimY2) - g.aim.y;
@@ -696,9 +944,20 @@ export class BBCpu {
       if (--pl.wait <= 0 && !mx && !my) {
         // 球種を選んでから A で投げる
         g.choosePitch(slot, pl.type);
+        if (pl.skill && !g.choiceSkill) g.toggleSkill(slot);
         return { mx: 0, my: 0, buttons: BTN_A };
       }
       return { mx, my, buttons: 0 };
+    }
+    // バッター：投げる前に、固有技を使うか決める（チャンスや追い込まれたとき）
+    if (g.batter.slot === slot && (g.phase === 'ready' || g.phase === 'aim')) {
+      const key = g.inning * 100000 + g.half * 10000 + g.pa * 100 + g.balls * 10 + g.strikes;
+      if (this.batPlan.get(slot) !== key) {
+        this.batPlan.set(slot, key);
+        const chance = g.bases[1] || g.bases[2] || g.strikes === 2;
+        if (g.canBatSkill(slot) && chance && this.rng.chance(0.3)) g.useBatSkill(slot);
+      }
+      return { mx: 0, my: 0, buttons: 0 };
     }
     // バッター
     if (g.batter.slot === slot && g.phase === 'pitch') {
