@@ -97,6 +97,22 @@ export const BB = {
   changeT: 110,
 };
 
+/** 球種 */
+export type PitchKind = 'straight' | 'slider' | 'curve' | 'fork' | 'shoot';
+export const PITCH_KINDS: PitchKind[] = ['straight', 'slider', 'curve', 'fork', 'shoot'];
+export const PITCH_NAMES: Record<PitchKind, string> = { straight: 'ストレート', slider: 'スライダー', curve: 'カーブ', fork: 'フォーク', shoot: 'シュート' };
+/**
+ * 球種ごとの速さ（ストレートを1）と、ホームベースでの曲がり（曲がりの強さ1あたり。x = 横、y = 縦。右打ちのバッターから見て、
+ * スライダー・カーブは外へ逃げる（x がマイナス）、シュートは内へ食い込む（x がプラス）、フォーク・カーブは落ちる）
+ */
+export const PITCH_SPECS: Record<PitchKind, { speed: number; x: number; y: number }> = {
+  straight: { speed: 1, x: 0, y: 0 },
+  slider: { speed: 0.88, x: -1, y: -0.25 },
+  curve: { speed: 0.76, x: -0.55, y: -1.15 },
+  fork: { speed: 0.86, x: 0, y: -1.1 },
+  shoot: { speed: 0.92, x: 0.85, y: -0.3 },
+};
+
 export type BBPhase = 'ready' | 'aim' | 'pitch' | 'call' | 'hit' | 'result' | 'change' | 'end';
 export type BBResult = 'single' | 'double' | 'triple' | 'homer' | 'walk' | 'strikeout' | 'groundout' | 'flyout' | 'lineout';
 export type BBCall = 'strike' | 'ball' | 'foul' | 'whiff';
@@ -120,7 +136,7 @@ export interface BBSetup {
 }
 
 export type BBEvent =
-  | { k: 'pitch'; type: 'straight' | 'breaking' }
+  | { k: 'pitch'; type: PitchKind }
   | { k: 'swing' }
   | { k: 'contact'; q: number }
   | { k: 'call'; c: BBCall }
@@ -172,7 +188,9 @@ export class Baseball {
   private acc: Vec = { x: 0, y: 0, z: 0 };
   pitchT = 0;
   pitchF = 60;
-  pitchType: 'straight' | 'breaking' = 'straight';
+  pitchType: PitchKind = 'straight';
+  /** ピッチャーが選んでいる球種（投げる前に選ぶ） */
+  choice: PitchKind = 'straight';
   /** バットを振ったフレーム（振っていなければ -1） */
   swingAt = -1;
   /** 打球 */
@@ -255,11 +273,12 @@ export class Baseball {
         }
         break;
       case 'aim': {
-        // ピッチャー：狙いを動かし、A でストレート、B で変化球（押したときのスティックの向きで曲がる向き。真ん中なら落ちる球）
         moveCursor(this.aim, this.aimV, pi);
         const a = this.pressed(pit.slot, pi, BTN_A);
         const b = this.pressed(pit.slot, pi, BTN_B);
-        if (a || b || --this.timer <= 0) this.throwPitch(b ? 'breaking' : 'straight', b ? Math.sign(Math.abs(pi.mx) > 0.4 ? pi.mx : 0) : 0, sp);
+        // ピッチャー：狙いを動かし、A で選んだ球種を投げる（B で球種を順に切りかえ。画面のボタンでも選べる）
+        if (b) this.choice = PITCH_KINDS[(PITCH_KINDS.indexOf(this.choice) + 1) % PITCH_KINDS.length];
+        if (a || --this.timer <= 0) this.throwPitch(this.choice, sp);
         break;
       }
       case 'pitch': {
@@ -300,10 +319,17 @@ export class Baseball {
     for (const p of this.setup.players) this.prevButtons.set(p.slot, (inputs.get(p.slot) ?? none).buttons);
   }
 
-  private throwPitch(type: 'straight' | 'breaking', side: number, s: BBStats): void {
+  /** 球種を選ぶ（投げる番のピッチャーだけ。投げる前なら何度でも選び直せる） */
+  choosePitch(slot: number, kind: PitchKind): void {
+    if (this.pitcher.slot !== slot || (this.phase !== 'ready' && this.phase !== 'aim')) return;
+    if (PITCH_KINDS.includes(kind)) this.choice = kind;
+  }
+
+  private throwPitch(type: PitchKind, s: BBStats): void {
     this.pitchType = type;
-    this.pitchSide = type === 'breaking' ? side : 0;
-    const speed = (BB.pitchSpeed + (s.speed - 3) * BB.perSpeed) * (type === 'breaking' ? BB.breakSlow : 1);
+    const spec = PITCH_SPECS[type];
+    this.pitchSide = Math.sign(spec.x);
+    const speed = (BB.pitchSpeed + (s.speed - 3) * BB.perSpeed) * spec.speed;
     const F = Math.round(BB.releaseZ / speed);
     this.pitchSpeed = speed;
     // 狙いから、コントロールのぶんだけぶれる
@@ -312,9 +338,9 @@ export class Baseball {
     const r = wild * Math.sqrt(this.rng.next());
     const tx = this.aim.x + Math.cos(ang) * r;
     const ty = this.aim.y + Math.sin(ang) * r;
-    // 変化球：ホームベースで、横（スライダー）か下（落ちる球）へ brk だけずれる（狙いは曲がったあとの場所）
-    const b = type === 'breaking' ? BB.brk + (s.brk - 3) * BB.perBrk : 0;
-    const shift = { x: side * b, y: side === 0 ? -b : -b * 0.25 };
+    // 変化球：ホームベースで、球種ごとの向きへ曲がる（狙いは曲がったあとの場所）。曲がりの強さはキャラの「変化」で変わる
+    const b = BB.brk + (s.brk - 3) * BB.perBrk;
+    const shift = { x: spec.x * b, y: spec.y * b };
     this.acc = { x: (2 * shift.x) / (F * F), y: (2 * shift.y) / (F * F), z: 0 };
     this.p0 = { x: 0, y: BB.releaseY, z: BB.releaseZ };
     this.v0 = {
@@ -566,7 +592,7 @@ export class Baseball {
 /** CPU の操作（ピッチャー・バッター） */
 export class BBCpu {
   private rng: Rng;
-  private plan = new Map<number, { wait: number; x: number; y: number; type: 'straight' | 'breaking'; side: number; swing: boolean; at: number; ex: number; ey: number }>();
+  private plan = new Map<number, { wait: number; x: number; y: number; type: PitchKind; side: number; swing: boolean; at: number; ex: number; ey: number }>();
   constructor(seed: number) {
     this.rng = new Rng(seed ^ 0x5bd1e995);
   }
@@ -584,8 +610,8 @@ export class BBCpu {
         const edge = 0.4 + lv * 0.05;
         const x = inside ? this.rng.range(-BB.zone.x, BB.zone.x) * edge * 1.4 : this.rng.range(-0.5, 0.5);
         const y = inside ? this.rng.range(BB.zone.y1 + 0.05, BB.zone.y2 - 0.05) : this.rng.chance(0.5) ? BB.zone.y1 - 0.18 : BB.zone.y2 + 0.15;
-        const type = this.rng.chance(0.4) ? 'breaking' : 'straight';
-        const side = type === 'breaking' ? [-1, 0, 1][Math.floor(this.rng.next() * 3)] : 0;
+        const type: PitchKind = this.rng.chance(0.45) ? 'straight' : PITCH_KINDS[1 + Math.floor(this.rng.next() * 4)];
+        const side = 0;
         pl = { wait: 30 + Math.floor(this.rng.range(0, 70)), x, y, type, side, swing: false, at: g.pa * 100 + g.balls * 10 + g.strikes + g.inning * 1000 + g.half * 500, ex: 0, ey: 0 };
         this.plan.set(slot, pl);
       }
@@ -594,8 +620,9 @@ export class BBCpu {
       const mx = Math.abs(dx) > 0.02 ? Math.sign(dx) : 0;
       const my = Math.abs(dy) > 0.02 ? Math.sign(dy) : 0;
       if (--pl.wait <= 0 && !mx && !my) {
-        // 変化球は、曲がる向きにスティックを倒して B
-        return pl.type === 'breaking' ? { mx: pl.side, my: 0, buttons: BTN_B } : { mx: 0, my: 0, buttons: BTN_A };
+        // 球種を選んでから A で投げる
+        g.choosePitch(slot, pl.type);
+        return { mx: 0, my: 0, buttons: BTN_A };
       }
       return { mx, my, buttons: 0 };
     }
@@ -619,6 +646,7 @@ export class BBCpu {
       const mx = clamp(dx / (BB.cursorMax * 1.5), -1, 1);
       const my = clamp(dy / (BB.cursorMax * 1.5), -1, 1);
       const swing = pl.swing && g.swingAt < 0 && info.left <= pl.wait;
+      void pl.side;
       return { mx, my, buttons: swing ? BTN_A : 0 };
     }
     return { mx: 0, my: 0, buttons: 0 };

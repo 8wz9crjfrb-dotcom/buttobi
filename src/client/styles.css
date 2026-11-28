@@ -6635,3 +6635,42 @@ table.rec td:first-child {
   margin-left: 6px;
   font-size: 12px;
 }
+.bb-pick {
+  position: absolute;
+  top: calc(88px + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 6px;
+  pointer-events: auto;
+}
+.bb-pick.show {
+  display: flex;
+}
+.bb-pick button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 70px;
+  padding: 4px 8px;
+  white-space: nowrap;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  background: rgba(16, 20, 40, 0.82);
+  color: #fff;
+  font-weight: 800;
+  touch-action: manipulation;
+}
+.bb-pick button b {
+  font-size: 13px;
+}
+.bb-pick button small {
+  font-size: 9px;
+  opacity: 0.8;
+}
+.bb-pick button.on {
+  border-color: #ffd23f;
+  background: rgba(255, 210, 63, 0.25);
+  box-shadow: 0 0 10px rgba(255, 210, 63, 0.5);
+}

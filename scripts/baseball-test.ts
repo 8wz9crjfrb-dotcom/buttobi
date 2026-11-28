@@ -1,5 +1,5 @@
 // 野球（CPUと1対1）の計算が意図どおりに動くかを確かめる
-import { Baseball, BBCpu, BB, type BBSetup } from '../src/shared/baseball';
+import { Baseball, BBCpu, BB, type BBSetup, type PitchKind } from '../src/shared/baseball';
 import { BTN_A, type InputState } from '../src/shared/types';
 
 let fail = 0;
@@ -151,7 +151,7 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
   }
   const rolled = Math.hypot(g.hitBall.x, g.hitBall.z);
   check('ゴロ：地面に落ちたあと、はねる', bounced, `はねた高さ ${maxAfter.toFixed(2)}m`);
-  check('ゴロ：はねて転がってから結果が出る', g.phase === 'result' && rolled > 10, `転がった距離 ${rolled.toFixed(1)}m`);
+  check('ゴロ：はねて転がってから結果が出る', (g.phase as string) === 'result' && rolled > 10, `転がった距離 ${rolled.toFixed(1)}m`);
 }
 // ---- ミートの丸：小さく倒すとゆっくり、大きく倒すと速く、なめらかに動く
 {
@@ -172,6 +172,39 @@ const pitchAt = (x: number, y: number) => (g: Baseball) => {
   const first = move(1, 1);
   check('ミートの丸：小さく倒すとゆっくり、大きく倒すと速い', fast > slow * 3, `小 ${slow.toFixed(3)} / 大 ${fast.toFixed(3)}`);
   check('ミートの丸：急には最高速にならない（なめらかに加速）', first < BB.cursorMax * 0.5, `${first.toFixed(4)}`);
+}
+
+// ---- 球種：選んだ球種で曲がる向きが変わる（狙いは曲がったあとの場所。途中の位置で曲がり方を見る）
+{
+  const mid = (kind: PitchKind) => {
+    const g = new Baseball(setup(1, 3));
+    until(g, () => g.phase === 'aim');
+    g.choosePitch(g.pitcher.slot, kind);
+    g.aim.x = 0;
+    g.aim.y = 0.8;
+    // コントロールのぶれをなくして比べる
+    (g as unknown as { rng: { next(): number } }).rng.next = () => 0;
+    g.step(new Map([[g.pitcher.slot, { mx: 0, my: 0, buttons: BTN_A }]]));
+    const half = g.pitchPos(Math.round(g.pitchInfo().left / 2));
+    return { x: half.x, y: half.y, type: g.pitchType, kmh: g.pitchSpeed };
+  };
+  const st = mid('straight');
+  const sl = mid('slider');
+  const cu = mid('curve');
+  const fo = mid('fork');
+  const sh = mid('shoot');
+  check('球種：選んだ球種で投げる', st.type === 'straight' && sl.type === 'slider' && cu.type === 'curve' && fo.type === 'fork' && sh.type === 'shoot');
+  // 途中ではまだ曲がっていない：最後に向かって曲がるので、途中の位置は曲がる向きと逆側にいる
+  check('球種：スライダーは外へ（x がマイナスへ）曲がる', sl.x > st.x + 0.03, `途中 x ${sl.x.toFixed(2)}`);
+  check('球種：シュートは内へ（x がプラスへ）曲がる', sh.x < st.x - 0.03, `途中 x ${sh.x.toFixed(2)}`);
+  check('球種：フォーク・カーブは落ちる（途中では高い）', fo.y > st.y + 0.05 && cu.y > st.y + 0.05, `途中 y ストレート${st.y.toFixed(2)} フォーク${fo.y.toFixed(2)} カーブ${cu.y.toFixed(2)}`);
+  check('球種：ストレートがいちばん速く、カーブがいちばん遅い', st.kmh > sl.kmh && sl.kmh > cu.kmh && fo.kmh > cu.kmh);
+  const g = new Baseball(setup());
+  until(g, () => g.phase === 'aim');
+  g.choosePitch(g.batter.slot, 'curve');
+  check('球種：バッターは球種を選べない', g.choice === 'straight');
+  g.step(new Map([[g.pitcher.slot, { mx: 0, my: 0, buttons: 2 }]]));
+  check('球種：B で球種が切りかわる', g.choice === 'slider');
 }
 
 void N;

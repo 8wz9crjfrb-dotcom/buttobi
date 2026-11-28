@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { getCharacter, TEAM_COLORS } from '../shared/characters';
 import { getCostume } from '../shared/costumes';
-import { Baseball, BB, BBCpu, BB_RESULT_NAMES, bbStats, pitchKmh, type BBPlayer, type BBSetup } from '../shared/baseball';
+import { Baseball, BB, BBCpu, BB_RESULT_NAMES, bbStats, pitchKmh, PITCH_KINDS, PITCH_NAMES, type BBPlayer, type BBSetup, type PitchKind } from '../shared/baseball';
 import type { InputState, ViewFighter } from '../shared/types';
 import { FighterModel } from './fighterModel';
 
@@ -245,9 +245,19 @@ export class BaseballScreen {
       <div class="bb-count"><div class="bb-bso"></div><div class="bb-bases"><i class="b2"></i><i class="b3"></i><i class="b1"></i></div><div class="bb-pa"></div></div>
       <div class="bb-matchup"></div>
       <div class="bb-speed"></div>
+      <div class="bb-pick">${PITCH_KINDS.map((k) => `<button type="button" data-pk="${k}"><b>${PITCH_NAMES[k]}</b><small>${PITCH_HINT[k]}</small></button>`).join('')}</div>
       <div class="bb-msg"></div>
       <div class="bb-help"></div>`;
     uiRoot.appendChild(this.ui);
+    // 球種のボタン（投げる番のときだけ出す）
+    this.ui.querySelectorAll<HTMLButtonElement>('[data-pk]').forEach((b) =>
+      b.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this.game.choosePitch(this.mySlot, b.dataset.pk as PitchKind);
+        this.updateUi(true);
+      }),
+    );
     this.updateUi(true);
   }
 
@@ -340,7 +350,7 @@ export class BaseballScreen {
   /** 球速と球種（投げた球がホームベースに来たあとに出す） */
   private showSpeed(): void {
     const g = this.game;
-    const name = g.pitchType === 'straight' ? 'ストレート' : g.pitchSide === 0 ? 'フォーク' : g.pitchSide > 0 ? 'シュート' : 'スライダー';
+    const name = PITCH_NAMES[g.pitchType];
     const el = this.ui.querySelector<HTMLElement>('.bb-speed')!;
     el.innerHTML = `<b>${pitchKmh(g.pitchSpeed)}</b><small>km/h</small><span>${name}</span>`;
     el.classList.add('show');
@@ -398,11 +408,17 @@ export class BaseballScreen {
     // 回転：ストレートは縦の強い逆回転、横に曲がる球は横回転、落ちる球はほとんど回らない（ゆらゆら）
     if (g.phase === 'pitch') {
       const step = dt * 60;
-      if (g.pitchType === 'straight') this.ball.rotateX(-0.55 * step);
-      else if (g.pitchSide === 0) {
+      const k = g.pitchType;
+      if (k === 'straight') this.ball.rotateX(-0.55 * step);
+      else if (k === 'fork') {
+        // ほとんど回らない（ゆらゆら）
         this.ball.rotateX(0.04 * step);
         this.ball.rotateZ(Math.sin(this.time * 9) * 0.03);
-      } else this.ball.rotateY(0.5 * g.pitchSide * step);
+      } else if (k === 'curve') {
+        // 縦の順回転（前に転がるように）＋少し横
+        this.ball.rotateX(0.45 * step);
+        this.ball.rotateY(-0.15 * step);
+      } else this.ball.rotateY(0.5 * (k === 'shoot' ? 1 : -1) * step);
     } else if (g.phase === 'hit') this.ball.rotateX(0.4 * dt * 60);
     // 残像：投げた球の通り道
     if (g.phase === 'pitch') {
@@ -475,7 +491,8 @@ export class BaseballScreen {
       if (this.msgT <= 0) this.ui.querySelector('.bb-msg')!.classList.remove('show');
     }
     const role = this.role;
-    const key = [g.inning, g.half, g.pa, g.balls, g.strikes, g.outs, g.bases.join(), g.score.join(), role, g.phase === 'aim' ? 1 : 0, g.finished].join('|');
+    const picking = role === 'pitch' && (g.phase === 'ready' || g.phase === 'aim');
+    const key = [g.inning, g.half, g.pa, g.balls, g.strikes, g.outs, g.bases.join(), g.score.join(), role, g.phase === 'aim' ? 1 : 0, g.finished, picking, g.choice].join('|');
     if (key === this.lastKey && !force) return;
     this.lastKey = key;
     const names = [0, 1].map((t) => g.teamPlayers(t)[0]?.name ?? (t === 0 ? '先攻' : '後攻'));
@@ -501,8 +518,11 @@ export class BaseballScreen {
       role === 'bat'
         ? 'あなたが打つ番：スティックで<b>ミートの丸</b>を動かし、球に合わせて <b>A</b> で打つ'
         : role === 'pitch'
-          ? 'あなたが投げる番：スティックで<b>コース</b>を決めて、<b>A</b> ストレート ／ <b>B</b> 変化球（スティックを左右に倒すと横に曲がる・真ん中なら落ちる）'
+          ? 'あなたが投げる番：上の<b>球種</b>を選び（<b>B</b> でも切りかえ）、スティックで<b>コース</b>を決めて <b>A</b> で投げる'
           : '';
+    const pick = this.ui.querySelector<HTMLElement>('.bb-pick')!;
+    pick.classList.toggle('show', picking);
+    pick.querySelectorAll<HTMLElement>('[data-pk]').forEach((b) => b.classList.toggle('on', b.dataset.pk === g.choice));
     this.hooks.setPad(role);
   }
 
@@ -517,6 +537,9 @@ export class BaseballScreen {
     this.ui.remove();
   }
 }
+
+/** 球種ボタンの小さな説明（曲がる向き） */
+const PITCH_HINT: Record<PitchKind, string> = { straight: '速い', slider: '外へ曲がる', curve: '大きく落ちる', fork: 'ストンと落ちる', shoot: '内へ曲がる' };
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
